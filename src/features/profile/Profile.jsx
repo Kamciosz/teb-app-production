@@ -12,8 +12,12 @@ export default function Profile() {
     async function loadProfile() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
-            const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-            setProfile({ ...data, email: session.user.email })
+            const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+            if (data) {
+                setProfile({ ...data, email: session.user.email })
+            } else {
+                setProfile({ full_name: 'Brak Imienia w Bazie', email: session.user.email, role: 'student', reputation: 0 })
+            }
         }
     }
 

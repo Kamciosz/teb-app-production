@@ -71,7 +71,7 @@ function App() {
     if (!session) {
         return (
             <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center p-4">
-                <h1 className="text-4xl font-bold text-green-400 mb-4">TEB-APP</h1>
+                <h1 className="text-4xl font-bold text-primary mb-4">TEB-APP</h1>
                 <p className="text-gray-400 text-center mb-6 max-w-sm text-sm">
                     Aplikacja jest bezpieczna. Zamknięty obieg autoryzacji pozwala na rejestrację WYŁĄCZNIE dla domen <strong>@teb.edu.pl</strong>
                 </p>
@@ -80,7 +80,7 @@ function App() {
                     {isRegister && (
                         <input
                             type="text" placeholder="Imię i Nazwisko" required
-                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-green-400 text-white"
+                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                             value={fullName} onChange={e => setFullName(e.target.value)}
                         />
                     )}

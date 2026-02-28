@@ -65,7 +65,7 @@ export default function Admin() {
                                 <div className="font-bold text-white">{u.full_name}</div>
                                 <div className="text-xs text-gray-500">{u.email}</div>
                             </div>
-                            <span className={`text-xs px-2 py-1 rounded-full font-bold ${u.role === 'admin' ? 'bg-red-500/20 text-red-400' : u.role === 'editor' ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'}`}>
+                            <span className={`text-xs px-2 py-1 rounded-full font-bold ${u.role === 'admin' ? 'bg-red-500/20 text-red-400' : u.role === 'editor' ? 'bg-orange-500/20 text-orange-400' : 'bg-primary/20 text-primary'}`}>
                                 {u.role.toUpperCase()}
                             </span>
                         </div>
