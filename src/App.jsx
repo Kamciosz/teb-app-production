@@ -11,6 +11,7 @@ import Admin from './features/admin/Admin'
 function App() {
     const [session, setSession] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [userRole, setUserRole] = useState('student')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [fullName, setFullName] = useState('')
@@ -44,17 +45,25 @@ function App() {
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session)
-            setLoading(false)
+            if (session) fetchRole(session.user.id)
+            else setLoading(false)
         })
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setSession(session)
+            if (session) fetchRole(session.user.id)
         })
 
         return () => subscription.unsubscribe()
     }, [])
 
-    if (loading) return <div className="min-h-screen bg-[#121212] flex items-center justify-center text-primary">Ładowanie aplikacji...</div>
+    async function fetchRole(uid) {
+        const { data } = await supabase.from('profiles').select('role').eq('id', uid).single()
+        if (data) setUserRole(data.role)
+        setLoading(false)
+    }
+
+    if (loading) return <div className="min-h-screen bg-[#121212] flex items-center justify-center text-primary">Autoryzacja SU...</div>
 
     // Widok ekranu logowania tradycyjnego
     if (!session) {
@@ -123,7 +132,7 @@ function App() {
                     <NavLink to="/" icon={<Home />} />
                     <NavLink to="/librus" icon={<GraduationCap />} />
                     <NavLink to="/vinted" icon={<Store />} />
-                    <NavLink to="/admin" icon={<ShieldAlert />} alert />
+                    {userRole === 'admin' && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
                 </nav>
             </div>
         </Router>

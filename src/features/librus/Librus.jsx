@@ -1,41 +1,27 @@
 import React from 'react'
-import { CheckCircle2 } from 'lucide-react'
+import { GraduationCap } from 'lucide-react'
 
 export default function Librus() {
-
-    // W prawdziwej aplikacji tutaj następuje "Fetch" z tokenu bezpośrednio do interfejsu
-    // Supabase RODO nie uczestniczy w trzymaniu poniższych ocen
-    const MOCK_GRADES = [
-        { id: 1, subject: "Matematyka", grade: "4+", desc: "Sprawdzian - Funkcje" },
-        { id: 2, subject: "Język r. Obcy", grade: "5", desc: "Zadanie Domowe" },
-        { id: 3, subject: "Prac. Prog. (AI)", grade: "6", desc: "Laboratorium API" },
-        { id: 4, subject: "Bazy Danych", grade: "4", desc: "SQL - Złączenia" },
-    ]
-
     return (
-        <div className="pb-10">
+        <div className="pb-10 pt-4">
             <div className="mb-6">
                 <h2 className="text-xl font-bold text-primary">Dziennik Szkolny</h2>
-                <span className="text-xs text-gray-500">Read-Only mode. (Szyfrowane E2E)</span>
+                <span className="text-xs text-gray-500">Bezpieczne złącze Librus Synergia (Szyfrowane E2E)</span>
             </div>
 
-            <div className="bg-gradient-to-br from-primary/10 to-surface border-l-4 border-primary p-4 rounded-xl shadow-lg mb-8">
-                <div className="text-sm text-gray-400 mb-1">Status na dzisiaj</div>
-                <div className="text-lg font-bold text-white flex gap-2 items-center">
-                    <CheckCircle2 className="text-primary" size={20} /> Połączenie API Nawiązane
-                </div>
-            </div>
+            <div className="bg-surface border border-gray-800 p-6 rounded-xl shadow-lg mt-10 text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 to-purple-500"></div>
+                <GraduationCap className="mx-auto text-gray-400 mb-4" size={50} />
 
-            <h3 className="text-md font-bold text-white mb-4 ml-2">Moje Ostatnie Oceny</h3>
+                <h3 className="text-lg font-bold text-white mb-2">Brak autoryzacji</h3>
+                <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+                    Zaloguj się do konta edukacyjnego <strong>Librus Synergia</strong>, aby zsynchronizować w tle swoje uśrednione oceny i powiadomienia o sprawdzianach. <br /><br />
+                    Zgodnie z protokołem, dane RODO nie opuszczają Twojego smartfona – serwer Zarządu SU ich nie przechowuje!
+                </p>
 
-            <div className="grid grid-cols-2 gap-4">
-                {MOCK_GRADES.map(g => (
-                    <div key={g.id} className="bg-surface border border-gray-800 p-4 rounded-xl text-center shadow-lg">
-                        <div className="text-xs text-gray-400 mb-2 truncate">{g.subject}</div>
-                        <div className="text-3xl font-bold text-primary">{g.grade}</div>
-                        <div className="text-xs text-gray-500 mt-2 truncate">{g.desc}</div>
-                    </div>
-                ))}
+                <button onClick={() => alert("W przyszłości otworzy się oficjalny autoryzator API Librus Synergia Oauth. W tej chwili czekamy na spięcie tokenów ze szkołą.")} className="bg-[#e91e63] text-white px-6 py-3 rounded-lg font-bold w-full transition transform hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(233,30,99,0.3)]">
+                    Połącz Dziennik Librus
+                </button>
             </div>
         </div>
     )

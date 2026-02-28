@@ -21,6 +21,26 @@ export default function Vinted() {
         setLoading(false)
     }
 
+    async function handleAddItem() {
+        const title = prompt("Jaki przedmiot chcesz wystawić i dla kogo? (np. Podręcznik)")
+        if (!title) return
+        const priceStr = prompt("Podaj sugerowaną cenę (np. 50):")
+        if (!priceStr) return
+
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const { error } = await supabase.from('vinted_items').insert([
+            { seller_id: session.user.id, title: title, price: parseFloat(priceStr) || 0 }
+        ])
+
+        if (error) {
+            alert("Błąd integracji z rynkiem: " + error.message)
+        } else {
+            fetchItems()
+        }
+    }
+
     return (
         <div className="relative min-h-[80vh] pb-10">
             <div className="flex justify-between items-center mb-6">
@@ -53,7 +73,7 @@ export default function Vinted() {
             )}
 
             {/* FAB (Floating Action Button) do szybkiego aparatu/oferty */}
-            <button className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-black rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(0,255,136,0.4)] z-40 transition transform active:scale-90">
+            <button onClick={handleAddItem} className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-black rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(0,255,136,0.4)] z-40 transition transform active:scale-90">
                 <Plus size={28} />
             </button>
         </div>

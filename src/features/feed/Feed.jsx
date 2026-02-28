@@ -21,11 +21,34 @@ export default function Feed() {
         setLoading(false)
     }
 
+    async function handleAddPost() {
+        const content = prompt("Wpisz treść szkolnego ogłoszenia (Zostanie opublikowane pod Twoim zautoryzowanym imieniem):")
+        if (!content) return
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        // Wstawka przez Supabase API (Jeśli RLS zabroni - błąd redaktora wyrzuci info)
+        const { error } = await supabase.from('feed_posts').insert([
+            { author_id: session.user.id, content: content }
+        ])
+
+        if (error) {
+            alert("Błąd: Prawdopodobnie nie masz jeszcze włączonych uprawnień Redaktora lub Administratora tablicy aby cokolwiek napisać!")
+        } else {
+            fetchPosts()
+        }
+    }
+
+    async function handleUpvote(postId, currentVotes) {
+        const { error } = await supabase.from('feed_posts').update({ upvotes: currentVotes + 1 }).eq('id', postId)
+        if (!error) fetchPosts()
+    }
+
     return (
         <div className="pb-10">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-primary">Główna Tablica</h2>
-                <button className="bg-primary/20 text-primary px-4 py-2 rounded-full font-bold text-sm border border-primary/50 cursor-pointer">
+                <button onClick={handleAddPost} className="bg-primary/20 text-primary px-4 py-2 rounded-full font-bold text-sm border border-primary/50 cursor-pointer">
                     + Wpis
                 </button>
             </div>
@@ -47,7 +70,7 @@ export default function Feed() {
                                 {post.content}
                             </div>
                             <div className="flex gap-4 items-center">
-                                <button className="text-gray-500 hover:text-primary transition"><ArrowUp size={20} /></button>
+                                <button onClick={() => handleUpvote(post.id, post.upvotes)} className="text-gray-500 hover:text-primary transition"><ArrowUp size={20} /></button>
                                 <span className="font-bold text-primary">{post.upvotes - post.downvotes}</span>
                                 <button className="text-gray-500 hover:text-red-500 transition"><ArrowDown size={20} /></button>
                             </div>
