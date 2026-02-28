@@ -43,9 +43,15 @@ export default function Librus() {
             setSimText('Pobieram dane z dziennika...')
 
             setTimeout(() => {
-                // Oceny
+                // Oceny: Sortujemy malejąco po dacie (najnowsze na górze), aby nie podawać archiwalnych z września
                 if (data.data?.grades?.length > 0) {
-                    setGrades(data.data.grades.slice(0, 20).map((g, idx) => ({
+                    const sortedGrades = [...data.data.grades].sort((a, b) => {
+                        const dateA = a.date ? new Date(a.date).getTime() : 0;
+                        const dateB = b.date ? new Date(b.date).getTime() : 0;
+                        return dateB - dateA;
+                    });
+
+                    setGrades(sortedGrades.slice(0, 20).map((g, idx) => ({
                         id: idx,
                         subject: g.subject || 'Nieznany przedmiot',
                         grade: g.grade || '-',
@@ -53,14 +59,36 @@ export default function Librus() {
                     })))
                 }
 
-                // Plan lekcji
-                if (data.data?.timetable && Array.isArray(data.data.timetable) && data.data.timetable.length > 0) {
-                    setSchedule(data.data.timetable.map((item, idx) => ({
-                        id: idx,
-                        time: item.time ? item.time : `${item.start_time || '??:??'} - ${item.end_time || '??:??'}`,
-                        subject: item.subject || 'Zajęcia',
-                        room: item.room || '-'
-                    })))
+                // Plan lekcji: API zwraca obiekt {"YYYY-MM-DD": [ [], [{Lesson...}], ... ]}
+                if (data.data?.timetable && typeof data.data.timetable === 'object') {
+                    const dzisiajISO = new Date().toISOString().split('T')[0];
+                    let planDoWyświetlenia = [];
+                    let dostepnyPlan = data.data.timetable[dzisiajISO];
+
+                    // Jeśli brak lekcji na dziś (np. weekend/święta), pobieramy pierwszy dostępny klucz w buforze
+                    if (!dostepnyPlan || dostepnyPlan.length === 0) {
+                        const kluczeMiesiac = Object.keys(data.data.timetable).sort();
+                        if (kluczeMiesiac.length > 0) {
+                            dostepnyPlan = data.data.timetable[kluczeMiesiac[kluczeMiesiac.length - 1]];
+                        }
+                    }
+
+                    if (Array.isArray(dostepnyPlan)) {
+                        dostepnyPlan.forEach(slotLekcji => {
+                            if (Array.isArray(slotLekcji) && slotLekcji.length > 0) {
+                                const aktywnaLekcja = slotLekcji[0]; // pierwsza z grup na tą samą godzinę
+                                if (aktywnaLekcja?.Subject && aktywnaLekcja?.HourFrom) {
+                                    planDoWyświetlenia.push({
+                                        time: `${aktywnaLekcja.HourFrom} - ${aktywnaLekcja.HourTo}`,
+                                        subject: aktywnaLekcja.Subject?.Name || aktywnaLekcja.Subject?.Short || 'Zajęcia',
+                                        // Classroom zazwyczaj ma format ID w API v2, bezpieczne wyswietlanie awaryjne
+                                        room: aktywnaLekcja.Classroom?.Name || aktywnaLekcja.Classroom?.Id ? `Sala ${aktywnaLekcja.Classroom.Id}` : '-'
+                                    });
+                                }
+                            }
+                        });
+                    }
+                    setSchedule(planDoWyświetlenia.map((item, idx) => ({ id: idx, ...item })));
                 } else {
                     setSchedule([]);
                 }
@@ -71,10 +99,13 @@ export default function Librus() {
                     let usp = 0;
                     let nusp = 0;
                     let spoz = 0;
+                    let sumaLekcjiWszystkich = 0;
 
-                    if (att.summary) {
+                    if (att.summary && typeof att.summary === 'object') {
                         for (const [key, val] of Object.entries(att.summary)) {
                             const k = key.toLowerCase();
+                            sumaLekcjiWszystkich += val; // Suma całkowita wpisów frekwencji ucznia
+
                             if ((k.includes('usprawiedliwiona') || k.includes('usprawiedliwione')) && !k.includes('nieusprawiedliwion')) {
                                 usp += val;
                             } else if (k.includes('nieusprawiedliwion') || k.includes('nieobec') || k.includes('zwolnienie')) {
@@ -85,9 +116,15 @@ export default function Librus() {
                         }
                     }
 
+                    // Precyzyjne liczenie procentu – bazując na sumie wszystkich lekcji, jako że Librus zlicza spóźnieni jako obecność
+                    let wyliczonyProcent = 100;
+                    if (sumaLekcjiWszystkich > 0) {
+                        const wagarowanoObecnosci = usp + nusp; // godziny które opuścił fizycznie w szkole
+                        wyliczonyProcent = Math.round(((sumaLekcjiWszystkich - wagarowanoObecnosci) / sumaLekcjiWszystkich) * 100);
+                    }
+
                     setAttendance({
-                        // Obliczymy przybliżony procent, ponieważ REST API nie zwraca go wprost, chyba że proxy go kiedyś podlinkuje
-                        obecnosc: att.presence_percentage || att.percent || '100',
+                        obecnosc: att.presence_percentage || att.percent || wyliczonyProcent || 100,
                         spoznienia: att.late_count || spoz || 0,
                         usprawiedliwione: att.justified_hours || att.excused || usp || 0,
                         nieusprawiedliwione: att.unjustified_hours || att.unexcused || nusp || 0
