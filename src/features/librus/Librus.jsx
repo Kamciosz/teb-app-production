@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { CheckCircle2, Lock, Loader2, BookOpen, Calendar, PieChart, Clock, LogOut } from 'lucide-react'
+import { CheckCircle2, Lock, Loader2, BookOpen, Calendar, PieChart, Clock, LogOut, AlertCircle } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 
 export default function Librus() {
@@ -8,156 +8,82 @@ export default function Librus() {
     const [loginPass, setLoginPass] = useState('')
     const [loginError, setLoginError] = useState('')
     const [activeTab, setActiveTab] = useState('oceny')
-    const [isSpecialUser, setIsSpecialUser] = useState(false)
 
-    // Symulacja
     const [isSimulating, setIsSimulating] = useState(false)
     const [simText, setSimText] = useState('')
 
-    // Dane z bazy
-    const [userUid, setUserUid] = useState('')
-    const [mockGrades, setMockGrades] = useState([])
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) {
-                setUserUid(session.user.id)
-                setMockGrades(generateDeterministicGrades(session.user.id))
-            } else {
-                setMockGrades(generateDeterministicGrades('default-anonymous'))
-            }
-        })
-    }, [])
-
-    const generateDeterministicGrades = (uid) => {
-        let hash = 0;
-        for (let i = 0; i < uid.length; i++) {
-            hash = ((hash << 5) - hash) + uid.charCodeAt(i);
-            hash |= 0;
-        }
-        let seed = Math.abs(hash);
-        const random = () => {
-            const x = Math.sin(seed++) * 10000;
-            return x - Math.floor(x);
-        }
-
-        const gradesPool = ["3+", "4", "4+", "5", "5-", "6"];
-        const descPool = ["Sprawdzian", "Zadanie Domowe", "Kartkówka", "Aktywność", "Projekt", "Odpowiedź Ustna"];
-        const subjects = ["Matematyka", "Język Angielski", "Pracownia AI", "Bazy Danych", "Sieci Komputerowe", "Historia", "Fizyka"];
-
-        const generated = [];
-        for (let i = 1; i <= 4; i++) {
-            const descIndex = Math.floor(random() * descPool.length);
-            const sub = subjects[(seed + i) % subjects.length];
-
-            const maxPts = [10, 15, 20, 30, 50, 100][Math.floor(random() * 6)];
-            const scorePts = Math.floor((maxPts * (50 + Math.floor(random() * 50))) / 100);
-            const percent = Math.floor((scorePts / maxPts) * 100);
-
-            generated.push({
-                id: i,
-                subject: sub,
-                points: `${scorePts}/${maxPts}`,
-                percent: `${percent}%`,
-                desc: descPool[descIndex]
-            });
-        }
-        return generated;
-    }
+    // Dane pobrane z API
+    const [grades, setGrades] = useState([])
+    const [schedule, setSchedule] = useState([])
+    const [attendance, setAttendance] = useState({ obecnosc: 0, spoznienia: 0, usprawiedliwione: 0, nieusprawiedliwione: 0 })
 
     const handleLogin = async (e) => {
         e.preventDefault()
-        if (loginEmail && loginPass) {
-            setIsSimulating(true)
-            setSimText('Nawiązywanie połączenia (Serverless API)...')
-            setLoginError('')
+        if (!loginEmail || !loginPass) return;
 
-            // Fallback (Zabezpieczenie na wybory) - Szybki test makiety dla komisji z lokalnymi danymi mockowymi
-            if (loginEmail === '12194674u' && loginPass === 'kamciosz12%Pusia') {
-                setTimeout(() => setSimText('Autoryzacja serwerów (Bypass Offline)...'), 800)
-                setTimeout(() => setSimText('Pobieranie profilu kandydata...'), 1600)
-                setTimeout(() => {
-                    setIsSpecialUser(true)
-                    setIsSimulating(false)
-                    setIsLoggedIn(true)
-                }, 2200)
-                return;
+        setIsSimulating(true)
+        setSimText('Nawiązywanie połączenia z Synergią...')
+        setLoginError('')
+
+        try {
+            setTimeout(() => setSimText('Autoryzacja w serwisach Vulcan...'), 1200)
+
+            const response = await fetch('/api/librus', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login: loginEmail, pass: loginPass })
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Autoryzacja odrzucona. Sprawdź login i hasło.')
             }
 
-            try {
-                setTimeout(() => setSimText('Autoryzacja w usługach Synergia...'), 1200)
+            setSimText('Pobieram dane z dziennika...')
 
-                const response = await fetch('/api/librus', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ login: loginEmail, pass: loginPass })
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.error || 'Autoryzacja odrzucona przez serwery Vulcana.');
+            setTimeout(() => {
+                // Oceny
+                if (data.data?.grades?.length > 0) {
+                    setGrades(data.data.grades.slice(0, 20).map((g, idx) => ({
+                        id: idx,
+                        subject: g.subject || 'Nieznany przedmiot',
+                        grade: g.grade || '-',
+                        desc: g.title || 'Wpis w dzienniku',
+                    })))
                 }
 
-                setSimText('Pobrano. Deszyfracja pakietów ocen...');
+                // Plan lekcji
+                if (data.data?.timetable?.length > 0) {
+                    setSchedule(data.data.timetable.map((item, idx) => ({
+                        id: idx,
+                        time: `${item.start_time || '??:??'} - ${item.end_time || '??:??'}`,
+                        subject: item.subject || 'Zajęcia',
+                        room: item.room || '-'
+                    })))
+                }
 
-                // Modyfikacja stanu na podstawie prawdziwych danych z api
-                setTimeout(() => {
-                    setIsSpecialUser(false);
-                    // Tutaj przekształcamy prawdziwe dane z `data.data.grades` na nasz format widoku UI (mockGrades fallback jeśli puste).
+                // Frekwencja
+                if (data.data?.attendance) {
+                    const att = data.data.attendance
+                    setAttendance({
+                        obecnosc: att.presence_percentage || att.percent || 0,
+                        spoznienia: att.late_count || 0,
+                        usprawiedliwione: att.justified_hours || att.excused || 0,
+                        nieusprawiedliwione: att.unjustified_hours || att.unexcused || 0
+                    })
+                }
 
-                    if (data.data && data.data.grades && data.data.grades.length > 0) {
-                        // Tworzenie uproszczonej struktury z API uzywajac kilku pol:
-                        const realGradesParsed = data.data.grades.slice(0, 10).map((g, idx) => ({
-                            id: idx,
-                            subject: g.subject || "Zajęcia Oświatowe",
-                            grade: g.grade || "-",
-                            desc: g.title || "Sprawdzian / Odpowiedź",
-                            color: "text-white",
-                            bg: "bg-[#e91e63]"
-                        }));
-                        setMockGrades(realGradesParsed);
-                    }
+                setIsSimulating(false)
+                setIsLoggedIn(true)
+            }, 800)
 
-                    setIsSimulating(false)
-                    setIsLoggedIn(true)
-                }, 1000)
-
-            } catch (err) {
-                console.error("Librus API Error:", err);
-                setIsSimulating(false);
-                setLoginError(err.message || 'Błąd API. Sprawdź połączenie.');
-            }
+        } catch (err) {
+            console.error('Librus API Error:', err)
+            setIsSimulating(false)
+            setLoginError(err.message || 'Błąd połączenia. Spróbuj ponownie.')
         }
     }
-
-    // Specjalne dane wyciągane bezpośrednio dla użytkownika domagającego się oceny w punktach
-    const specialData = {
-        grades: [
-            { id: 1, subject: "Aplikacje Webowe", points: "48/50", percent: "96%", desc: "Projekt PWA V4", color: "text-green-500", bg: "bg-green-500/10" },
-            { id: 2, subject: "Witryny i aplikacje", points: "20/20", percent: "100%", desc: "Sprawdzian Reaktywność", color: "text-emerald-500", bg: "bg-emerald-500/10" },
-            { id: 3, subject: "Język Angielski Zawodowy", points: "13/15", percent: "87%", desc: "Kartkówka Słówka IT", color: "text-blue-500", bg: "bg-blue-500/10" },
-            { id: 4, subject: "Matematyka", points: "15/30", percent: "50%", desc: "Macierze i wektory", color: "text-yellow-500", bg: "bg-yellow-500/10" },
-            { id: 5, subject: "Historia", points: "8/10", percent: "80%", desc: "Aktywność na lekcji", color: "text-purple-500", bg: "bg-purple-500/10" },
-            { id: 6, subject: "Zarządzanie Czasem (Zstępstwo)", points: "10/10", percent: "100%", desc: "Prezentacja", color: "text-[#e91e63]", bg: "bg-[#e91e63]/10" }
-        ],
-        schedule: [
-            { id: 1, time: "08:00 - 08:45", subject: "Witryny i aplikacje", room: "Sala 201 (Cisco)" },
-            { id: 2, time: "08:50 - 09:35", subject: "Witryny i aplikacje", room: "Sala 201 (Cisco)" },
-            { id: 3, time: "09:40 - 10:25", subject: "Matematyka", room: "Sala 104" },
-            { id: 4, time: "10:45 - 11:30", subject: "Język Angielski", room: "Sala 302" },
-            { id: 5, time: "11:35 - 12:20", subject: "Pracownia Systemów", room: "Sala 205 (IT LAB)" },
-            { id: 6, time: "12:25 - 13:10", subject: "Edukacja dla Bezpieczeństwa", room: "Sala 12" }
-        ],
-        attendance: {
-            obecnosc: 96,
-            spoznienia: 2,
-            usprawiedliwione: 12,
-            nieusprawiedliwione: 0
-        }
-    }
-
-    const displayedGrades = isSpecialUser ? specialData.grades : mockGrades;
 
     if (!isLoggedIn) {
         return (
@@ -167,30 +93,45 @@ export default function Librus() {
                         <Lock className="text-[#e91e63]" size={36} />
                     </div>
                     <h2 className="text-2xl font-bold text-white mb-2">Librus Synergia</h2>
-                    <p className="text-gray-400 text-sm px-4">Zaloguj się kontem szkolnym aby pobierać system punktowy, plan lekcji i frekwencję z dziennika centralnego.</p>
+                    <p className="text-gray-400 text-sm px-4">Zaloguj się kontem szkolnym, aby pobrać oceny, plan lekcji i frekwencję bezpośrednio z dziennika.</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
-                    {/* Nakładka Ładowania */}
                     {isSimulating && (
-                        <div className="absolute inset-0 bg-surface/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
-                            <Loader2 className="animate-spin text-[#e91e63] mb-3" size={40} />
-                            <div className="text-[#e91e63] font-bold text-sm animate-pulse">{simText}</div>
+                        <div className="absolute inset-0 bg-surface/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
+                            <Loader2 className="animate-spin text-[#e91e63]" size={40} />
+                            <div className="text-[#e91e63] font-bold text-sm animate-pulse text-center px-4">{simText}</div>
                         </div>
                     )}
 
                     {loginError && (
-                        <div className="bg-red-500/10 border border-red-500 text-red-500 text-sm p-3 rounded-xl mb-4 text-center font-bold">
+                        <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-3 rounded-xl mb-4 flex items-center gap-2">
+                            <AlertCircle size={16} className="shrink-0" />
                             {loginError}
                         </div>
                     )}
 
-                    <input type="text" placeholder="Login (np. 12194674u)" required className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-4 outline-none focus:border-[#e91e63]" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-                    <input type="password" placeholder="Hasło do dziennika" required className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-6 outline-none focus:border-[#e91e63]" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} />
+                    <input
+                        type="text"
+                        placeholder="Login Librusa (np. 12194674u)"
+                        required
+                        autoComplete="off"
+                        className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-4 outline-none focus:border-[#e91e63] transition"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                    />
+                    <input
+                        type="password"
+                        placeholder="Hasło do dziennika"
+                        required
+                        className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-6 outline-none focus:border-[#e91e63] transition"
+                        value={loginPass}
+                        onChange={(e) => setLoginPass(e.target.value)}
+                    />
                     <button type="submit" disabled={isSimulating} className="w-full bg-[#e91e63] text-white font-bold py-4 rounded-xl shadow-[0_4px_15px_rgba(233,30,99,0.4)] transition hover:bg-[#d81b60] active:scale-95 disabled:opacity-50">
-                        Zaloguj & Szyfruj
+                        Zaloguj & Pobierz Dane
                     </button>
-                    <div className="mt-5 text-[10px] text-center text-gray-500 uppercase font-bold tracking-wider">Logowanie zanonimizowane End-To-End</div>
+                    <p className="mt-4 text-[10px] text-center text-gray-600 uppercase font-bold tracking-wider">Połączenie szyfrowane End-To-End</p>
                 </form>
             </div>
         )
@@ -201,51 +142,82 @@ export default function Librus() {
             <div className="flex justify-between items-center mb-6 px-1">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <CheckCircle2 size={24} className="text-[#e91e63]" />
+                        <CheckCircle2 size={22} className="text-[#e91e63]" />
                         Dziennik Ucznia
                     </h2>
-                    <span className="text-xs text-gray-400">Połączono z serwerem uczeń: {isSpecialUser ? loginEmail : 'Szymon S.'}</span>
+                    <span className="text-xs text-gray-400">Zalogowano jako: <span className="text-[#e91e63] font-semibold">{loginEmail}</span></span>
                 </div>
-                <button onClick={() => setIsLoggedIn(false)} className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition">
-                    <LogOut size={20} />
+                <button onClick={() => { setIsLoggedIn(false); setGrades([]); setSchedule([]); }} className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition">
+                    <LogOut size={18} />
                 </button>
             </div>
 
-            {/* Nawigacja w panelu Librusa */}
+            {/* Zakładki */}
             <div className="flex bg-surface rounded-xl p-1.5 mb-6 border border-gray-800 shadow-lg gap-1">
-                <button
-                    onClick={() => setActiveTab('oceny')}
-                    className={`flex-1 py-3 px-1 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition ${activeTab === 'oceny' ? 'bg-[#e91e63] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                    <BookOpen size={16} /> Oceny
-                </button>
-                <button
-                    onClick={() => setActiveTab('plan')}
-                    className={`flex-1 py-3 px-1 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition ${activeTab === 'plan' ? 'bg-[#e91e63] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                    <Calendar size={16} /> Plan
-                </button>
-                <button
-                    onClick={() => setActiveTab('frekwencja')}
-                    className={`flex-1 py-3 px-1 text-[13px] sm:text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition ${activeTab === 'frekwencja' ? 'bg-[#e91e63] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
-                    <PieChart size={16} /> Frekwencja
-                </button>
+                {[
+                    { id: 'oceny', label: 'Oceny', icon: BookOpen },
+                    { id: 'plan', label: 'Plan', icon: Calendar },
+                    { id: 'frekwencja', label: 'Frekwencja', icon: PieChart },
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex-1 py-3 px-1 text-[13px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === tab.id ? 'bg-[#e91e63] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+                    >
+                        <tab.icon size={15} /> {tab.label}
+                    </button>
+                ))}
             </div>
 
-            {/* ZAKŁADKA: OCENY (SYSTEM PUNKTOWY) */}
+            {/* OCENY */}
             {activeTab === 'oceny' && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <h4 className="font-bold text-gray-300 pl-1">Najnowsze wpisy z dziennika ({isSpecialUser ? 'System Punktowy' : 'Symulacja'})</h4>
-                    <div className="grid grid-cols-1 gap-3">
-                        {displayedGrades.map((g, idx) => (
-                            <div key={idx} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between shadow-sm relative overflow-hidden group hover:border-[#e91e63]/50 transition">
-                                <div className={`absolute left-0 top-0 bottom-0 w-1 ${g.bg || 'bg-[#e91e63]'}`}></div>
-
-                                <div className="pl-4">
-                                    <h5 className="font-bold text-white text-[15px]">{g.subject}</h5>
-                                    <span className="text-xs text-gray-500 uppercase tracking-wider">{g.desc}</span>
+                <div className="space-y-3 animate-in fade-in duration-300">
+                    <h4 className="font-bold text-gray-300 pl-1 text-sm uppercase tracking-wider">Wpisy z e-dziennika ({grades.length})</h4>
+                    {grades.length === 0 ? (
+                        <div className="text-center text-gray-500 py-16">
+                            <BookOpen size={48} className="mx-auto mb-4 text-gray-800" />
+                            Brak ocen w systemie lub Librus ograniczył dostęp do danych.
+                        </div>
+                    ) : grades.map((g) => (
+                        <div key={g.id} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between hover:border-[#e91e63]/40 transition">
+                            <div className="flex items-center gap-3">
+                                <div className="w-1 self-stretch rounded-full bg-[#e91e63]/50" />
+                                <div>
+                                    <h5 className="font-bold text-white text-[15px] leading-snug">{g.subject}</h5>
+                                    <span className="text-xs text-gray-500">{g.desc}</span>
                                 </div>
-                                <div className="text-right flex flex-col items-end">
-                                    <span className={`text-[22px] font-black leading-none ${g.color || 'text-[#e91e63]'}`}>{g.points}</span>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-full mt-2 font-bold uppercase ${g.bg || 'bg-[#e91e63]/10'} ${g.color || 'text-[#e91e63]'}`}>{g.percent} Punktów</span>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-[26px] font-black text-[#e91e63] leading-none">{g.grade}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* PLAN LEKCJI */}
+            {activeTab === 'plan' && (
+                <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden shadow-lg animate-in fade-in duration-300">
+                    <div className="bg-background border-b border-gray-800 p-4 flex justify-between items-center">
+                        <span className="font-bold text-white flex items-center gap-2"><Calendar size={18} className="text-[#e91e63]" /> Plan zajęć</span>
+                        <span className="text-xs text-[#e91e63] bg-[#e91e63]/10 px-3 py-1 rounded-full font-bold uppercase">Dzisiaj</span>
+                    </div>
+                    <div className="divide-y divide-gray-800/50">
+                        {schedule.length === 0 ? (
+                            <div className="p-10 flex flex-col items-center text-center text-gray-500 text-sm gap-3">
+                                <Calendar size={40} className="text-gray-800" />
+                                Brak planu zajęć lub API Librusa nie zwróciło danych harmonogramu.
+                            </div>
+                        ) : schedule.map(lesson => (
+                            <div key={lesson.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition">
+                                <div className="w-20 shrink-0 text-xs font-mono text-gray-500 border-r border-gray-800 pr-3">
+                                    <Clock size={12} className="mb-1 text-gray-600" />
+                                    {lesson.time.split(' - ')[0]}<br />
+                                    <span className="text-gray-700">{lesson.time.split(' - ')[1]}</span>
+                                </div>
+                                <div>
+                                    <div className="font-bold text-white">{lesson.subject}</div>
+                                    <div className="text-xs text-[#e91e63] font-semibold mt-0.5">{lesson.room}</div>
                                 </div>
                             </div>
                         ))}
@@ -253,86 +225,47 @@ export default function Librus() {
                 </div>
             )}
 
-            {/* ZAKŁADKA: PLAN LEKCJI */}
-            {activeTab === 'plan' && (
-                <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="bg-background border-b border-gray-800 p-5 flex justify-between items-center">
-                        <span className="font-bold text-white flex items-center gap-2"><Calendar size={20} className="text-[#e91e63]" /> Dzisiejsze Zajęcia</span>
-                        <span className="text-xs text-[#e91e63] bg-[#e91e63]/10 px-3 py-1.5 rounded-full font-bold uppercase tracking-wider">Czwartek</span>
-                    </div>
-                    <div className="divide-y divide-gray-800/60">
-                        {isSpecialUser ? specialData.schedule.map(lesson => (
-                            <div key={lesson.id} className="p-4 flex items-center hover:bg-white/[0.02] transition">
-                                <div className="w-[85px] shrink-0 text-xs font-mono text-gray-400 flex flex-col justify-center border-r border-gray-700/50 mr-4">
-                                    <Clock size={14} className="mb-1.5 text-gray-500" />
-                                    {lesson.time.split(' - ')[0]}<br />
-                                    <span className="text-gray-600">{lesson.time.split(' - ')[1]}</span>
-                                </div>
-                                <div>
-                                    <div className="font-bold text-white text-base">{lesson.subject}</div>
-                                    <div className="text-xs text-[#e91e63] mt-1 font-semibold">{lesson.room}</div>
-                                </div>
-                            </div>
-                        )) : (
-                            <div className="p-10 flex flex-col items-center text-center text-gray-500 text-sm">
-                                <Calendar size={48} className="text-gray-800 mb-4" />
-                                Symulowany Profil nie ma zapisanego planu lekcji.<br />Zaloguj się dedykowanymi danymi.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* ZAKŁADKA: FREKWENCJA */}
+            {/* FREKWENCJA */}
             {activeTab === 'frekwencja' && (
-                <div className="bg-surface border border-gray-800 rounded-xl p-6 shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <h4 className="font-bold text-white mb-8 flex items-center gap-2 text-lg">
-                        <PieChart className="text-[#e91e63]" /> Raport Semestralny Obecności
+                <div className="bg-surface border border-gray-800 rounded-xl p-6 shadow-lg animate-in fade-in duration-300">
+                    <h4 className="font-bold text-white mb-8 flex items-center gap-2">
+                        <PieChart size={20} className="text-[#e91e63]" /> Raport Semestralny Frekwencji
                     </h4>
 
-                    <div className="flex flex-col items-center justify-center mb-10 relative">
-                        <svg viewBox="0 0 36 36" className="w-[160px] h-[160px] text-center text-[#e91e63] drop-shadow-[0_0_15px_rgba(233,30,99,0.3)]">
+                    <div className="flex flex-col items-center justify-center mb-8 relative">
+                        <svg viewBox="0 0 36 36" className="w-40 h-40 drop-shadow-[0_0_15px_rgba(233,30,99,0.25)]">
+                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1f2937" strokeWidth="2.5" />
                             <path
-                                className="text-background"
+                                strokeDasharray={`${attendance.obecnosc}, 100`}
                                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.5"
-                            />
-                            <path
-                                className="text-[#e91e63]"
-                                strokeDasharray={`${isSpecialUser ? specialData.attendance.obecnosc : 92}, 100`}
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="round"
+                                fill="none" stroke="#e91e63" strokeWidth="3" strokeLinecap="round"
                             />
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <span className="text-[40px] font-black text-white">{isSpecialUser ? specialData.attendance.obecnosc : 92}%</span>
-                            <span className="text-[11px] text-[#e91e63] uppercase font-bold tracking-widest mt-1">Obecność</span>
+                            <span className="text-[38px] font-black text-white">{attendance.obecnosc}%</span>
+                            <span className="text-[10px] text-[#e91e63] uppercase font-bold tracking-widest">Obecność</span>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center shadow-inner">
-                            <div className="text-3xl font-black text-yellow-500 mb-1">{isSpecialUser ? specialData.attendance.spoznienia : 3}</div>
-                            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Spóźnienia</div>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center">
+                            <div className="text-2xl font-black text-yellow-500 mb-1">{attendance.spoznienia}</div>
+                            <div className="text-[10px] font-bold text-gray-500 uppercase">Spóźnienia</div>
                         </div>
-                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center shadow-inner">
-                            <div className="text-3xl font-black text-blue-400 mb-1">{isSpecialUser ? specialData.attendance.usprawiedliwione : 15}</div>
-                            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Usprawiedliw. (h)</div>
+                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center">
+                            <div className="text-2xl font-black text-blue-400 mb-1">{attendance.usprawiedliwione}</div>
+                            <div className="text-[10px] font-bold text-gray-500 uppercase">Usprawiedl.</div>
+                        </div>
+                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center">
+                            <div className="text-2xl font-black text-red-400 mb-1">{attendance.nieusprawiedliwione}</div>
+                            <div className="text-[10px] font-bold text-gray-500 uppercase">Nieuspraw.</div>
                         </div>
                     </div>
 
-                    {isSpecialUser && specialData.attendance.nieusprawiedliwione === 0 && (
-                        <div className="mt-6 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm text-center p-4 rounded-xl flex items-center justify-center gap-3">
-                            <CheckCircle2 size={24} />
-                            <div>
-                                <span className="font-bold block text-emerald-500">Konto Wzorowe!</span>
-                                Posiadasz 0 nieusprawiedliwionych godzin.
-                            </div>
+                    {attendance.nieusprawiedliwione === 0 && attendance.obecnosc > 0 && (
+                        <div className="mt-5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm p-4 rounded-xl flex items-center gap-3">
+                            <CheckCircle2 size={22} className="shrink-0" />
+                            <span><span className="font-bold text-emerald-400">Konto wzorowe!</span> Nie masz nieusprawiedliwionych nieobecności.</span>
                         </div>
                     )}
                 </div>
