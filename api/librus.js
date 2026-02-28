@@ -1,7 +1,7 @@
 "use strict";
 const https = require("https");
 
-// Proxy do Railway Playwright server - przekazuje zapytanie dalej
+// Proxy do Railway REST API server (v2.0) - przekazuje zapytanie dalej
 module.exports = async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -13,7 +13,7 @@ module.exports = async function handler(req, res) {
     const { login, pass } = req.body;
     if (!login || !pass) return res.status(400).json({ error: "Brak danych logowania." });
 
-    // Wyślij zapytanie do serwera Railway z Playwright
+    // Wyślij zapytanie do serwera Railway (REST API Proxy)
     const postData = JSON.stringify({ login, pass });
 
     const options = {
@@ -43,14 +43,14 @@ module.exports = async function handler(req, res) {
 
         proxyReq.on("error", (err) => {
             console.error("Railway proxy error:", err);
-            res.status(500).json({ error: "Błąd połączenia z serwerem Playwright." });
+            res.status(500).json({ error: "Błąd połączenia z serwerem API." });
             resolve();
         });
 
-        // Timeout 60 sekund (Playwright potrzebuje czasu na zalogowanie)
+        // Timeout 60 sekund
         proxyReq.setTimeout(60000, () => {
             proxyReq.destroy();
-            res.status(504).json({ error: "Przekroczono czas oczekiwania. Spróbuj ponownie." });
+            res.status(504).json({ error: "Przekroczono czas oczekiwania na odpowiedź z Librusa. Spróbuj ponownie." });
             resolve();
         });
 

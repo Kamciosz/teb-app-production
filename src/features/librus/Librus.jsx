@@ -49,28 +49,48 @@ export default function Librus() {
                         id: idx,
                         subject: g.subject || 'Nieznany przedmiot',
                         grade: g.grade || '-',
-                        desc: g.title || 'Wpis w dzienniku',
+                        desc: g.category || 'Wpis w dzienniku',
                     })))
                 }
 
                 // Plan lekcji
-                if (data.data?.timetable?.length > 0) {
+                if (data.data?.timetable && Array.isArray(data.data.timetable) && data.data.timetable.length > 0) {
                     setSchedule(data.data.timetable.map((item, idx) => ({
                         id: idx,
-                        time: `${item.start_time || '??:??'} - ${item.end_time || '??:??'}`,
+                        time: item.time ? item.time : `${item.start_time || '??:??'} - ${item.end_time || '??:??'}`,
                         subject: item.subject || 'Zajęcia',
                         room: item.room || '-'
                     })))
+                } else {
+                    setSchedule([]);
                 }
 
                 // Frekwencja
                 if (data.data?.attendance) {
-                    const att = data.data.attendance
+                    const att = data.data.attendance;
+                    let usp = 0;
+                    let nusp = 0;
+                    let spoz = 0;
+
+                    if (att.summary) {
+                        for (const [key, val] of Object.entries(att.summary)) {
+                            const k = key.toLowerCase();
+                            if ((k.includes('usprawiedliwiona') || k.includes('usprawiedliwione')) && !k.includes('nieusprawiedliwion')) {
+                                usp += val;
+                            } else if (k.includes('nieusprawiedliwion') || k.includes('nieobec') || k.includes('zwolnienie')) {
+                                nusp += val;
+                            } else if (k.includes('spóź')) {
+                                spoz += val;
+                            }
+                        }
+                    }
+
                     setAttendance({
-                        obecnosc: att.presence_percentage || att.percent || 0,
-                        spoznienia: att.late_count || 0,
-                        usprawiedliwione: att.justified_hours || att.excused || 0,
-                        nieusprawiedliwione: att.unjustified_hours || att.unexcused || 0
+                        // Obliczymy przybliżony procent, ponieważ REST API nie zwraca go wprost, chyba że proxy go kiedyś podlinkuje
+                        obecnosc: att.presence_percentage || att.percent || '100',
+                        spoznienia: att.late_count || spoz || 0,
+                        usprawiedliwione: att.justified_hours || att.excused || usp || 0,
+                        nieusprawiedliwione: att.unjustified_hours || att.unexcused || nusp || 0
                     })
                 }
 
