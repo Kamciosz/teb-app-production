@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, Search } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 
 export default function Vinted() {
