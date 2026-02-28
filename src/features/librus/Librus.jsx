@@ -28,7 +28,7 @@ export default function Librus() {
         try {
             setTimeout(() => setSimText('Autoryzacja w serwisach Vulcan...'), 1200)
 
-            const response = await fetch('/api/librus', {
+            const response = await fetch('https://librus-proxy-production.up.railway.app/librus', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ login: loginEmail, pass: loginPass })
