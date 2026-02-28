@@ -33,8 +33,8 @@ export default function Profile() {
                 </div>
                 <h3 className="font-bold text-xl text-white">{profile.full_name}</h3>
                 <p className="text-sm text-gray-400 mb-2">{profile.email}</p>
-                <span className={`text-xs px-3 py-1 rounded-full font-bold ${profile.role === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
-                    Rola: {profile.role.toUpperCase()}
+                <span className={`text-xs px-3 py-1 rounded-full font-bold ${(profile.role || 'student') === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
+                    Rola: {(profile.role || 'student').toUpperCase()}
                 </span>
             </div>
 

@@ -86,18 +86,18 @@ function App() {
                     )}
                     <input
                         type="email" placeholder="Twój szkolny E-mail (@teb.edu.pl)" required
-                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-green-400 text-white"
+                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                         value={email} onChange={e => setEmail(e.target.value)}
                     />
                     <input
                         type="password" placeholder="Hasło" required
-                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-green-400 text-white"
+                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                         value={password} onChange={e => setPassword(e.target.value)}
                     />
 
                     {authError && <div className="text-red-500 text-xs text-center font-bold px-2">{authError}</div>}
 
-                    <button type="submit" className="mt-2 bg-green-500 text-black px-6 py-3 rounded-xl font-bold w-full shadow-[0_0_15px_rgba(0,255,136,0.3)] transition transform hover:scale-105">
+                    <button type="submit" className="mt-2 bg-primary text-white px-6 py-3 rounded-xl font-bold w-full shadow-[0_0_15px_rgba(59,130,246,0.3)] transition transform hover:scale-105">
                         {isRegister ? 'Załóż Konto (Weryfikacja TEB)' : 'Zaloguj się'}
                     </button>
                 </form>
@@ -112,32 +112,33 @@ function App() {
     // Jesteś zalogowany -> Router Aplikacji
     return (
         <Router>
-            <div className="min-h-screen bg-[#121212] text-white flex flex-col font-sans">
+            <div className="min-h-screen bg-black flex justify-center">
+                <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-screen relative overflow-hidden shadow-2xl shadow-primary/10">
+                    {/* Header z logo TEB */}
+                    <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
+                        <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
+                    </header>
 
-                {/* Header globalny */}
-                <header className="fixed top-0 w-full bg-[#1e1e1e]/80 backdrop-blur-md border-b border-gray-800 z-50 p-4">
-                    <h1 className="text-xl font-bold text-green-400">📱 TEB-App</h1>
-                </header>
+                    {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
+                    <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
+                        <Routes>
+                            <Route path="/" element={<Feed />} />
+                            <Route path="/features" element={<Features />} />
+                            <Route path="/profile" element={<Profile />} />
+                            <Route path="/vinted" element={<Vinted />} />
+                            <Route path="/librus" element={<Librus />} />
+                            <Route path="/admin" element={<Admin />} />
+                        </Routes>
+                    </main>
 
-                {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
-                <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
-                    <Routes>
-                        <Route path="/" element={<Feed />} />
-                        <Route path="/features" element={<Features />} />
-                        <Route path="/profile" element={<Profile />} />
-                        <Route path="/vinted" element={<Vinted />} />
-                        <Route path="/librus" element={<Librus />} />
-                        <Route path="/admin" element={<Admin />} />
-                    </Routes>
-                </main>
-
-                {/* Bottom Navigation (Apple / Instagram Style) */}
-                <nav className="fixed bottom-0 w-full bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-safe pb-4 pt-2 px-6 flex justify-between z-50">
-                    <NavLink to="/" icon={<Home />} />
-                    <NavLink to="/features" icon={<LayoutGrid />} />
-                    <NavLink to="/profile" icon={<User />} />
-                    {userRole === 'admin' && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
-                </nav>
+                    {/* Bottom Navigation (Apple / Instagram Style) */}
+                    <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-safe pb-4 pt-2 px-6 flex justify-between z-50">
+                        <NavLink to="/" icon={<Home />} />
+                        <NavLink to="/features" icon={<LayoutGrid />} />
+                        <NavLink to="/profile" icon={<User />} />
+                        {userRole === 'admin' && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
+                    </nav>
+                </div>
             </div>
         </Router>
     )
@@ -147,7 +148,7 @@ function NavLink({ to, icon, alert }) {
     const location = useLocation();
     const isActive = location.pathname === to;
     return (
-        <Link to={to} className={`p-2 transition-all duration-200 ${isActive ? 'text-green-400 -translate-y-1' : 'text-gray-500'}`}>
+        <Link to={to} className={`p-2 transition-all duration-200 ${isActive ? 'text-primary -translate-y-1' : 'text-gray-500'}`}>
             {React.cloneElement(icon, { className: `w-7 h-7 ${alert ? 'text-red-500/50' : ''}` })}
         </Link>
     )
