@@ -7,13 +7,25 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'ZAMIEŃ_NA_SW
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Funkcja Helper do logowania przez konto TEB Microsoft
-export async function signInWithTebMicrosoft() {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'azure',
+// Logowanie Tradycyjne
+export async function signInWithEmail(email, password) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+    })
+    if (error) throw error
+    return data
+}
+
+// Rejestracja Tradycyjna
+export async function signUpWithEmail(email, password, fullName) {
+    const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
         options: {
-            scopes: 'email profile',
-            redirectTo: window.location.origin
+            data: {
+                full_name: fullName
+            }
         }
     })
     if (error) throw error
