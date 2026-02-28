@@ -1,8 +1,4 @@
-"use strict";
-const https = require("https");
-
-// Proxy do Railway REST API server (v2.0) - przekazuje zapytanie dalej
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -13,48 +9,19 @@ module.exports = async function handler(req, res) {
     const { login, pass } = req.body;
     if (!login || !pass) return res.status(400).json({ error: "Brak danych logowania." });
 
-    // Wyślij zapytanie do serwera Railway (REST API Proxy)
-    const postData = JSON.stringify({ login, pass });
-
-    const options = {
-        hostname: "librus-proxy-production.up.railway.app",
-        path: "/librus",
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(postData),
-        },
-    };
-
-    return new Promise((resolve) => {
-        const proxyReq = https.request(options, (proxyRes) => {
-            let body = "";
-            proxyRes.on("data", (chunk) => (body += chunk));
-            proxyRes.on("end", () => {
-                try {
-                    const data = JSON.parse(body);
-                    res.status(proxyRes.statusCode).json(data);
-                } catch {
-                    res.status(500).json({ error: "Błąd parsowania odpowiedzi serwera." });
-                }
-                resolve();
-            });
+    try {
+        const response = await fetch("https://librus-proxy-production.up.railway.app/librus", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ login, pass })
         });
 
-        proxyReq.on("error", (err) => {
-            console.error("Railway proxy error:", err);
-            res.status(500).json({ error: "Błąd połączenia z serwerem API." });
-            resolve();
-        });
-
-        // Timeout 60 sekund
-        proxyReq.setTimeout(60000, () => {
-            proxyReq.destroy();
-            res.status(504).json({ error: "Przekroczono czas oczekiwania na odpowiedź z Librusa. Spróbuj ponownie." });
-            resolve();
-        });
-
-        proxyReq.write(postData);
-        proxyReq.end();
-    });
-};
+        const data = await response.json();
+        return res.status(response.status).json(data);
+    } catch (err) {
+        console.error("Railway proxy fetch error:", err);
+        return res.status(500).json({ error: "Błąd połączenia z serwerem API na Railway." });
+    }
+}
