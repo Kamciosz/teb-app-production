@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
-import { Home, Store, GraduationCap, ShieldAlert } from 'lucide-react'
+import { Home, LayoutGrid, User, ShieldAlert } from 'lucide-react'
 import { supabase, signInWithEmail, signUpWithEmail } from './services/supabase'
 
 import Feed from './features/feed/Feed'
 import Vinted from './features/vinted/Vinted'
 import Librus from './features/librus/Librus'
 import Admin from './features/admin/Admin'
+import Features from './features/features/Features'
+import Profile from './features/profile/Profile'
 
 function App() {
     const [session, setSession] = useState(null)
@@ -121,6 +123,8 @@ function App() {
                 <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
                     <Routes>
                         <Route path="/" element={<Feed />} />
+                        <Route path="/features" element={<Features />} />
+                        <Route path="/profile" element={<Profile />} />
                         <Route path="/vinted" element={<Vinted />} />
                         <Route path="/librus" element={<Librus />} />
                         <Route path="/admin" element={<Admin />} />
@@ -130,8 +134,8 @@ function App() {
                 {/* Bottom Navigation (Apple / Instagram Style) */}
                 <nav className="fixed bottom-0 w-full bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-safe pb-4 pt-2 px-6 flex justify-between z-50">
                     <NavLink to="/" icon={<Home />} />
-                    <NavLink to="/librus" icon={<GraduationCap />} />
-                    <NavLink to="/vinted" icon={<Store />} />
+                    <NavLink to="/features" icon={<LayoutGrid />} />
+                    <NavLink to="/profile" icon={<User />} />
                     {userRole === 'admin' && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
                 </nav>
             </div>

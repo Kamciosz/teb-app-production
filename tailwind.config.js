@@ -7,7 +7,8 @@ export default {
     theme: {
         extend: {
             colors: {
-                primary: '#00ff88',
+                primary: '#3b82f6', // Niebieski akcent (zamiast zielonego)
+                secondary: '#ef4444', // Czerwony akcent
                 surface: '#1e1e1e',
                 background: '#121212',
             }
