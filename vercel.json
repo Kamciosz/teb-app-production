@@ -1,7 +1,1 @@
-{
-    "functions": {
-        "api/librus.js": {
-            "runtime": "nodejs18.x"
-        }
-    }
-}
+{}
