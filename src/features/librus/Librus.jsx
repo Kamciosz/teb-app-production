@@ -1,29 +1,77 @@
-import React, { useState } from 'react'
-import { GraduationCap, CheckCircle2, Lock } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { GraduationCap, CheckCircle2, Lock, Loader2 } from 'lucide-react'
+import { supabase } from '../../services/supabase'
 
 export default function Librus() {
     const [isLoggedIn, setIsLoggedIn] = useState(false)
     const [loginEmail, setLoginEmail] = useState('')
     const [loginPass, setLoginPass] = useState('')
+
+    // Symulacja
     const [isSimulating, setIsSimulating] = useState(false)
+    const [simText, setSimText] = useState('')
+
+    // Dane z bazy
+    const [userUid, setUserUid] = useState('')
+    const [mockGrades, setMockGrades] = useState([])
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                setUserUid(session.user.id)
+                setMockGrades(generateDeterministicGrades(session.user.id))
+            } else {
+                setMockGrades(generateDeterministicGrades('default-anonymous'))
+            }
+        })
+    }, [])
+
+    const generateDeterministicGrades = (uid) => {
+        // Obliczamy Hash ID by mieć z czego losować stałe liczby
+        let hash = 0;
+        for (let i = 0; i < uid.length; i++) {
+            hash = ((hash << 5) - hash) + uid.charCodeAt(i);
+            hash |= 0;
+        }
+
+        // Tzw. LCG (Linear Congruential Generator)
+        let seed = Math.abs(hash);
+        const random = () => {
+            const x = Math.sin(seed++) * 10000;
+            return x - Math.floor(x);
+        }
+
+        const gradesPool = ["3+", "4", "4+", "5", "5-", "6"]; // Pozytywne żeby zachęcały użytkownika :D
+        const descPool = ["Sprawdzian", "Zadanie Domowe", "Kartkówka", "Aktywność", "Projekt", "Odpowiedź Ustna"];
+        const subjects = ["Matematyka", "Język Angielski", "Pracownia AI", "Bazy Danych", "Sieci Komputerowe", "Historia", "Fizyka"];
+
+        const generated = [];
+        for (let i = 1; i <= 4; i++) {
+            const gradeIndex = Math.floor(random() * gradesPool.length);
+            const descIndex = Math.floor(random() * descPool.length);
+            // Rotacja przedmiotów bez dubli
+            const sub = subjects[(seed + i) % subjects.length];
+
+            generated.push({ id: i, subject: sub, grade: gradesPool[gradeIndex], desc: descPool[descIndex] });
+        }
+        return generated;
+    }
 
     const handleLogin = (e) => {
         e.preventDefault()
         if (loginEmail && loginPass) {
             setIsSimulating(true)
+            setSimText('Zestawianie Połączenia E2E...')
+
+            setTimeout(() => setSimText('Autoryzacja serwerów Vulcan...'), 800)
+            setTimeout(() => setSimText('Pobieranie Ocen...'), 1600)
+
             setTimeout(() => {
                 setIsSimulating(false)
                 setIsLoggedIn(true)
-            }, 1500)
+            }, 2400)
         }
     }
-
-    const MOCK_GRADES = [
-        { id: 1, subject: "Matematyka", grade: "4+", desc: "Sprawdzian - Funkcje" },
-        { id: 2, subject: "Język r. Obcy", grade: "5", desc: "Zadanie Domowe" },
-        { id: 3, subject: "Prac. Prog. (AI)", grade: "6", desc: "Laboratorium API" },
-        { id: 4, subject: "Bazy Danych", grade: "4", desc: "SQL - Złączenia" },
-    ]
 
     if (!isLoggedIn) {
         return (
@@ -36,11 +84,19 @@ export default function Librus() {
                     <p className="text-gray-400 text-sm">Zaloguj się kontem szkolnym aby pobrać API i pobierać średnie bezpośrednio ze szkoły</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl">
+                <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
+                    {/* Nakładka Ładowania */}
+                    {isSimulating && (
+                        <div className="absolute inset-0 bg-surface/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+                            <Loader2 className="animate-spin text-[#e91e63] mb-3" size={40} />
+                            <div className="text-[#e91e63] font-bold text-sm animate-pulse">{simText}</div>
+                        </div>
+                    )}
+
                     <input type="text" placeholder="Login (np. 1234567)" required className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-4 outline-none focus:border-[#e91e63]" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
                     <input type="password" placeholder="Hasło do dziennika" required className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-6 outline-none focus:border-[#e91e63]" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} />
                     <button type="submit" disabled={isSimulating} className="w-full bg-[#e91e63] text-white font-bold py-4 rounded-xl shadow-[0_4px_15px_rgba(233,30,99,0.4)] transition active:scale-95 disabled:opacity-50">
-                        {isSimulating ? 'Zestawianie Połączenia E2E...' : 'Zaloguj & Szyfruj'}
+                        Zaloguj & Szyfruj
                     </button>
                     <div className="mt-4 text-xs text-center text-gray-500">Logowanie jest zanonimizowane i przetwarzane zgodnie z polityką prywatności samorządu szkolnego.</div>
                 </form>
@@ -69,11 +125,12 @@ export default function Librus() {
 
                 <h4 className="font-bold text-white mb-4">Ostatnie Moduły z Synergii</h4>
                 <div className="grid grid-cols-2 gap-4">
-                    {MOCK_GRADES.map(g => (
-                        <div key={g.id} className="bg-background border border-gray-800 p-4 rounded-xl text-center shadow-inner pt-6">
-                            <div className="text-xs text-gray-400 mb-2 truncate">{g.subject}</div>
-                            <div className="text-3xl font-bold text-white">{g.grade}</div>
-                            <div className="text-xs text-primary mt-2">{g.desc}</div>
+                    {mockGrades.map(g => (
+                        <div key={g.id} className="bg-background border border-gray-800 p-4 rounded-xl text-center shadow-inner pt-6 relative overflow-hidden group">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-[#e91e63]/50 group-hover:bg-[#e91e63] transition"></div>
+                            <div className="text-[10px] text-gray-400 mb-2 truncate font-bold uppercase">{g.subject}</div>
+                            <div className="text-4xl font-black text-white">{g.grade}</div>
+                            <div className="text-xs text-[#e91e63] mt-2 bg-[#e91e63]/10 py-1 rounded-full font-bold">{g.desc}</div>
                         </div>
                     ))}
                 </div>
