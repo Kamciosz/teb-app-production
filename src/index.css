@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+/* Wygaszenie scrollbara w PWA */
+::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
