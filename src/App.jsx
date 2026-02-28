@@ -16,29 +16,66 @@ function App() {
     const [userRole, setUserRole] = useState('student')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+    const [confirmPassword, setConfirmPassword] = useState('')
     const [fullName, setFullName] = useState('')
     const [isRegister, setIsRegister] = useState(false)
     const [authError, setAuthError] = useState('')
+    const [authMessage, setAuthMessage] = useState('')
+
+    const extractNameFromEmail = (mail) => {
+        const parts = mail.split('@')[0].split('.');
+        if (parts.length >= 2) {
+            return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+        }
+        return mail.split('@')[0];
+    }
 
     const handleAuth = async (e) => {
         e.preventDefault()
         setAuthError('')
-        if (!email.endsWith('@teb.edu.pl')) {
+        setAuthMessage('')
+        let finalEmail = email.trim().toLowerCase()
+        if (!finalEmail.endsWith('@teb.edu.pl')) {
             setAuthError('Dostęp zablokowany. Użyj szkolnego e-maila w domenie @teb.edu.pl')
             return
         }
         try {
             if (isRegister) {
-                if (!fullName) {
-                    setAuthError('Wymagane Imię i Nazwisko (do autoryzacji na tablicy SU)')
+                if (password !== confirmPassword) {
+                    setAuthError('Błąd weryfikacji: Podane hasła nie są identyczne.')
                     return
                 }
-                await signUpWithEmail(email, password, fullName)
-                alert('Konto zostało poprawnie utworzone! Możesz się teraz zalogować.')
+
+                let finalName = fullName.trim()
+                if (!finalName) {
+                    finalName = extractNameFromEmail(finalEmail)
+                }
+
+                await signUpWithEmail(finalEmail, password, finalName)
+                setAuthMessage('Konto zostało utworzone! Możesz się teraz zalogować.')
                 setIsRegister(false)
+                setPassword('')
+                setConfirmPassword('')
             } else {
-                await signInWithEmail(email, password)
+                await signInWithEmail(finalEmail, password)
             }
+        } catch (error) {
+            setAuthError(error.message)
+        }
+    }
+
+    const handleResetPassword = async () => {
+        if (!email) {
+            setAuthError('Wpisz swój adres e-mail powyżej, by odebrać link resetujący hasło.')
+            return
+        }
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                redirectTo: window.location.origin
+            });
+            if (error) throw error;
+            setAuthMessage('Wysłano link do resetu hasła na Twój szkolny e-mail.')
+            setAuthError('')
         } catch (error) {
             setAuthError(error.message)
         }
@@ -79,7 +116,7 @@ function App() {
                 <form onSubmit={handleAuth} className="w-full max-w-xs flex flex-col gap-3">
                     {isRegister && (
                         <input
-                            type="text" placeholder="Imię i Nazwisko" required
+                            type="text" placeholder="Imię i Nazwisko (Opcjonalnie)"
                             className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                             value={fullName} onChange={e => setFullName(e.target.value)}
                         />
@@ -94,15 +131,28 @@ function App() {
                         className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                         value={password} onChange={e => setPassword(e.target.value)}
                     />
+                    {isRegister && (
+                        <input
+                            type="password" placeholder="Potwierdź hasło (Min. 6 znaków)" required minLength={6}
+                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                            value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                        />
+                    )}
 
                     {authError && <div className="text-red-500 text-xs text-center font-bold px-2">{authError}</div>}
+                    {authMessage && <div className="text-green-400 text-xs text-center font-bold px-2">{authMessage}</div>}
 
                     <button type="submit" className="mt-2 bg-primary text-white px-6 py-3 rounded-xl font-bold w-full shadow-[0_0_15px_rgba(59,130,246,0.3)] transition transform hover:scale-105">
-                        {isRegister ? 'Załóż Konto (Weryfikacja TEB)' : 'Zaloguj się'}
+                        {isRegister ? 'Załóż Konto (Weryfikacja)' : 'Zaloguj się'}
                     </button>
+                    {!isRegister && (
+                        <button type="button" onClick={handleResetPassword} className="text-xs text-primary underline text-right w-full mt-1 pr-2">
+                            Nie pamiętasz hasła?
+                        </button>
+                    )}
                 </form>
 
-                <button onClick={() => setIsRegister(!isRegister)} className="mt-6 text-sm text-gray-500 underline">
+                <button onClick={() => { setIsRegister(!isRegister); setAuthError(''); setAuthMessage('') }} className="mt-6 text-sm text-gray-500 underline">
                     {isRegister ? 'Masz już konto? Zaloguj się' : 'Jesteś tu pierwszy raz? Zarejestruj się'}
                 </button>
             </div>

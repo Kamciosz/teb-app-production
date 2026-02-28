@@ -25,3 +25,21 @@ body {
     display: flex;
     flex-direction: column;
 }
+
+/* Dostosowanie Quill.js - Edytora tekstu Onet */
+.ql-editor {
+    min-height: 12rem;
+    font-size: 1rem;
+    color: #121212;
+}
+
+.ql-toolbar {
+    background: #f8fafc;
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+}
+
+.ql-container {
+    border-bottom-left-radius: 0.75rem;
+    border-bottom-right-radius: 0.75rem;
+}
