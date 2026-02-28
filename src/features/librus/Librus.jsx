@@ -6,6 +6,7 @@ export default function Librus() {
     const [isLoggedIn, setIsLoggedIn] = useState(false)
     const [loginEmail, setLoginEmail] = useState('')
     const [loginPass, setLoginPass] = useState('')
+    const [loginError, setLoginError] = useState('')
     const [activeTab, setActiveTab] = useState('oceny')
     const [isSpecialUser, setIsSpecialUser] = useState(false)
 
@@ -64,25 +65,69 @@ export default function Librus() {
         return generated;
     }
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault()
         if (loginEmail && loginPass) {
             setIsSimulating(true)
-            setSimText('Zestawianie Połączenia E2E...')
+            setSimText('Nawiązywanie połączenia (Serverless API)...')
+            setLoginError('')
 
+            // Fallback (Zabezpieczenie na wybory) - Szybki test makiety dla komisji z lokalnymi danymi mockowymi
             if (loginEmail === '12194674u' && loginPass === 'kamciosz12%Pusia') {
-                setIsSpecialUser(true)
-            } else {
-                setIsSpecialUser(false)
+                setTimeout(() => setSimText('Autoryzacja serwerów (Bypass Offline)...'), 800)
+                setTimeout(() => setSimText('Pobieranie profilu kandydata...'), 1600)
+                setTimeout(() => {
+                    setIsSpecialUser(true)
+                    setIsSimulating(false)
+                    setIsLoggedIn(true)
+                }, 2200)
+                return;
             }
 
-            setTimeout(() => setSimText('Autoryzacja serwerów...'), 800)
-            setTimeout(() => setSimText('Pobieranie w systemie punktowym...'), 1600)
+            try {
+                setTimeout(() => setSimText('Autoryzacja w usługach Synergia...'), 1200)
 
-            setTimeout(() => {
-                setIsSimulating(false)
-                setIsLoggedIn(true)
-            }, 2600)
+                const response = await fetch('/api/librus', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ login: loginEmail, pass: loginPass })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Autoryzacja odrzucona przez serwery Vulcana.');
+                }
+
+                setSimText('Pobrano. Deszyfracja pakietów ocen...');
+
+                // Modyfikacja stanu na podstawie prawdziwych danych z api
+                setTimeout(() => {
+                    setIsSpecialUser(false);
+                    // Tutaj przekształcamy prawdziwe dane z `data.data.grades` na nasz format widoku UI (mockGrades fallback jeśli puste).
+
+                    if (data.data && data.data.grades && data.data.grades.length > 0) {
+                        // Tworzenie uproszczonej struktury z API uzywajac kilku pol:
+                        const realGradesParsed = data.data.grades.slice(0, 10).map((g, idx) => ({
+                            id: idx,
+                            subject: g.subject || "Zajęcia Oświatowe",
+                            grade: g.grade || "-",
+                            desc: g.title || "Sprawdzian / Odpowiedź",
+                            color: "text-white",
+                            bg: "bg-[#e91e63]"
+                        }));
+                        setMockGrades(realGradesParsed);
+                    }
+
+                    setIsSimulating(false)
+                    setIsLoggedIn(true)
+                }, 1000)
+
+            } catch (err) {
+                console.error("Librus API Error:", err);
+                setIsSimulating(false);
+                setLoginError(err.message || 'Błąd API. Sprawdź połączenie.');
+            }
         }
     }
 
@@ -131,6 +176,12 @@ export default function Librus() {
                         <div className="absolute inset-0 bg-surface/90 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
                             <Loader2 className="animate-spin text-[#e91e63] mb-3" size={40} />
                             <div className="text-[#e91e63] font-bold text-sm animate-pulse">{simText}</div>
+                        </div>
+                    )}
+
+                    {loginError && (
+                        <div className="bg-red-500/10 border border-red-500 text-red-500 text-sm p-3 rounded-xl mb-4 text-center font-bold">
+                            {loginError}
                         </div>
                     )}
 
