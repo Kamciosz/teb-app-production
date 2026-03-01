@@ -68,11 +68,15 @@ const SHORT_DAY = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt'];
 const FULL_DAY = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek'];
 
 // ─── API call ─────────────────────────────────────────────────────────────
-async function fetchLibrusData(login, pass) {
+async function fetchLibrusData(login, pass, weekStart = null, onlyTimetable = false) {
+    const body = { login, pass };
+    if (weekStart) body.weekStart = weekStart;
+    if (onlyTimetable) body.onlyTimetable = onlyTimetable;
+
     const response = await fetch('https://librus-proxy-production.up.railway.app/librus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login, pass })
+        body: JSON.stringify(body)
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Błąd autoryzacji. Sprawdź dane.');
@@ -176,9 +180,8 @@ export default function Librus() {
         }
 
         // TIMETABLE – nowy format: { "2026-03-02": [{lessonNo, time, subject, teacher, room}] }
-        // HTML scraper zwraca prostą tablicę per dzień
         if (data?.timetable && typeof data.timetable === 'object') {
-            setTimetable(data.timetable);
+            setTimetable(prev => ({ ...prev, ...data.timetable }));
         }
 
         // FREKWENCJA
@@ -235,6 +238,33 @@ export default function Librus() {
         acc[g.subject].push(g);
         return acc;
     }, {});
+
+    // ── Zmiana tygodnia (fetch lazy) ──────────────────────────────────
+    const handleWeekChange = async (newOffset) => {
+        setWeekOffset(newOffset);
+        const creds = await loadCredentials();
+        if (!creds) return;
+
+        // Obliczamy datę poniedziałku docelowego tygodnia
+        const mon = getWeekDays(newOffset)[0];
+        const weekStartIso = toISO(mon);
+
+        // Jeśli już mamy ten dzień pobrany, nie musimy odpytywać API
+        if (timetable[weekStartIso] !== undefined) return;
+
+        setSimText('Pobieram plany...');
+        setIsLoading(true);
+        try {
+            const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso, true);
+            if (data?.timetable) {
+                setTimetable(prev => ({ ...prev, ...data.timetable }));
+            }
+        } catch (err) {
+            console.error('Błąd pobierania planu:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     // ── Plan lekcji dla wybranego dnia ────────────────────────────────
     const selectedDate = toISO(weekDays[selectedDayIdx]);
@@ -392,14 +422,14 @@ export default function Librus() {
                 <div className="animate-in fade-in duration-300">
                     {/* Nawigacja tygodnia */}
                     <div className="flex items-center justify-between mb-3">
-                        <button onClick={() => setWeekOffset(w => w - 1)}
+                        <button onClick={() => handleWeekChange(weekOffset - 1)}
                             className="bg-gray-800 p-2 rounded-xl text-gray-400 hover:text-white transition">
                             <ChevronLeft size={20} />
                         </button>
                         <span className="text-sm font-bold text-gray-300">
                             {weekOffset === 0 ? 'Bieżący tydzień' : weekOffset === 1 ? 'Następny tydzień' : weekOffset === -1 ? 'Poprzedni tydzień' : `${weekOffset > 0 ? '+' : ''}${weekOffset} tyg.`}
                         </span>
-                        <button onClick={() => setWeekOffset(w => w + 1)}
+                        <button onClick={() => handleWeekChange(weekOffset + 1)}
                             className="bg-gray-800 p-2 rounded-xl text-gray-400 hover:text-white transition">
                             <ChevronRight size={20} />
                         </button>
