@@ -551,9 +551,9 @@ export default function Librus() {
                             Razem: {attendance.total || 0} godzin lekcyjnych w roku szkolnym
                         </div>
 
-                        {/* Szczegółowy wykaz nieobecności */}
+                        {/* Szczegółowy wykaz nieobecności - płaska lista chronologiczna */}
                         {(() => {
-                            const groupedAbsences = { 1: {}, 2: {} };
+                            const flatRecords = { 1: [], 2: [] };
                             let hasAbsences = false;
 
                             if (attendance.records) {
@@ -567,24 +567,43 @@ export default function Librus() {
                                     const isLate = k.includes('spóźni') || k.includes('spozni');
 
                                     let mappedType = '';
-                                    if (isAbsent) mappedType = 'Nieobecność';
-                                    else if (isExcused) mappedType = 'Nieob. usprawiedliwiona';
-                                    else if (isLate) mappedType = 'Spóźnienie';
+                                    let dotColor = '';
+                                    let textColor = '';
+                                    if (isAbsent) {
+                                        mappedType = 'Nieobecny';
+                                        dotColor = 'bg-red-400';
+                                        textColor = 'text-red-400';
+                                    }
+                                    else if (isExcused) {
+                                        mappedType = 'Nieobec. usprawiedliwiona';
+                                        dotColor = 'bg-blue-400';
+                                        textColor = 'text-blue-400';
+                                    }
+                                    else if (isLate) {
+                                        mappedType = 'Spóźnienie';
+                                        dotColor = 'bg-yellow-400';
+                                        textColor = 'text-yellow-400';
+                                    }
                                     else return;
 
                                     const sem = r.semester || 1;
-                                    const sub = r.subject || 'Nieznany przedmiot';
-
-                                    if (!groupedAbsences[sem]) groupedAbsences[sem] = {};
-                                    if (!groupedAbsences[sem][sub]) groupedAbsences[sem][sub] = {};
-                                    if (!groupedAbsences[sem][sub][mappedType]) groupedAbsences[sem][sub][mappedType] = 0;
-
-                                    groupedAbsences[sem][sub][mappedType]++;
+                                    flatRecords[sem].push({
+                                        date: r.date,
+                                        lessonNo: r.lessonNo || '?',
+                                        subject: r.subject || 'Nieznany przedmiot',
+                                        type: mappedType,
+                                        dotColor: dotColor,
+                                        textColor: textColor
+                                    });
                                     hasAbsences = true;
                                 });
                             }
 
                             if (!hasAbsences) return null;
+
+                            // Sortowanie po dacie (od najnowszych)
+                            flatRecords[1].sort((a, b) => new Date(b.date) - new Date(a.date));
+                            flatRecords[2].sort((a, b) => new Date(b.date) - new Date(a.date));
 
                             return (
                                 <div className="mt-8 border-t border-gray-800 pt-6">
@@ -593,8 +612,8 @@ export default function Librus() {
                                     </h5>
                                     <div className="flex flex-col gap-6">
                                         {[1, 2].map(sem => {
-                                            const subjects = groupedAbsences[sem] || {};
-                                            if (Object.keys(subjects).length === 0) return null;
+                                            const records = flatRecords[sem];
+                                            if (records.length === 0) return null;
 
                                             return (
                                                 <div key={sem} className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden">
@@ -604,30 +623,16 @@ export default function Librus() {
                                                         </span>
                                                     </div>
                                                     <div className="divide-y divide-gray-800/50">
-                                                        {Object.entries(subjects).map(([subName, types]) => (
-                                                            <div key={subName} className="p-4">
-                                                                <div className="font-bold text-sm text-gray-200 mb-2">{subName}</div>
-                                                                <div className="flex flex-col gap-1.5">
-                                                                    {Object.entries(types).map(([typeName, count]) => {
-                                                                        const isAbs = typeName === 'Nieobecność';
-                                                                        const isExc = typeName === 'Nieob. usprawiedliwiona';
-                                                                        const isLat = typeName === 'Spóźnienie';
-
-                                                                        const dotColor = isAbs ? 'bg-red-400' : isExc ? 'bg-blue-400' : 'bg-yellow-400';
-                                                                        const textColor = isAbs ? 'text-red-400' : isExc ? 'text-blue-400' : 'text-yellow-400';
-
-                                                                        return (
-                                                                            <div key={typeName} className="flex items-center justify-between text-xs">
-                                                                                <div className="flex items-center gap-2 text-gray-400">
-                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-                                                                                    {typeName}
-                                                                                </div>
-                                                                                <div className={`font-bold ${textColor}`}>
-                                                                                    {count} {count === 1 ? 'raz' : 'razy'}
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
+                                                        {records.map((r, idx) => (
+                                                            <div key={idx} className="p-4 flex items-start gap-3 hover:bg-white/[0.02] transition">
+                                                                <div className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${r.dotColor}`} />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="text-[13px] text-gray-200 leading-snug">
+                                                                        <span className={`font-bold ${r.textColor}`}>{r.type.toLowerCase()}</span>
+                                                                        {' '}dnia <span className="text-white font-medium">{r.date}</span>;
+                                                                        {' '}godzina lekcyjna <span className="text-white font-medium">{r.lessonNo}</span>;
+                                                                        {' '}przedmiot: <span className="text-gray-400">{r.subject}</span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         ))}
