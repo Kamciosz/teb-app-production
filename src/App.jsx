@@ -162,8 +162,8 @@ function App() {
     // Jesteś zalogowany -> Router Aplikacji
     return (
         <Router>
-            <div className="min-h-screen bg-black flex justify-center">
-                <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-screen relative overflow-hidden shadow-2xl shadow-primary/10">
+            <div className="min-h-[100dvh] bg-black flex justify-center">
+                <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
                     {/* Header z logo TEB */}
                     <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
                         <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
@@ -182,7 +182,7 @@ function App() {
                     </main>
 
                     {/* Bottom Navigation (Apple / Instagram Style) */}
-                    <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-safe pb-4 pt-2 px-6 flex justify-between z-50">
+                    <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-[env(safe-area-inset-bottom,16px)] pt-2 px-6 flex justify-between z-50">
                         <NavLink to="/" icon={<Home />} />
                         <NavLink to="/features" icon={<LayoutGrid />} />
                         <NavLink to="/profile" icon={<User />} />
