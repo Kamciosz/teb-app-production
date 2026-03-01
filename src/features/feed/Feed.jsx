@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { ArrowUp, ArrowDown, X, Image as ImageIcon, Video, FileText } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReactQuill from 'react-quill'
@@ -11,6 +11,7 @@ export default function Feed() {
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [myRole, setMyRole] = useState('student')
+    const quillRef = useRef(null)
 
     // Nowe stany formularza "Onet"
     const [articleTitle, setArticleTitle] = useState('')
@@ -71,24 +72,48 @@ export default function Feed() {
         if (!error) fetchPosts()
     }
 
-    const getPostData = (post) => {
-        // Zgodność wsteczna z JSONem starych tabel oraz nową architekturą Supabase Beta-3.0
-        if (post.title) return { title: post.title, html: post.content, category: post.category }
-        try {
-            return JSON.parse(post.content)
-        } catch {
-            return { title: "Wiadomość tekstowa", html: `<p>${post.content}</p>`, category: "Społeczność" }
-        }
-    }
+    const imageHandler = () => {
+        const input = document.createElement('input');
+        input.setAttribute('type', 'file');
+        input.setAttribute('accept', 'image/png, image/jpeg, image/jpg');
+        input.click();
+
+        input.onchange = async () => {
+            const file = input.files[0];
+            if (!file) return;
+
+            const fileExt = file.name.split('.').pop();
+            const fileName = `feed_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+            const filePath = `articles/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
+
+            if (uploadError) {
+                alert("Błąd chmury: Nie udało się przesłać zdjęcia. Upewnij się, że waży mniej niż 5MB.");
+                return;
+            }
+
+            const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath);
+
+            const quill = quillRef.current.getEditor();
+            const range = quill.getSelection(true);
+            quill.insertEmbed(range.index, 'image', publicUrl);
+        };
+    };
 
     const modules = {
-        toolbar: [
-            [{ 'header': [1, 2, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['link'], // Ukryto 'image' i 'video' - wymaga integracji Storage w przyszlosci
-            ['clean']
-        ],
+        toolbar: {
+            container: [
+                [{ 'header': [1, 2, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                ['link', 'image'],
+                ['clean']
+            ],
+            handlers: {
+                image: imageHandler
+            }
+        }
     };
 
     return (
@@ -197,7 +222,7 @@ export default function Feed() {
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Treść Publikacji (Możesz dodawać obrazy)*</label>
                                 <div className="bg-white rounded-xl overflow-hidden text-black border-2 border-transparent focus-within:border-primary transition p-0">
-                                    <ReactQuill theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-48 sm:h-64" placeholder="Rozpocznij pisanie artykułu..." />
+                                    <ReactQuill ref={quillRef} theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-48 sm:h-64" placeholder="Rozpocznij pisanie artykułu..." />
                                 </div>
                             </div>
 

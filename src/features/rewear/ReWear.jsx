@@ -15,6 +15,8 @@ export default function ReWear() {
     const [newItemCategory, setNewItemCategory] = useState('Ubrania')
     const [newItemCondition, setNewItemCondition] = useState('Bardzo dobry')
     const [newItemSize, setNewItemSize] = useState('M')
+    const [newItemPhoto, setNewItemPhoto] = useState(null)
+    const [uploading, setUploading] = useState(false)
 
     // Filtrowanie
     const [activeFilter, setActiveFilter] = useState('Wszystko')
@@ -53,15 +55,38 @@ export default function ReWear() {
         if (newItemCategory === 'Korepetycje') dbItemType = 'tutoring'
         if (newItemCategory === 'Usługi') dbItemType = 'service'
 
+        // Walidacja RLS (tylko redaktor etc. dla uslug, ucznionie zwykle)
+        setUploading(true)
+
+        let uploadedUrl = null
+        if (newItemPhoto) {
+            const fileExt = newItemPhoto.name.split('.').pop()
+            const fileName = `rewear_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
+            const filePath = `auctions/${fileName}`
+
+            const { error: uploadError } = await supabase.storage.from('images').upload(filePath, newItemPhoto)
+            if (!uploadError) {
+                const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath)
+                uploadedUrl = publicUrl
+            } else {
+                alert("Błąd wgrywania zdjęcia: " + uploadError.message)
+                setUploading(false)
+                return
+            }
+        }
+
         const { error } = await supabase.from('rewear_posts').insert([
             {
                 seller_id: session.user.id,
                 title: newItemTitle,
                 description: newItemDesc + " |META:" + extraDesc,
                 price_teb_gabki: parseFloat(newItemPrice) || 0,
-                item_type: dbItemType
+                item_type: dbItemType,
+                image_url: uploadedUrl
             }
         ])
+
+        setUploading(false)
 
         if (error) {
             console.error(error)
@@ -71,6 +96,7 @@ export default function ReWear() {
             setNewItemTitle('')
             setNewItemPrice('')
             setNewItemDesc('')
+            setNewItemPhoto(null)
             fetchItems()
         }
     }
@@ -126,10 +152,16 @@ export default function ReWear() {
                     {filteredItems.map(item => {
                         const meta = parseDescription(item.description)
                         return (
-                            <div key={item.id} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col">
-                                <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative">
-                                    <Camera className="text-gray-700 mb-2" size={32} />
-                                    <span className="text-gray-600 font-bold text-xs">Aparat wyłączony</span>
+                            <div key={item.id} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col w-full">
+                                <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden group">
+                                    {item.image_url ? (
+                                        <img src={item.image_url} alt={item.title} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                    ) : (
+                                        <>
+                                            <Camera className="text-gray-700 mb-2" size={32} />
+                                            <span className="text-gray-600 font-bold text-xs">Bez zdjęcia</span>
+                                        </>
+                                    )}
 
                                     <div className="absolute top-2 left-2 z-10">
                                         <ReportButton entityType="rewear_post" entityId={item.id} subtle={false} />
@@ -180,12 +212,17 @@ export default function ReWear() {
 
                         <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto">
 
-                            {/* Sekcja zdjęć zarezerwowana do implementacji w Fazie Supabase Storage (Oczekuje w task.md)
-                            <div className="h-32 bg-background border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary transition group">
-                                <Camera size={32} className="text-gray-500 group-hover:text-primary transition mb-2" />
-                                <span className="text-xs font-bold text-gray-400 group-hover:text-primary transition">Dodaj do 5 zdjęć (Opcjonalnie)</span>
-                            </div>
-                            */}
+                            <label className="h-32 bg-background border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary transition group relative overflow-hidden">
+                                <input type="file" className="hidden" accept="image/png, image/jpeg, image/jpg" onChange={e => { if (e.target.files && e.target.files[0]) setNewItemPhoto(e.target.files[0]) }} />
+                                {newItemPhoto ? (
+                                    <img src={URL.createObjectURL(newItemPhoto)} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-80" />
+                                ) : (
+                                    <>
+                                        <Camera size={32} className="text-gray-500 group-hover:text-primary transition mb-2" />
+                                        <span className="text-xs font-bold text-gray-400 group-hover:text-primary transition">Wgraj zdjęcie przedmiotu (Opcjonalnie)</span>
+                                    </>
+                                )}
+                            </label>
 
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł ogłoszenia</label>
@@ -262,8 +299,8 @@ export default function ReWear() {
                                 )}
                             </div>
 
-                            <button type="submit" className="bg-primary text-white font-bold py-3 rounded-xl mt-4 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)] w-full">
-                                Dodać Ogłoszenie
+                            <button type="submit" disabled={uploading} className={`bg-primary text-white font-bold py-3 rounded-xl mt-4 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)] w-full ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                {uploading ? 'Wysyłanie na serwer...' : 'Dodać Ogłoszenie'}
                             </button>
                         </form>
                     </div>
