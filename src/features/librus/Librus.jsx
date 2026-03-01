@@ -63,7 +63,12 @@ function getWeekDays(offsetWeeks = 0) {
         return d;
     });
 }
-function toISO(date) { return date.toISOString().split('T')[0]; }
+function toISO(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
 const SHORT_DAY = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt'];
 const FULL_DAY = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek'];
 
