@@ -353,7 +353,7 @@ export default function Librus() {
                         <AlertCircle size={16} className="shrink-0" />{loginError}
                     </div>
                 )}
-                <input type="text" placeholder="Login Librusa (np. 12194674u)" required autoComplete="off"
+                <input type="text" placeholder="Login Librusa (np. 1234567u)" required autoComplete="off"
                     className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-4 outline-none focus:border-[#e91e63] transition"
                     value={loginInput} onChange={e => setLoginInput(e.target.value)} />
                 <input type="password" placeholder="Hasło do dziennika" required
