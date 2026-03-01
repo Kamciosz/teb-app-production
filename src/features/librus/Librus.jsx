@@ -156,6 +156,14 @@ export default function Librus() {
                 const weekStartIso = toISO(getWeekDays(0)[0]);
                 const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
                 applyData(data, creds.login);
+
+                // Oblicz zapasowy tydzień do przodu i pobierz go w tle po cichu
+                const nextWeekIso = toISO(getWeekDays(1)[0]);
+                fetchLibrusData(creds.login, creds.pass, nextWeekIso, true)
+                    .then(res => {
+                        if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
+                    })
+                    .catch(() => { });
             } catch (err) {
                 console.error('Auto-login failed:', err);
                 // Nie czyścimy credentials – może być chwilowy błąd serwera
@@ -210,6 +218,14 @@ export default function Librus() {
             const data = await fetchLibrusData(loginInput, passInput, weekStartIso);
             await saveCredentials(loginInput, passInput);
             applyData(data, loginInput);
+
+            // Oprócz powyższego dociągamy na przyszłość jeszcze jeden tydzień planów (nieblokująco) 
+            const nextWeekIso = toISO(getWeekDays(1)[0]);
+            fetchLibrusData(loginInput, passInput, nextWeekIso, true)
+                .then(res => {
+                    if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
+                })
+                .catch(() => { });
         } catch (err) {
             setLoginError(err.message || 'Błąd połączenia. Spróbuj ponownie.');
         } finally {
@@ -233,6 +249,13 @@ export default function Librus() {
             const weekStartIso = toISO(getWeekDays(0)[0]);
             const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
             applyData(data, creds.login);
+
+            const nextWeekIso = toISO(getWeekDays(1)[0]);
+            fetchLibrusData(creds.login, creds.pass, nextWeekIso, true)
+                .then(res => {
+                    if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
+                })
+                .catch(() => { });
         } catch (err) {
             setLoginError('Błąd odświeżania: ' + err.message);
         } finally {
@@ -257,8 +280,21 @@ export default function Librus() {
         const mon = getWeekDays(newOffset)[0];
         const weekStartIso = toISO(mon);
 
-        // Jeśli już mamy ten dzień pobrany, nie musimy odpytywać API
-        if (timetable[weekStartIso] !== undefined) return;
+        // Funkcja ładująca po cichu tydzień z wyprzedzeniem
+        const preloadNext = () => {
+            const nextWeekIso = toISO(getWeekDays(newOffset + 1)[0]);
+            fetchLibrusData(creds.login, creds.pass, nextWeekIso, true)
+                .then(res => {
+                    if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
+                })
+                .catch(() => { });
+        };
+
+        // Jeśli już mamy ten dzień pobrany, nie musimy odpytywać API, ale podciągnijmy następny
+        if (timetable[weekStartIso] !== undefined) {
+            preloadNext();
+            return;
+        }
 
         setSimText('Pobieram plany...');
         setIsLoading(true);
@@ -267,6 +303,7 @@ export default function Librus() {
             if (data?.timetable) {
                 setTimetable(prev => ({ ...prev, ...data.timetable }));
             }
+            preloadNext();
         } catch (err) {
             console.error('Błąd pobierania planu:', err);
         } finally {
