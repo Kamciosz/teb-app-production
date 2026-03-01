@@ -110,7 +110,12 @@ function App() {
     if (!session) {
         return (
             <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center p-4">
-                <h1 className="text-4xl font-bold text-primary mb-4">TEB-APP</h1>
+                <div className="flex items-center gap-2 mb-4">
+                    <h1 className="text-4xl font-bold text-primary">TEB-APP</h1>
+                    <span className="bg-red-500/20 text-red-500 border border-red-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
+                        Beta-2.0 Unstable
+                    </span>
+                </div>
                 <p className="text-gray-400 text-center mb-6 max-w-sm text-sm">
                     Aplikacja jest bezpieczna. Zamknięty obieg autoryzacji pozwala na rejestrację WYŁĄCZNIE dla domen <strong>@teb.edu.pl</strong>
                 </p>
@@ -168,7 +173,12 @@ function App() {
                 <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
                     {/* Header z logo TEB */}
                     <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
-                        <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
+                            <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                                Beta 2.0
+                            </span>
+                        </div>
                     </header>
 
                     {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
