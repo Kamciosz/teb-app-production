@@ -23,6 +23,11 @@ export default function InstallPrompt() {
             setShowInstallPrompt(true);
         };
 
+        // Jeżeli przeglądarka podniosła już event przy ładowaniu strony (na 90% wywoła to wczesną próbę ze względu na szybkość natywnych Web APIs), przechwytujemy z head z index.html:
+        if (window.deferredPWAInstallPrompt) {
+            handleBeforeInstallPrompt(window.deferredPWAInstallPrompt);
+        }
+
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
         // Wykrywanie iOS Safari, gdyż silnik WebKit nie wspiera beforeinstallprompt.

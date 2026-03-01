@@ -11,6 +11,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/logo.svg">
     <title>TEB-App</title>
+    <script>
+        window.deferredPWAInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            window.deferredPWAInstallPrompt = e;
+        });
+    </script>
 </head>
 
 <body class="bg-[#121212] text-white overflow-hidden touch-pan-y">
