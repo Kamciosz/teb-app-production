@@ -113,7 +113,7 @@ function App() {
                 <div className="flex items-center gap-2 mb-4">
                     <h1 className="text-4xl font-bold text-primary">TEB-APP</h1>
                     <span className="bg-red-500/20 text-red-500 border border-red-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
-                        Beta-2.0 Unstable
+                        Beta-3.0
                     </span>
                 </div>
                 <p className="text-gray-400 text-center mb-6 max-w-sm text-sm">
@@ -176,7 +176,7 @@ function App() {
                         <div className="flex items-center gap-2">
                             <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
                             <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                Beta 2.0
+                                Beta 3.0
                             </span>
                         </div>
                     </header>
