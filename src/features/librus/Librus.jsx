@@ -175,7 +175,8 @@ export default function Librus() {
             })));
         }
 
-        // TIMETABLE – zapisz cały obiekt
+        // TIMETABLE – nowy format: { "2026-03-02": [{lessonNo, time, subject, teacher, room}] }
+        // HTML scraper zwraca prostą tablicę per dzień
         if (data?.timetable && typeof data.timetable === 'object') {
             setTimetable(data.timetable);
         }
@@ -239,23 +240,9 @@ export default function Librus() {
     const selectedDate = toISO(weekDays[selectedDayIdx]);
     const daySchedule = (() => {
         const dayData = timetable[selectedDate];
+        // Nowy format HTML scrapera: prosta tablica [{lessonNo, time, subject, teacher, room}]
         if (!dayData || !Array.isArray(dayData)) return [];
-        const lessons = [];
-        dayData.forEach(slot => {
-            if (Array.isArray(slot) && slot.length > 0) {
-                const l = slot[0];
-                if (l?.Subject && l?.HourFrom) {
-                    lessons.push({
-                        time: `${l.HourFrom} – ${l.HourTo || ''}`,
-                        subject: l.Subject?.Name || l.Subject?.Short || 'Lekcja',
-                        room: l.Classroom?.Name || (l.Classroom?.Id ? `Sala ${l.Classroom.Id}` : ''),
-                        isCancelled: l.IsCancelled || false,
-                        isSubstitution: l.IsSubstitution || false,
-                    });
-                }
-            }
-        });
-        return lessons;
+        return dayData; // już gotowe dane bez potrzeby rozpakowywania slotów
     })();
 
     // ═══════════════ EKRANY ════════════════════════════════════════════
@@ -422,7 +409,7 @@ export default function Librus() {
                     <div className="flex gap-1.5 mb-4">
                         {weekDays.map((d, i) => {
                             const iso = toISO(d);
-                            const hasPlan = timetable[iso] && Array.isArray(timetable[iso]) && timetable[iso].some(s => Array.isArray(s) && s.length > 0 && s[0]?.Subject);
+                            const hasPlan = timetable[iso] && Array.isArray(timetable[iso]) && timetable[iso].length > 0;
                             const isToday = iso === toISO(new Date());
                             return (
                                 <button key={i} onClick={() => setSelectedDayIdx(i)}
@@ -451,16 +438,23 @@ export default function Librus() {
                                     <p>Brak zajęć tego dnia.<br /><span className="text-gray-600 text-xs">Wybierz inny dzień lub tydzień.</span></p>
                                 </div>
                             ) : daySchedule.map((lesson, idx) => (
-                                <div key={idx} className={`p-4 flex items-center gap-4 transition ${lesson.isCancelled ? 'opacity-40' : 'hover:bg-white/[0.02]'}`}>
-                                    <div className="w-16 shrink-0 text-center">
-                                        <div className="text-xs font-bold text-[#e91e63]">{lesson.time.split('–')[0].trim()}</div>
-                                        <div className="text-[10px] text-gray-600">{lesson.time.split('–')[1]?.trim()}</div>
+                                <div key={idx} className={`p-4 flex items-start gap-3 transition ${lesson.isCancelled ? 'opacity-40' : 'hover:bg-white/[0.02]'}`}>
+                                    {/* Numer lekcji */}
+                                    <div className="w-6 shrink-0 pt-0.5 text-center">
+                                        <span className="text-[11px] font-black text-gray-600">#{lesson.lessonNo}</span>
                                     </div>
-                                    <div className="w-px h-10 bg-gray-800" />
+                                    {/* Godziny */}
+                                    <div className="w-14 shrink-0 text-center">
+                                        <div className="text-xs font-bold text-[#e91e63]">{lesson.time?.split('–')[0]?.trim()}</div>
+                                        <div className="text-[10px] text-gray-600">{lesson.time?.split('–')[1]?.trim()}</div>
+                                    </div>
+                                    <div className="w-px self-stretch bg-gray-800 shrink-0" />
                                     <div className="flex-1 min-w-0">
-                                        <div className={`font-bold text-sm ${lesson.isCancelled ? 'line-through text-gray-500' : 'text-white'}`}>{lesson.subject}</div>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            {lesson.room && <span className="text-xs text-gray-500">{lesson.room}</span>}
+                                        <div className={`font-bold text-sm leading-snug ${lesson.isCancelled ? 'line-through text-gray-500' : 'text-white'}`}>{lesson.subject}</div>
+                                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                            {lesson.teacher && <span className="text-[11px] text-gray-400">{lesson.teacher}</span>}
+                                            {lesson.teacher && lesson.room && <span className="text-gray-700 text-[10px]">•</span>}
+                                            {lesson.room && <span className="text-[11px] text-[#e91e63] font-semibold">{lesson.room}</span>}
                                             {lesson.isSubstitution && <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-bold">Zastępstwo</span>}
                                             {lesson.isCancelled && <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-bold">Odwołane</span>}
                                         </div>
@@ -474,72 +468,51 @@ export default function Librus() {
 
             {/* ━━━━━ FREKWENCJA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {activeTab === 'frekwencja' && (
-                <div className="animate-in fade-in duration-300 space-y-4">
-                    {/* Kółko */}
+                <div className="animate-in fade-in duration-300">
                     <div className="bg-surface border border-gray-800 rounded-xl p-6">
                         <h4 className="font-bold text-white mb-6 flex items-center gap-2">
-                            <PieChart size={20} className="text-[#e91e63]" /> Obecność ogólna
+                            <PieChart size={20} className="text-[#e91e63]" /> Frekwencja roczna
                         </h4>
-                        <div className="flex flex-col items-center justify-center mb-6 relative">
-                            <svg viewBox="0 0 36 36" className="w-36 h-36 drop-shadow-[0_0_15px_rgba(233,30,99,0.25)]">
+
+                        {/* Kółko */}
+                        <div className="flex flex-col items-center justify-center mb-8 relative">
+                            <svg viewBox="0 0 36 36" className="w-40 h-40 drop-shadow-[0_0_15px_rgba(233,30,99,0.25)]">
                                 <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1f2937" strokeWidth="2.5" />
                                 <path strokeDasharray={`${attendance.percent}, 100`}
                                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                                     fill="none" stroke="#e91e63" strokeWidth="3" strokeLinecap="round" />
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                <span className="text-[36px] font-black text-white">{attendance.percent}%</span>
+                                <span className="text-[38px] font-black text-white">{attendance.percent}%</span>
                                 <span className="text-[10px] text-[#e91e63] uppercase font-bold tracking-widest">Obecność</span>
                             </div>
                         </div>
+
+                        {/* 4 liczniki z typów frekwencji */}
+                        <div className="grid grid-cols-2 gap-3">
+                            {Object.entries(attendance.grouped || {}).map(([type, count]) => {
+                                const k = type.toLowerCase();
+                                const isAbsent = k.includes('nieobecn') && !k.includes('uspr');
+                                const isExcused = k.includes('uspr') || k.includes('zwolnien');
+                                const isLate = k.includes('spóźni') || k.includes('spozni');
+                                const color = isAbsent ? 'text-red-400 border-red-400/20'
+                                    : isExcused ? 'text-blue-400 border-blue-400/20'
+                                        : isLate ? 'text-yellow-400 border-yellow-400/20'
+                                            : 'text-green-400 border-green-400/20';
+                                const bg = isAbsent ? 'bg-red-400/5' : isExcused ? 'bg-blue-400/5' : isLate ? 'bg-yellow-400/5' : 'bg-green-400/5';
+                                return (
+                                    <div key={type} className={`rounded-xl p-4 border ${color} ${bg} text-center`}>
+                                        <div className={`text-3xl font-black mb-1 ${color.split(' ')[0]}`}>{count}</div>
+                                        <div className="text-[11px] font-bold text-gray-400 leading-tight">{type}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-4 text-[11px] text-gray-600 text-center">
+                            Razem: {attendance.total || 0} godzin lekcyjnych w roku szkolnym
+                        </div>
                     </div>
-
-                    {/* Szczegóły wpisów */}
-                    {Object.entries(attendance.grouped || {}).length > 0 && (
-                        <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden">
-                            <div className="bg-background border-b border-gray-800 px-4 py-3 text-sm font-bold text-white">Szczegóły wpisów</div>
-                            <div className="divide-y divide-gray-800/50">
-                                {Object.entries(attendance.grouped).map(([type, count]) => {
-                                    const k = type.toLowerCase();
-                                    const color = k.includes('nieobecn') && !k.includes('uspraw') ? 'text-red-400'
-                                        : k.includes('uspraw') || k.includes('zwolnien') ? 'text-blue-400'
-                                            : k.includes('spóźni') || k.includes('spozni') ? 'text-yellow-400'
-                                                : 'text-green-400';
-                                    return (
-                                        <div key={type} className="px-4 py-3 flex items-center justify-between">
-                                            <span className="text-sm text-gray-300">{type}</span>
-                                            <span className={`text-lg font-black ${color}`}>{count}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Ostatnie wpisy */}
-                    {attendance.records?.length > 0 && (
-                        <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden">
-                            <div className="bg-background border-b border-gray-800 px-4 py-3 text-sm font-bold text-white">Ostatnie wpisy ({Math.min(attendance.records.length, 20)})</div>
-                            <div className="divide-y divide-gray-800/50">
-                                {attendance.records.slice(0, 20).map((r, i) => {
-                                    const k = (r.type || '').toLowerCase();
-                                    const dot = k.includes('nieobecn') && !k.includes('uspraw') ? 'bg-red-400'
-                                        : k.includes('uspraw') || k.includes('zwolnien') ? 'bg-blue-400'
-                                            : k.includes('spóźni') ? 'bg-yellow-400' : 'bg-green-400';
-                                    return (
-                                        <div key={i} className="px-4 py-3 flex items-center gap-3">
-                                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
-                                            <div className="flex-1">
-                                                <div className="text-sm text-gray-300">{r.type}</div>
-                                                <div className="text-[11px] text-gray-600">Lekcja {r.lessonNo}</div>
-                                            </div>
-                                            <div className="text-xs text-gray-500 shrink-0">{r.date}</div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
         </div>
