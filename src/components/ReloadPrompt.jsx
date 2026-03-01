@@ -9,6 +9,13 @@ export default function ReloadPrompt() {
     useEffect(() => {
         if (!('serviceWorker' in navigator)) return;
 
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (refreshing) return;
+            refreshing = true;
+            window.location.reload();
+        });
+
         navigator.serviceWorker.getRegistration().then((reg) => {
             if (!reg) return;
 
@@ -41,13 +48,9 @@ export default function ReloadPrompt() {
 
     const updateServiceWorker = () => {
         if (waitingWorker) {
-            // Nakazanie zamrożonemu workerowi przejąć stery strony
+            // Nakazanie zamrożonemu workerowi przejąć stery strony,
+            // Przeładowanie wykona się automatycznie dzięki nasłuchiwaczowi controllerchange 
             waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-            waitingWorker.addEventListener('statechange', () => {
-                if (waitingWorker.state === 'activated') {
-                    window.location.reload();
-                }
-            });
         }
     };
 
