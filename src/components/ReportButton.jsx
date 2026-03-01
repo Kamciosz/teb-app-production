@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { AlertOctagon, X } from 'lucide-react'
-import { supabase } from '../../services/supabase'
+import { supabase } from '../services/supabase'
 
 export default function ReportButton({ entityType, entityId, subtle = false }) {
     const [isOpen, setIsOpen] = useState(false)
