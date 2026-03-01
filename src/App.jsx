@@ -9,6 +9,9 @@ import Librus from './features/librus/Librus'
 import Admin from './features/admin/Admin'
 import Features from './features/features/Features'
 import Profile from './features/profile/Profile'
+import TEBtalk from './features/tebtalk/TEBtalk'
+import Groups from './features/groups/Groups'
+
 import InstallPrompt from './components/InstallPrompt'
 import ReloadPrompt from './components/ReloadPrompt'
 
@@ -189,6 +192,8 @@ function App() {
                             <Route path="/profile" element={<Profile />} />
                             <Route path="/rewear" element={<ReWear />} />
                             <Route path="/librus" element={<Librus />} />
+                            <Route path="/tebtalk" element={<TEBtalk />} />
+                            <Route path="/groups" element={<Groups />} />
                             <Route path="/admin" element={<Admin />} />
                         </Routes>
                     </main>

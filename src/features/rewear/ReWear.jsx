@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Plus, X, Search, Filter, Camera, Tag } from 'lucide-react'
 import { supabase } from '../../services/supabase'
+import ReportButton from '../../components/ReportButton'
 
 export default function ReWear() {
     const [items, setItems] = useState([])
@@ -129,6 +130,11 @@ export default function ReWear() {
                                 <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative">
                                     <Camera className="text-gray-700 mb-2" size={32} />
                                     <span className="text-gray-600 font-bold text-xs">Aparat wyłączony</span>
+
+                                    <div className="absolute top-2 left-2 z-10">
+                                        <ReportButton entityType="rewear_post" entityId={item.id} subtle={false} />
+                                    </div>
+
                                     <div className="absolute top-2 right-2 bg-black/80 backdrop-blur px-2 py-0.5 rounded text-[10px] text-white font-bold border border-gray-700 flex items-center gap-1">
                                         <Tag size={10} className="text-primary" /> {meta.condition}
                                     </div>

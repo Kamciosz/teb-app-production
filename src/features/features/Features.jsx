@@ -1,5 +1,5 @@
 import React from 'react'
-import { Store, GraduationCap, ChevronRight } from 'lucide-react'
+import { Store, GraduationCap, ChevronRight, MessageCircle, Hash } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function Features() {
@@ -32,6 +32,32 @@ export default function Features() {
                         <div>
                             <h3 className="font-bold text-white">Dziennik Librus</h3>
                             <p className="text-xs text-gray-400">Podgląd Ocen (Oauth2)</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="text-gray-600" />
+                </Link>
+
+                <Link to="/tebtalk" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition hover:border-blue-500">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-blue-500/20 p-3 rounded-full text-blue-500">
+                            <MessageCircle size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-white">TEBtalk (T-Msg)</h3>
+                            <p className="text-xs text-gray-400">Prywatne wiadomości P2P</p>
+                        </div>
+                    </div>
+                    <ChevronRight className="text-gray-600" />
+                </Link>
+
+                <Link to="/groups" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition hover:border-purple-500">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-purple-500/20 p-3 rounded-full text-purple-500">
+                            <Hash size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-white">Kółka i Grupy</h3>
+                            <p className="text-xs text-gray-400">Publiczne tablice zainteresowań</p>
                         </div>
                     </div>
                     <ChevronRight className="text-gray-600" />
