@@ -1,212 +1,333 @@
-import React, { useState, useEffect } from 'react'
-import { CheckCircle2, Lock, Loader2, BookOpen, Calendar, PieChart, Clock, LogOut, AlertCircle } from 'lucide-react'
-import { supabase } from '../../services/supabase'
+import React, { useState, useEffect, useRef } from 'react'
+import { CheckCircle2, Lock, Loader2, BookOpen, Calendar, PieChart, Clock, LogOut, AlertCircle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 
+// ─── AES-256-GCM helpers ───────────────────────────────────────────────────
+async function generateKey() {
+    return window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+}
+async function exportKey(key) {
+    const raw = await window.crypto.subtle.exportKey('raw', key);
+    return btoa(String.fromCharCode(...new Uint8Array(raw)));
+}
+async function importKey(b64) {
+    const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    return window.crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+async function encryptText(text, key) {
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const enc = new TextEncoder();
+    const ct = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
+    return {
+        iv: btoa(String.fromCharCode(...iv)),
+        ct: btoa(String.fromCharCode(...new Uint8Array(ct)))
+    };
+}
+async function decryptText({ iv: ivB64, ct: ctB64 }, key) {
+    const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
+    const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
+    const pt = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(pt);
+}
+async function saveCredentials(login, pass) {
+    const key = await generateKey();
+    const keyB64 = await exportKey(key);
+    const encrypted = await encryptText(pass, key);
+    localStorage.setItem('librus_creds', JSON.stringify({ login, keyB64, ...encrypted }));
+}
+async function loadCredentials() {
+    const raw = localStorage.getItem('librus_creds');
+    if (!raw) return null;
+    try {
+        const { login, keyB64, iv, ct } = JSON.parse(raw);
+        const key = await importKey(keyB64);
+        const pass = await decryptText({ iv, ct }, key);
+        return { login, pass };
+    } catch { return null; }
+}
+function clearCredentials() {
+    localStorage.removeItem('librus_creds');
+}
+
+// ─── Date helpers ──────────────────────────────────────────────────────────
+function getWeekDays(offsetWeeks = 0) {
+    const now = new Date();
+    // sentyment to poniedziałek danego tygodnia
+    const day = now.getDay(); // 0=niedziela, 1=pon
+    const diffToMon = (day === 0 ? -6 : 1 - day) + offsetWeeks * 7;
+    const mon = new Date(now);
+    mon.setDate(now.getDate() + diffToMon);
+    mon.setHours(0, 0, 0, 0);
+    return Array.from({ length: 5 }, (_, i) => {
+        const d = new Date(mon);
+        d.setDate(mon.getDate() + i);
+        return d;
+    });
+}
+function toISO(date) { return date.toISOString().split('T')[0]; }
+const SHORT_DAY = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt'];
+const FULL_DAY = ['Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek'];
+
+// ─── API call ─────────────────────────────────────────────────────────────
+async function fetchLibrusData(login, pass) {
+    const response = await fetch('https://librus-proxy-production.up.railway.app/librus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, pass })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Błąd autoryzacji. Sprawdź dane.');
+    return data.data;
+}
+
+// ─── Attendance parser ─────────────────────────────────────────────────────
+function parseAttendance(att) {
+    if (!att?.summary) return { percent: 100, s1: {}, s2: {}, records: [] };
+
+    // Zliczamy per semestr z records
+    const records = (att.records || []).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    let s1 = {}, s2 = {};
+    let totalAll = 0, totalAbsent = 0;
+
+    for (const [key, val] of Object.entries(att.summary)) {
+        const k = key.toLowerCase();
+        const isAbsence = k.includes('nieobecn') && !k.includes('usprawiedliwion');
+        const isExcused = (k.includes('usprawiedliwion') || k.includes('zwolnien')) && !k.includes('nieuspraw');
+        const isLate = k.includes('spóźni') || k.includes('spozni');
+        totalAll += val;
+        if (isAbsence) totalAbsent += val;
+    }
+
+    const percent = totalAll > 0 ? Math.round(((totalAll - totalAbsent) / totalAll) * 100) : 100;
+
+    // Grupuj summary ładnie
+    const grouped = {};
+    for (const [key, val] of Object.entries(att.summary)) {
+        grouped[key] = val;
+    }
+
+    return { percent, grouped, records, total: totalAll };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 export default function Librus() {
-    const [isLoggedIn, setIsLoggedIn] = useState(false)
-    const [loginEmail, setLoginEmail] = useState('')
-    const [loginPass, setLoginPass] = useState('')
-    const [loginError, setLoginError] = useState('')
-    const [activeTab, setActiveTab] = useState('oceny')
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [loginInput, setLoginInput] = useState('');
+    const [passInput, setPassInput] = useState('');
+    const [loginError, setLoginError] = useState('');
+    const [activeTab, setActiveTab] = useState('oceny');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isAutoLogging, setIsAutoLogging] = useState(false);
+    const [simText, setSimText] = useState('');
+    const [savedLogin, setSavedLogin] = useState('');
 
-    const [isSimulating, setIsSimulating] = useState(false)
-    const [simText, setSimText] = useState('')
+    const [grades, setGrades] = useState([]);
+    const [timetable, setTimetable] = useState({});
+    const [attendance, setAttendance] = useState({ percent: 100, grouped: {}, records: [], total: 0 });
 
-    // Dane pobrane z API
-    const [grades, setGrades] = useState([])
-    const [schedule, setSchedule] = useState([])
-    const [attendance, setAttendance] = useState({ obecnosc: 0, spoznienia: 0, usprawiedliwione: 0, nieusprawiedliwione: 0 })
+    // Plan lekcji – nawigacja
+    const [weekOffset, setWeekOffset] = useState(0);
+    const [selectedDayIdx, setSelectedDayIdx] = useState(() => {
+        const d = new Date().getDay();
+        return d === 0 || d === 6 ? 0 : d - 1; // weekend → poniedziałek
+    });
+    const weekDays = getWeekDays(weekOffset);
+
+    // Oceny – accordion
+    const [openSubject, setOpenSubject] = useState(null);
+
+    // ── Auto-login przy starcie ─────────────────────────────────────────
+    useEffect(() => {
+        (async () => {
+            const creds = await loadCredentials();
+            if (!creds) return;
+            setIsAutoLogging(true);
+            setSimText('Odświeżam dane z dziennika...');
+            try {
+                const data = await fetchLibrusData(creds.login, creds.pass);
+                applyData(data, creds.login);
+            } catch (err) {
+                console.error('Auto-login failed:', err);
+                // Nie czyścimy credentials – może być chwilowy błąd serwera
+            } finally {
+                setIsAutoLogging(false);
+            }
+        })();
+    }, []);
+
+    function applyData(data, login) {
+        setSavedLogin(login);
+
+        // OCENY – zachowaj wszystkie, sort by date
+        if (data?.grades?.length > 0) {
+            const sorted = [...data.grades].sort((a, b) => {
+                const da = a.date ? new Date(a.date).getTime() : 0;
+                const db = b.date ? new Date(b.date).getTime() : 0;
+                return db - da;
+            });
+            setGrades(sorted.map((g, i) => ({
+                id: i,
+                subject: g.subject || 'Nieznany przedmiot',
+                grade: g.grade || '-',
+                category: g.category || 'Wpis w dzienniku',
+                date: g.date || null,
+                semester: g.semester || 1,
+            })));
+        }
+
+        // TIMETABLE – zapisz cały obiekt
+        if (data?.timetable && typeof data.timetable === 'object') {
+            setTimetable(data.timetable);
+        }
+
+        // FREKWENCJA
+        if (data?.attendance) {
+            setAttendance(parseAttendance(data.attendance));
+        }
+
+        setIsLoggedIn(true);
+    }
 
     const handleLogin = async (e) => {
-        e.preventDefault()
-        if (!loginEmail || !loginPass) return;
-
-        setIsSimulating(true)
-        setSimText('Nawiązywanie połączenia z Synergią...')
-        setLoginError('')
-
+        e.preventDefault();
+        if (!loginInput || !passInput) return;
+        setIsLoading(true);
+        setSimText('Łączę z Synergią...');
+        setLoginError('');
         try {
-            setTimeout(() => setSimText('Autoryzacja w serwisach Vulcan...'), 1200)
-
-            const response = await fetch('https://librus-proxy-production.up.railway.app/librus', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ login: loginEmail, pass: loginPass })
-            })
-
-            const data = await response.json()
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Autoryzacja odrzucona. Sprawdź login i hasło.')
-            }
-
-            setSimText('Pobieram dane z dziennika...')
-
-            setTimeout(() => {
-                // Oceny: Sortujemy malejąco po dacie (najnowsze na górze), aby nie podawać archiwalnych z września
-                if (data.data?.grades?.length > 0) {
-                    const sortedGrades = [...data.data.grades].sort((a, b) => {
-                        const dateA = a.date ? new Date(a.date).getTime() : 0;
-                        const dateB = b.date ? new Date(b.date).getTime() : 0;
-                        return dateB - dateA;
-                    });
-
-                    setGrades(sortedGrades.slice(0, 20).map((g, idx) => ({
-                        id: idx,
-                        subject: g.subject || 'Nieznany przedmiot',
-                        grade: g.grade || '-',
-                        desc: g.category || 'Wpis w dzienniku',
-                    })))
-                }
-
-                // Plan lekcji: API zwraca obiekt {"YYYY-MM-DD": [ [], [{Lesson...}], ... ]}
-                if (data.data?.timetable && typeof data.data.timetable === 'object') {
-                    const dzisiajISO = new Date().toISOString().split('T')[0];
-                    let planDoWyświetlenia = [];
-                    let dostepnyPlan = data.data.timetable[dzisiajISO];
-
-                    // Jeśli brak lekcji na dziś (np. weekend/święta), pobieramy pierwszy dostępny klucz w buforze
-                    if (!dostepnyPlan || dostepnyPlan.length === 0) {
-                        const kluczeMiesiac = Object.keys(data.data.timetable).sort();
-                        if (kluczeMiesiac.length > 0) {
-                            dostepnyPlan = data.data.timetable[kluczeMiesiac[kluczeMiesiac.length - 1]];
-                        }
-                    }
-
-                    if (Array.isArray(dostepnyPlan)) {
-                        dostepnyPlan.forEach(slotLekcji => {
-                            if (Array.isArray(slotLekcji) && slotLekcji.length > 0) {
-                                const aktywnaLekcja = slotLekcji[0]; // pierwsza z grup na tą samą godzinę
-                                if (aktywnaLekcja?.Subject && aktywnaLekcja?.HourFrom) {
-                                    planDoWyświetlenia.push({
-                                        time: `${aktywnaLekcja.HourFrom} - ${aktywnaLekcja.HourTo}`,
-                                        subject: aktywnaLekcja.Subject?.Name || aktywnaLekcja.Subject?.Short || 'Zajęcia',
-                                        // Classroom zazwyczaj ma format ID w API v2, bezpieczne wyswietlanie awaryjne
-                                        room: aktywnaLekcja.Classroom?.Name || aktywnaLekcja.Classroom?.Id ? `Sala ${aktywnaLekcja.Classroom.Id}` : '-'
-                                    });
-                                }
-                            }
-                        });
-                    }
-                    setSchedule(planDoWyświetlenia.map((item, idx) => ({ id: idx, ...item })));
-                } else {
-                    setSchedule([]);
-                }
-
-                // Frekwencja
-                if (data.data?.attendance) {
-                    const att = data.data.attendance;
-                    let usp = 0;
-                    let nusp = 0;
-                    let spoz = 0;
-                    let sumaLekcjiWszystkich = 0;
-
-                    if (att.summary && typeof att.summary === 'object') {
-                        for (const [key, val] of Object.entries(att.summary)) {
-                            const k = key.toLowerCase();
-                            sumaLekcjiWszystkich += val; // Suma całkowita wpisów frekwencji ucznia
-
-                            if ((k.includes('usprawiedliwiona') || k.includes('usprawiedliwione')) && !k.includes('nieusprawiedliwion')) {
-                                usp += val;
-                            } else if (k.includes('nieusprawiedliwion') || k.includes('nieobec') || k.includes('zwolnienie')) {
-                                nusp += val;
-                            } else if (k.includes('spóź')) {
-                                spoz += val;
-                            }
-                        }
-                    }
-
-                    // Precyzyjne liczenie procentu – bazując na sumie wszystkich lekcji, jako że Librus zlicza spóźnieni jako obecność
-                    let wyliczonyProcent = 100;
-                    if (sumaLekcjiWszystkich > 0) {
-                        const wagarowanoObecnosci = usp + nusp; // godziny które opuścił fizycznie w szkole
-                        wyliczonyProcent = Math.round(((sumaLekcjiWszystkich - wagarowanoObecnosci) / sumaLekcjiWszystkich) * 100);
-                    }
-
-                    setAttendance({
-                        obecnosc: att.presence_percentage || att.percent || wyliczonyProcent || 100,
-                        spoznienia: att.late_count || spoz || 0,
-                        usprawiedliwione: att.justified_hours || att.excused || usp || 0,
-                        nieusprawiedliwione: att.unjustified_hours || att.unexcused || nusp || 0
-                    })
-                }
-
-                setIsSimulating(false)
-                setIsLoggedIn(true)
-            }, 800)
-
+            setTimeout(() => setSimText('Autoryzacja...'), 800);
+            const data = await fetchLibrusData(loginInput, passInput);
+            await saveCredentials(loginInput, passInput);
+            applyData(data, loginInput);
         } catch (err) {
-            console.error('Librus API Error:', err)
-            setIsSimulating(false)
-            setLoginError(err.message || 'Błąd połączenia. Spróbuj ponownie.')
+            setLoginError(err.message || 'Błąd połączenia. Spróbuj ponownie.');
+        } finally {
+            setIsLoading(false);
         }
-    }
+    };
 
-    if (!isLoggedIn) {
-        return (
-            <div className="pb-10 pt-4 flex flex-col items-center">
-                <div className="text-center mb-8">
-                    <div className="bg-[#e91e63]/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#e91e63]/50 shadow-[0_0_20px_rgba(233,30,99,0.3)]">
-                        <Lock className="text-[#e91e63]" size={36} />
-                    </div>
-                    <h2 className="text-2xl font-bold text-white mb-2">Librus Synergia</h2>
-                    <p className="text-gray-400 text-sm px-4">Zaloguj się kontem szkolnym, aby pobrać oceny, plan lekcji i frekwencję bezpośrednio z dziennika.</p>
+    const handleLogout = () => {
+        clearCredentials();
+        setIsLoggedIn(false);
+        setGrades([]); setTimetable({}); setSavedLogin('');
+        setAttendance({ percent: 100, grouped: {}, records: [], total: 0 });
+    };
+
+    const handleRefresh = async () => {
+        const creds = await loadCredentials();
+        if (!creds) return;
+        setSimText('Odświeżam...');
+        setIsLoading(true);
+        try {
+            const data = await fetchLibrusData(creds.login, creds.pass);
+            applyData(data, creds.login);
+        } catch (err) {
+            setLoginError('Błąd odświeżania: ' + err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // ── Grupowanie ocen po przedmiocie ────────────────────────────────
+    const gradesBySubject = grades.reduce((acc, g) => {
+        if (!acc[g.subject]) acc[g.subject] = [];
+        acc[g.subject].push(g);
+        return acc;
+    }, {});
+
+    // ── Plan lekcji dla wybranego dnia ────────────────────────────────
+    const selectedDate = toISO(weekDays[selectedDayIdx]);
+    const daySchedule = (() => {
+        const dayData = timetable[selectedDate];
+        if (!dayData || !Array.isArray(dayData)) return [];
+        const lessons = [];
+        dayData.forEach(slot => {
+            if (Array.isArray(slot) && slot.length > 0) {
+                const l = slot[0];
+                if (l?.Subject && l?.HourFrom) {
+                    lessons.push({
+                        time: `${l.HourFrom} – ${l.HourTo || ''}`,
+                        subject: l.Subject?.Name || l.Subject?.Short || 'Lekcja',
+                        room: l.Classroom?.Name || (l.Classroom?.Id ? `Sala ${l.Classroom.Id}` : ''),
+                        isCancelled: l.IsCancelled || false,
+                        isSubstitution: l.IsSubstitution || false,
+                    });
+                }
+            }
+        });
+        return lessons;
+    })();
+
+    // ═══════════════ EKRANY ════════════════════════════════════════════
+
+    // Ładowanie przy auto-logowaniu
+    if (isAutoLogging) return (
+        <div className="flex flex-col items-center justify-center py-32 gap-4">
+            <Loader2 className="animate-spin text-[#e91e63]" size={40} />
+            <p className="text-[#e91e63] font-bold text-sm animate-pulse">{simText}</p>
+        </div>
+    );
+
+    // Ekran logowania
+    if (!isLoggedIn) return (
+        <div className="pb-10 pt-4 flex flex-col items-center">
+            <div className="text-center mb-8">
+                <div className="bg-[#e91e63]/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#e91e63]/50 shadow-[0_0_20px_rgba(233,30,99,0.3)]">
+                    <Lock className="text-[#e91e63]" size={36} />
                 </div>
-
-                <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
-                    {isSimulating && (
-                        <div className="absolute inset-0 bg-surface/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
-                            <Loader2 className="animate-spin text-[#e91e63]" size={40} />
-                            <div className="text-[#e91e63] font-bold text-sm animate-pulse text-center px-4">{simText}</div>
-                        </div>
-                    )}
-
-                    {loginError && (
-                        <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-3 rounded-xl mb-4 flex items-center gap-2">
-                            <AlertCircle size={16} className="shrink-0" />
-                            {loginError}
-                        </div>
-                    )}
-
-                    <input
-                        type="text"
-                        placeholder="Login Librusa (np. 12194674u)"
-                        required
-                        autoComplete="off"
-                        className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-4 outline-none focus:border-[#e91e63] transition"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Hasło do dziennika"
-                        required
-                        className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-6 outline-none focus:border-[#e91e63] transition"
-                        value={loginPass}
-                        onChange={(e) => setLoginPass(e.target.value)}
-                    />
-                    <button type="submit" disabled={isSimulating} className="w-full bg-[#e91e63] text-white font-bold py-4 rounded-xl shadow-[0_4px_15px_rgba(233,30,99,0.4)] transition hover:bg-[#d81b60] active:scale-95 disabled:opacity-50">
-                        Zaloguj & Pobierz Dane
-                    </button>
-                    <p className="mt-4 text-[10px] text-center text-gray-600 uppercase font-bold tracking-wider">Połączenie szyfrowane End-To-End</p>
-                </form>
+                <h2 className="text-2xl font-bold text-white mb-2">Librus Synergia</h2>
+                <p className="text-gray-400 text-sm px-4">Zaloguj się kontem szkolnym. Dane logowania zostaną bezpiecznie zaszyfrowane.</p>
             </div>
-        )
-    }
 
+            <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
+                {isLoading && (
+                    <div className="absolute inset-0 bg-surface/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="animate-spin text-[#e91e63]" size={40} />
+                        <div className="text-[#e91e63] font-bold text-sm animate-pulse text-center">{simText}</div>
+                    </div>
+                )}
+                {loginError && (
+                    <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-3 rounded-xl mb-4 flex items-center gap-2">
+                        <AlertCircle size={16} className="shrink-0" />{loginError}
+                    </div>
+                )}
+                <input type="text" placeholder="Login Librusa (np. 12194674u)" required autoComplete="off"
+                    className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-4 outline-none focus:border-[#e91e63] transition"
+                    value={loginInput} onChange={e => setLoginInput(e.target.value)} />
+                <input type="password" placeholder="Hasło do dziennika" required
+                    className="w-full p-4 rounded-xl bg-background border border-gray-700 text-white mb-6 outline-none focus:border-[#e91e63] transition"
+                    value={passInput} onChange={e => setPassInput(e.target.value)} />
+                <button type="submit" disabled={isLoading}
+                    className="w-full bg-[#e91e63] text-white font-bold py-4 rounded-xl shadow-[0_4px_15px_rgba(233,30,99,0.4)] transition hover:bg-[#d81b60] active:scale-95 disabled:opacity-50">
+                    Zaloguj & Pobierz Dane
+                </button>
+                <p className="mt-4 text-[10px] text-center text-gray-600 uppercase font-bold tracking-wider">🔒 Hasło szyfrowane AES-256 lokalnie</p>
+            </form>
+        </div>
+    );
+
+    // ═══════════════ GŁÓWNY WIDOK ══════════════════════════════════════
     return (
         <div className="pb-20 pt-4 max-w-lg mx-auto w-full">
+            {/* Header */}
             <div className="flex justify-between items-center mb-6 px-1">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         <CheckCircle2 size={22} className="text-[#e91e63]" />
                         Dziennik Ucznia
                     </h2>
-                    <span className="text-xs text-gray-400">Zalogowano jako: <span className="text-[#e91e63] font-semibold">{loginEmail}</span></span>
+                    <span className="text-xs text-gray-400">Zalogowano jako: <span className="text-[#e91e63] font-semibold">{savedLogin}</span></span>
                 </div>
-                <button onClick={() => { setIsLoggedIn(false); setGrades([]); setSchedule([]); }} className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition">
-                    <LogOut size={18} />
-                </button>
+                <div className="flex gap-2">
+                    <button onClick={handleRefresh} disabled={isLoading}
+                        className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition disabled:opacity-40">
+                        <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                    </button>
+                    <button onClick={handleLogout}
+                        className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition">
+                        <LogOut size={18} />
+                    </button>
+                </div>
             </div>
 
             {/* Zakładki */}
@@ -216,117 +337,211 @@ export default function Librus() {
                     { id: 'plan', label: 'Plan', icon: Calendar },
                     { id: 'frekwencja', label: 'Frekwencja', icon: PieChart },
                 ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
-                        className={`flex-1 py-3 px-1 text-[13px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === tab.id ? 'bg-[#e91e63] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-                    >
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                        className={`flex-1 py-3 px-1 text-[13px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === tab.id ? 'bg-[#e91e63] text-white shadow-md' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
                         <tab.icon size={15} /> {tab.label}
                     </button>
                 ))}
             </div>
 
-            {/* OCENY */}
+            {/* ━━━━━ OCENY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {activeTab === 'oceny' && (
-                <div className="space-y-3 animate-in fade-in duration-300">
-                    <h4 className="font-bold text-gray-300 pl-1 text-sm uppercase tracking-wider">Wpisy z e-dziennika ({grades.length})</h4>
-                    {grades.length === 0 ? (
+                <div className="space-y-2 animate-in fade-in duration-300">
+                    <h4 className="font-bold text-gray-400 pl-1 text-xs uppercase tracking-wider mb-3">
+                        Wszystkie oceny ({grades.length}) — pogrupowane wg. przedmiotu
+                    </h4>
+                    {Object.entries(gradesBySubject).map(([subject, gs]) => {
+                        const isOpen = openSubject === subject;
+                        const latest = gs[0];
+                        return (
+                            <div key={subject} className="bg-surface border border-gray-800 rounded-xl overflow-hidden">
+                                <button
+                                    onClick={() => setOpenSubject(isOpen ? null : subject)}
+                                    className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-white/[0.03] transition">
+                                    <div className="flex items-center gap-3 text-left">
+                                        <div className="w-1 h-8 rounded-full bg-[#e91e63]/60 shrink-0" />
+                                        <div>
+                                            <div className="font-bold text-white text-[14px]">{subject}</div>
+                                            <div className="text-[11px] text-gray-500">{gs.length} ocen{gs.length === 1 ? 'a' : gs.length < 5 ? 'y' : ''}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className="text-[22px] font-black text-[#e91e63]">{latest.grade}</span>
+                                        <span className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>▾</span>
+                                    </div>
+                                </button>
+                                {isOpen && (
+                                    <div className="border-t border-gray-800 divide-y divide-gray-800/50">
+                                        {gs.map((g, idx) => (
+                                            <div key={idx} className="px-4 py-3 flex items-center justify-between">
+                                                <div className="flex-1 min-w-0 pr-3">
+                                                    <div className="text-[13px] text-gray-300 truncate">{g.category}</div>
+                                                    {g.date && (
+                                                        <div className="text-[11px] text-gray-600 mt-0.5">
+                                                            {new Date(g.date).toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                            <span className="ml-2 text-gray-700">Semestr {g.semester}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span className="text-[20px] font-black text-[#e91e63] shrink-0">{g.grade}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                    {grades.length === 0 && (
                         <div className="text-center text-gray-500 py-16">
                             <BookOpen size={48} className="mx-auto mb-4 text-gray-800" />
-                            Brak ocen w systemie lub Librus ograniczył dostęp do danych.
+                            Brak ocen w systemie.
                         </div>
-                    ) : grades.map((g) => (
-                        <div key={g.id} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between hover:border-[#e91e63]/40 transition">
-                            <div className="flex items-center gap-3">
-                                <div className="w-1 self-stretch rounded-full bg-[#e91e63]/50" />
-                                <div>
-                                    <h5 className="font-bold text-white text-[15px] leading-snug">{g.subject}</h5>
-                                    <span className="text-xs text-gray-500">{g.desc}</span>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <span className="text-[26px] font-black text-[#e91e63] leading-none">{g.grade}</span>
-                            </div>
-                        </div>
-                    ))}
+                    )}
                 </div>
             )}
 
-            {/* PLAN LEKCJI */}
+            {/* ━━━━━ PLAN LEKCJI ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {activeTab === 'plan' && (
-                <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden shadow-lg animate-in fade-in duration-300">
-                    <div className="bg-background border-b border-gray-800 p-4 flex justify-between items-center">
-                        <span className="font-bold text-white flex items-center gap-2"><Calendar size={18} className="text-[#e91e63]" /> Plan zajęć</span>
-                        <span className="text-xs text-[#e91e63] bg-[#e91e63]/10 px-3 py-1 rounded-full font-bold uppercase">Dzisiaj</span>
+                <div className="animate-in fade-in duration-300">
+                    {/* Nawigacja tygodnia */}
+                    <div className="flex items-center justify-between mb-3">
+                        <button onClick={() => setWeekOffset(w => w - 1)}
+                            className="bg-gray-800 p-2 rounded-xl text-gray-400 hover:text-white transition">
+                            <ChevronLeft size={20} />
+                        </button>
+                        <span className="text-sm font-bold text-gray-300">
+                            {weekOffset === 0 ? 'Bieżący tydzień' : weekOffset === 1 ? 'Następny tydzień' : weekOffset === -1 ? 'Poprzedni tydzień' : `${weekOffset > 0 ? '+' : ''}${weekOffset} tyg.`}
+                        </span>
+                        <button onClick={() => setWeekOffset(w => w + 1)}
+                            className="bg-gray-800 p-2 rounded-xl text-gray-400 hover:text-white transition">
+                            <ChevronRight size={20} />
+                        </button>
                     </div>
-                    <div className="divide-y divide-gray-800/50">
-                        {schedule.length === 0 ? (
-                            <div className="p-10 flex flex-col items-center text-center text-gray-500 text-sm gap-3">
-                                <Calendar size={40} className="text-gray-800" />
-                                Brak planu zajęć lub API Librusa nie zwróciło danych harmonogramu.
-                            </div>
-                        ) : schedule.map(lesson => (
-                            <div key={lesson.id} className="p-4 flex items-center gap-4 hover:bg-white/[0.02] transition">
-                                <div className="w-20 shrink-0 text-xs font-mono text-gray-500 border-r border-gray-800 pr-3">
-                                    <Clock size={12} className="mb-1 text-gray-600" />
-                                    {lesson.time.split(' - ')[0]}<br />
-                                    <span className="text-gray-700">{lesson.time.split(' - ')[1]}</span>
+
+                    {/* Selektor dni */}
+                    <div className="flex gap-1.5 mb-4">
+                        {weekDays.map((d, i) => {
+                            const iso = toISO(d);
+                            const hasPlan = timetable[iso] && Array.isArray(timetable[iso]) && timetable[iso].some(s => Array.isArray(s) && s.length > 0 && s[0]?.Subject);
+                            const isToday = iso === toISO(new Date());
+                            return (
+                                <button key={i} onClick={() => setSelectedDayIdx(i)}
+                                    className={`flex-1 py-2 rounded-xl text-center transition flex flex-col items-center gap-0.5 border ${selectedDayIdx === i ? 'bg-[#e91e63] border-[#e91e63] text-white' : isToday ? 'border-[#e91e63]/40 bg-[#e91e63]/10 text-[#e91e63]' : 'border-gray-800 bg-surface text-gray-400 hover:text-white hover:bg-gray-800'}`}>
+                                    <span className="text-[11px] font-bold">{SHORT_DAY[i]}</span>
+                                    <span className="text-[13px] font-black">{d.getDate()}</span>
+                                    {hasPlan && <div className={`w-1.5 h-1.5 rounded-full ${selectedDayIdx === i ? 'bg-white' : 'bg-[#e91e63]'}`} />}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Lista lekcji */}
+                    <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden">
+                        <div className="bg-background border-b border-gray-800 px-4 py-3 flex items-center justify-between">
+                            <span className="font-bold text-white flex items-center gap-2">
+                                <Calendar size={16} className="text-[#e91e63]" />
+                                {FULL_DAY[selectedDayIdx]}, {weekDays[selectedDayIdx].toLocaleDateString('pl-PL', { day: '2-digit', month: 'long' })}
+                            </span>
+                            <span className="text-xs text-gray-500">{daySchedule.length} lekcji</span>
+                        </div>
+                        <div className="divide-y divide-gray-800/50">
+                            {daySchedule.length === 0 ? (
+                                <div className="p-10 flex flex-col items-center text-center text-gray-500 text-sm gap-3">
+                                    <Calendar size={40} className="text-gray-800" />
+                                    <p>Brak zajęć tego dnia.<br /><span className="text-gray-600 text-xs">Wybierz inny dzień lub tydzień.</span></p>
                                 </div>
-                                <div>
-                                    <div className="font-bold text-white">{lesson.subject}</div>
-                                    <div className="text-xs text-[#e91e63] font-semibold mt-0.5">{lesson.room}</div>
+                            ) : daySchedule.map((lesson, idx) => (
+                                <div key={idx} className={`p-4 flex items-center gap-4 transition ${lesson.isCancelled ? 'opacity-40' : 'hover:bg-white/[0.02]'}`}>
+                                    <div className="w-16 shrink-0 text-center">
+                                        <div className="text-xs font-bold text-[#e91e63]">{lesson.time.split('–')[0].trim()}</div>
+                                        <div className="text-[10px] text-gray-600">{lesson.time.split('–')[1]?.trim()}</div>
+                                    </div>
+                                    <div className="w-px h-10 bg-gray-800" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className={`font-bold text-sm ${lesson.isCancelled ? 'line-through text-gray-500' : 'text-white'}`}>{lesson.subject}</div>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            {lesson.room && <span className="text-xs text-gray-500">{lesson.room}</span>}
+                                            {lesson.isSubstitution && <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-bold">Zastępstwo</span>}
+                                            {lesson.isCancelled && <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-bold">Odwołane</span>}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* FREKWENCJA */}
+            {/* ━━━━━ FREKWENCJA ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
             {activeTab === 'frekwencja' && (
-                <div className="bg-surface border border-gray-800 rounded-xl p-6 shadow-lg animate-in fade-in duration-300">
-                    <h4 className="font-bold text-white mb-8 flex items-center gap-2">
-                        <PieChart size={20} className="text-[#e91e63]" /> Raport Semestralny Frekwencji
-                    </h4>
-
-                    <div className="flex flex-col items-center justify-center mb-8 relative">
-                        <svg viewBox="0 0 36 36" className="w-40 h-40 drop-shadow-[0_0_15px_rgba(233,30,99,0.25)]">
-                            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1f2937" strokeWidth="2.5" />
-                            <path
-                                strokeDasharray={`${attendance.obecnosc}, 100`}
-                                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                fill="none" stroke="#e91e63" strokeWidth="3" strokeLinecap="round"
-                            />
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                            <span className="text-[38px] font-black text-white">{attendance.obecnosc}%</span>
-                            <span className="text-[10px] text-[#e91e63] uppercase font-bold tracking-widest">Obecność</span>
+                <div className="animate-in fade-in duration-300 space-y-4">
+                    {/* Kółko */}
+                    <div className="bg-surface border border-gray-800 rounded-xl p-6">
+                        <h4 className="font-bold text-white mb-6 flex items-center gap-2">
+                            <PieChart size={20} className="text-[#e91e63]" /> Obecność ogólna
+                        </h4>
+                        <div className="flex flex-col items-center justify-center mb-6 relative">
+                            <svg viewBox="0 0 36 36" className="w-36 h-36 drop-shadow-[0_0_15px_rgba(233,30,99,0.25)]">
+                                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#1f2937" strokeWidth="2.5" />
+                                <path strokeDasharray={`${attendance.percent}, 100`}
+                                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                    fill="none" stroke="#e91e63" strokeWidth="3" strokeLinecap="round" />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                <span className="text-[36px] font-black text-white">{attendance.percent}%</span>
+                                <span className="text-[10px] text-[#e91e63] uppercase font-bold tracking-widest">Obecność</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center">
-                            <div className="text-2xl font-black text-yellow-500 mb-1">{attendance.spoznienia}</div>
-                            <div className="text-[10px] font-bold text-gray-500 uppercase">Spóźnienia</div>
+                    {/* Szczegóły wpisów */}
+                    {Object.entries(attendance.grouped || {}).length > 0 && (
+                        <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden">
+                            <div className="bg-background border-b border-gray-800 px-4 py-3 text-sm font-bold text-white">Szczegóły wpisów</div>
+                            <div className="divide-y divide-gray-800/50">
+                                {Object.entries(attendance.grouped).map(([type, count]) => {
+                                    const k = type.toLowerCase();
+                                    const color = k.includes('nieobecn') && !k.includes('uspraw') ? 'text-red-400'
+                                        : k.includes('uspraw') || k.includes('zwolnien') ? 'text-blue-400'
+                                            : k.includes('spóźni') || k.includes('spozni') ? 'text-yellow-400'
+                                                : 'text-green-400';
+                                    return (
+                                        <div key={type} className="px-4 py-3 flex items-center justify-between">
+                                            <span className="text-sm text-gray-300">{type}</span>
+                                            <span className={`text-lg font-black ${color}`}>{count}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center">
-                            <div className="text-2xl font-black text-blue-400 mb-1">{attendance.usprawiedliwione}</div>
-                            <div className="text-[10px] font-bold text-gray-500 uppercase">Usprawiedl.</div>
-                        </div>
-                        <div className="bg-background border border-gray-800 rounded-xl p-4 text-center">
-                            <div className="text-2xl font-black text-red-400 mb-1">{attendance.nieusprawiedliwione}</div>
-                            <div className="text-[10px] font-bold text-gray-500 uppercase">Nieuspraw.</div>
-                        </div>
-                    </div>
+                    )}
 
-                    {attendance.nieusprawiedliwione === 0 && attendance.obecnosc > 0 && (
-                        <div className="mt-5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm p-4 rounded-xl flex items-center gap-3">
-                            <CheckCircle2 size={22} className="shrink-0" />
-                            <span><span className="font-bold text-emerald-400">Konto wzorowe!</span> Nie masz nieusprawiedliwionych nieobecności.</span>
+                    {/* Ostatnie wpisy */}
+                    {attendance.records?.length > 0 && (
+                        <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden">
+                            <div className="bg-background border-b border-gray-800 px-4 py-3 text-sm font-bold text-white">Ostatnie wpisy ({Math.min(attendance.records.length, 20)})</div>
+                            <div className="divide-y divide-gray-800/50">
+                                {attendance.records.slice(0, 20).map((r, i) => {
+                                    const k = (r.type || '').toLowerCase();
+                                    const dot = k.includes('nieobecn') && !k.includes('uspraw') ? 'bg-red-400'
+                                        : k.includes('uspraw') || k.includes('zwolnien') ? 'bg-blue-400'
+                                            : k.includes('spóźni') ? 'bg-yellow-400' : 'bg-green-400';
+                                    return (
+                                        <div key={i} className="px-4 py-3 flex items-center gap-3">
+                                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+                                            <div className="flex-1">
+                                                <div className="text-sm text-gray-300">{r.type}</div>
+                                                <div className="text-[11px] text-gray-600">Lekcja {r.lessonNo}</div>
+                                            </div>
+                                            <div className="text-xs text-gray-500 shrink-0">{r.date}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>
             )}
         </div>
-    )
+    );
 }
