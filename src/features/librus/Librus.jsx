@@ -148,7 +148,8 @@ export default function Librus() {
             setIsAutoLogging(true);
             setSimText('Odświeżam dane z dziennika...');
             try {
-                const data = await fetchLibrusData(creds.login, creds.pass);
+                const weekStartIso = toISO(getWeekDays(0)[0]);
+                const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
                 applyData(data, creds.login);
             } catch (err) {
                 console.error('Auto-login failed:', err);
@@ -200,7 +201,8 @@ export default function Librus() {
         setLoginError('');
         try {
             setTimeout(() => setSimText('Autoryzacja...'), 800);
-            const data = await fetchLibrusData(loginInput, passInput);
+            const weekStartIso = toISO(getWeekDays(0)[0]);
+            const data = await fetchLibrusData(loginInput, passInput, weekStartIso);
             await saveCredentials(loginInput, passInput);
             applyData(data, loginInput);
         } catch (err) {
@@ -223,7 +225,8 @@ export default function Librus() {
         setSimText('Odświeżam...');
         setIsLoading(true);
         try {
-            const data = await fetchLibrusData(creds.login, creds.pass);
+            const weekStartIso = toISO(getWeekDays(0)[0]);
+            const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
             applyData(data, creds.login);
         } catch (err) {
             setLoginError('Błąd odświeżania: ' + err.message);
