@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { CheckCircle2, Lock, Loader2, BookOpen, Calendar, PieChart, Clock, LogOut, AlertCircle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 
 // ─── AES-256-GCM helpers ───────────────────────────────────────────────────
@@ -550,6 +550,95 @@ export default function Librus() {
                         <div className="mt-4 text-[11px] text-gray-600 text-center">
                             Razem: {attendance.total || 0} godzin lekcyjnych w roku szkolnym
                         </div>
+
+                        {/* Szczegółowy wykaz nieobecności */}
+                        {(() => {
+                            const groupedAbsences = { 1: {}, 2: {} };
+                            let hasAbsences = false;
+
+                            if (attendance.records) {
+                                attendance.records.forEach(r => {
+                                    const k = (r.type || '').toLowerCase();
+                                    const isPresence = k.includes('obecność') && !k.includes('nieobecn');
+                                    if (isPresence) return;
+
+                                    const isAbsent = k.includes('nieobecn') && !k.includes('uspr');
+                                    const isExcused = (k.includes('uspr') || k.includes('zwolnien')) && !k.includes('nieuspraw');
+                                    const isLate = k.includes('spóźni') || k.includes('spozni');
+
+                                    let mappedType = '';
+                                    if (isAbsent) mappedType = 'Nieobecność';
+                                    else if (isExcused) mappedType = 'Nieob. usprawiedliwiona';
+                                    else if (isLate) mappedType = 'Spóźnienie';
+                                    else return;
+
+                                    const sem = r.semester || 1;
+                                    const sub = r.subject || 'Nieznany przedmiot';
+
+                                    if (!groupedAbsences[sem]) groupedAbsences[sem] = {};
+                                    if (!groupedAbsences[sem][sub]) groupedAbsences[sem][sub] = {};
+                                    if (!groupedAbsences[sem][sub][mappedType]) groupedAbsences[sem][sub][mappedType] = 0;
+
+                                    groupedAbsences[sem][sub][mappedType]++;
+                                    hasAbsences = true;
+                                });
+                            }
+
+                            if (!hasAbsences) return null;
+
+                            return (
+                                <div className="mt-8 border-t border-gray-800 pt-6">
+                                    <h5 className="font-bold text-gray-300 mb-6 text-sm flex items-center gap-2">
+                                        <Clock size={16} className="text-[#e91e63]" /> Szczegóły nieobecności
+                                    </h5>
+                                    <div className="flex flex-col gap-6">
+                                        {[1, 2].map(sem => {
+                                            const subjects = groupedAbsences[sem] || {};
+                                            if (Object.keys(subjects).length === 0) return null;
+
+                                            return (
+                                                <div key={sem} className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden">
+                                                    <div className="bg-gray-800/50 px-4 py-2 border-b border-gray-800">
+                                                        <span className="text-xs font-black tracking-widest text-[#e91e63] uppercase">
+                                                            Semestr {sem}
+                                                        </span>
+                                                    </div>
+                                                    <div className="divide-y divide-gray-800/50">
+                                                        {Object.entries(subjects).map(([subName, types]) => (
+                                                            <div key={subName} className="p-4">
+                                                                <div className="font-bold text-sm text-gray-200 mb-2">{subName}</div>
+                                                                <div className="flex flex-col gap-1.5">
+                                                                    {Object.entries(types).map(([typeName, count]) => {
+                                                                        const isAbs = typeName === 'Nieobecność';
+                                                                        const isExc = typeName === 'Nieob. usprawiedliwiona';
+                                                                        const isLat = typeName === 'Spóźnienie';
+
+                                                                        const dotColor = isAbs ? 'bg-red-400' : isExc ? 'bg-blue-400' : 'bg-yellow-400';
+                                                                        const textColor = isAbs ? 'text-red-400' : isExc ? 'text-blue-400' : 'text-yellow-400';
+
+                                                                        return (
+                                                                            <div key={typeName} className="flex items-center justify-between text-xs">
+                                                                                <div className="flex items-center gap-2 text-gray-400">
+                                                                                    <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                                                                                    {typeName}
+                                                                                </div>
+                                                                                <div className={`font-bold ${textColor}`}>
+                                                                                    {count} {count === 1 ? 'raz' : 'razy'}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
