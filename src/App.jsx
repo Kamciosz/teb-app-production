@@ -4,7 +4,7 @@ import { Home, LayoutGrid, User, ShieldAlert } from 'lucide-react'
 import { supabase, signInWithEmail, signUpWithEmail } from './services/supabase'
 
 import Feed from './features/feed/Feed'
-import Vinted from './features/vinted/Vinted'
+import ReWear from './features/rewear/ReWear'
 import Librus from './features/librus/Librus'
 import Admin from './features/admin/Admin'
 import Features from './features/features/Features'
@@ -187,7 +187,7 @@ function App() {
                             <Route path="/" element={<Feed />} />
                             <Route path="/features" element={<Features />} />
                             <Route path="/profile" element={<Profile />} />
-                            <Route path="/vinted" element={<Vinted />} />
+                            <Route path="/rewear" element={<ReWear />} />
                             <Route path="/librus" element={<Librus />} />
                             <Route path="/admin" element={<Admin />} />
                         </Routes>

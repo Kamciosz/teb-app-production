@@ -35,19 +35,18 @@ export default function Feed() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        // Uratowanie się brakiem migracji SQL: Zapisujemy złożony artykuł jako obiekt JSON w polu 'content'
-        const payload = JSON.stringify({
-            title: articleTitle,
-            html: articleHtml,
-            category: articleCategory
-        })
-
         const { error } = await supabase.from('feed_posts').insert([
-            { author_id: session.user.id, content: payload }
+            {
+                author_id: session.user.id,
+                title: articleTitle,
+                content: articleHtml,
+                category: articleCategory
+            }
         ])
 
         if (error) {
-            alert("Brak uprawnień. Zgłoś problem z tabelą 'feed_posts' zarządowi!")
+            console.error(error)
+            alert("Brak uprawnień. Zgłoś problem z tabelą 'feed_posts' zarządowi! (" + error.message + ")")
         } else {
             setIsModalOpen(false)
             setArticleTitle('')
@@ -61,11 +60,13 @@ export default function Feed() {
         if (!error) fetchPosts()
     }
 
-    const parseContent = (raw) => {
+    const getPostData = (post) => {
+        // Zgodność wsteczna z JSONem starych tabel oraz nową architekturą Supabase Beta-3.0
+        if (post.title) return { title: post.title, html: post.content, category: post.category }
         try {
-            return JSON.parse(raw)
+            return JSON.parse(post.content)
         } catch {
-            return { title: "Wiadomość tekstowa", html: `<p>${raw}</p>`, category: "Społeczność" }
+            return { title: "Wiadomość tekstowa", html: `<p>${post.content}</p>`, category: "Społeczność" }
         }
     }
 
@@ -96,14 +97,14 @@ export default function Feed() {
             ) : (
                 <div className="flex flex-col gap-6">
                     {posts.map(post => {
-                        const parsed = parseContent(post.content)
+                        const parsed = getPostData(post)
                         const isAdmin = post.profiles?.role === 'admin'
                         return (
                             <article key={post.id} className="bg-surface rounded-2xl border border-gray-800 shadow-xl overflow-hidden flex flex-col">
                                 {/* Opcjonalny nagłówek artykułu "w stylu Onet", np obrazek, ale na razie pasek kategorii */}
                                 <div className="px-5 py-3 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a]">
                                     <span className={`text-xs font-bold px-2 py-1 rounded-md ${parsed.category === 'Pilne' ? 'bg-red-500/20 text-red-500' : 'bg-primary/20 text-primary'}`}>
-                                        {parsed.category.toUpperCase()}
+                                        {parsed.category?.toUpperCase() || 'NEWS'}
                                     </span>
                                     <span className="text-xs text-gray-500">{new Date(post.created_at).toLocaleDateString()}</span>
                                 </div>

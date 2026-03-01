@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Plus, X, Search, Filter, Camera, Tag } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 
-export default function Vinted() {
+export default function ReWear() {
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -24,7 +24,7 @@ export default function Vinted() {
 
     async function fetchItems() {
         const { data, error } = await supabase
-            .from('vinted_items')
+            .from('rewear_posts')
             .select('*, profiles(full_name)')
             .eq('status', 'active')
             .order('created_at', { ascending: false })
@@ -40,21 +40,31 @@ export default function Vinted() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        // Uratowanie tabeli przed brakiem definicji zaawansowanych. Paczkujemy struktury Vinted do JSON
-        const payload = JSON.stringify({
-            title: newItemTitle,
-            desc: newItemDesc,
+        // Formowanie pełnego opisu zawierającego też dodatkowe dane (stan, kategoria) do JSON by zachować stary ład filtrów
+        const extraDesc = JSON.stringify({
             category: newItemCategory,
             condition: newItemCondition,
             size: newItemCategory === 'Ubrania' ? newItemSize : null
         })
 
-        const { error } = await supabase.from('vinted_items').insert([
-            { seller_id: session.user.id, title: payload, price: parseFloat(newItemPrice) || 0 }
+        // Definicja Typu RLS na podstawie kategorii
+        let dbItemType = 'item'
+        if (newItemCategory === 'Korepetycje') dbItemType = 'tutoring'
+        if (newItemCategory === 'Usługi') dbItemType = 'service'
+
+        const { error } = await supabase.from('rewear_posts').insert([
+            {
+                seller_id: session.user.id,
+                title: newItemTitle,
+                description: newItemDesc + " |META:" + extraDesc,
+                price_teb_gabki: parseFloat(newItemPrice) || 0,
+                item_type: dbItemType
+            }
         ])
 
         if (error) {
-            alert("Błąd integracji z rynkiem. Jeśli Supabase zwraca 404, musisz dobudować tabele SQL!")
+            console.error(error)
+            alert("Brak uprawnień. Usługi (Korepetycje) wymagają rangi Korepetytor od SU! Zwykłe przedmioty wstawisz swobodnie.")
         } else {
             setIsModalOpen(false)
             setNewItemTitle('')
@@ -64,25 +74,32 @@ export default function Vinted() {
         }
     }
 
-    const parseTitle = (rawTitle) => {
-        try {
-            return JSON.parse(rawTitle)
-        } catch {
-            return { title: rawTitle, desc: "Brak ustalonego opisu", category: "Inne", condition: "?", size: null }
+    const parseDescription = (desc) => {
+        if (!desc) return { category: "Inne", condition: "?", size: null }
+        if (desc.includes('|META:')) {
+            try {
+                return JSON.parse(desc.split('|META:')[1])
+            } catch { return { category: "Inne", condition: "?", size: null } }
         }
+        return { category: "Inne", condition: "?", size: null }
+    }
+
+    const cleanDescription = (desc) => {
+        if (!desc) return "Brak opisu"
+        return desc.split('|META:')[0]
     }
 
     // Aplikacja Filtrów
     const filteredItems = items.filter(item => {
         if (activeFilter === 'Wszystko') return true;
-        const parsed = parseTitle(item.title)
-        return parsed.category === activeFilter;
+        const meta = parseDescription(item.description)
+        return meta.category === activeFilter;
     })
 
     return (
         <div className="relative min-h-[80vh] pb-10">
             <div className="flex justify-between items-center mb-4 px-2">
-                <h2 className="text-2xl font-bold text-white tracking-tight">TEB Vinted</h2>
+                <h2 className="text-2xl font-bold text-white tracking-tight">Re-Wear</h2>
                 <div className="bg-surface border border-gray-700 p-2 rounded-full flex gap-2">
                     <Search className="text-gray-400" size={20} />
                     <Filter className="text-primary" size={20} />
@@ -91,7 +108,7 @@ export default function Vinted() {
 
             {/* Pasek Filtrów */}
             <div className="flex overflow-x-auto gap-2 pb-4 px-2 scrollbar-none mb-2">
-                {['Wszystko', 'Ubrania', 'Elektronika', 'Książki', 'Inne'].map(cat => (
+                {['Wszystko', 'Ubrania', 'Elektronika', 'Książki', 'Korepetycje', 'Usługi', 'Inne'].map(cat => (
                     <button
                         key={cat} onClick={() => setActiveFilter(cat)}
                         className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-bold transition ${activeFilter === cat ? 'bg-primary text-white shadow-[0_4px_10px_rgba(59,130,246,0.3)]' : 'bg-surface text-gray-400 border border-gray-800'}`}
@@ -102,32 +119,32 @@ export default function Vinted() {
             </div>
 
             {loading ? (
-                <div className="text-center text-gray-500 mt-10 animate-pulse">Przeszukiwanie szkolnych plecaków...</div>
+                <div className="text-center text-gray-500 mt-10 animate-pulse">Przeszukiwanie szkolnych ofert...</div>
             ) : (
                 <div className="grid grid-cols-2 gap-3 px-1">
                     {filteredItems.map(item => {
-                        const info = parseTitle(item.title)
+                        const meta = parseDescription(item.description)
                         return (
                             <div key={item.id} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col">
                                 <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative">
                                     <Camera className="text-gray-700 mb-2" size={32} />
                                     <span className="text-gray-600 font-bold text-xs">Aparat wyłączony</span>
                                     <div className="absolute top-2 right-2 bg-black/80 backdrop-blur px-2 py-0.5 rounded text-[10px] text-white font-bold border border-gray-700 flex items-center gap-1">
-                                        <Tag size={10} className="text-primary" /> {info.condition}
+                                        <Tag size={10} className="text-primary" /> {meta.condition}
                                     </div>
-                                    {info.size && (
+                                    {meta.size && (
                                         <div className="absolute bottom-2 left-2 bg-background/90 px-2 py-1 rounded text-[10px] text-white font-bold border border-gray-700">
-                                            {info.size}
+                                            {meta.size}
                                         </div>
                                     )}
                                 </div>
                                 <div className="p-3 flex flex-col grow justify-between">
                                     <div>
-                                        <div className="text-lg font-bold text-white leading-tight mb-1 truncate">{info.title}</div>
-                                        <div className="text-xs text-gray-400 mb-2 truncate">{info.desc}</div>
+                                        <div className="text-lg font-bold text-white leading-tight mb-1 truncate">{item.title}</div>
+                                        <div className="text-xs text-gray-400 mb-2 truncate">{cleanDescription(item.description)}</div>
                                     </div>
                                     <div className="flex justify-between items-end mt-2">
-                                        <div className="text-xl font-bold text-primary">{item.price} PLN</div>
+                                        <div className="text-xl font-bold text-primary">{item.price_teb_gabki} TG</div>
                                         <div className="text-[10px] text-gray-500 max-w-[50%] truncate text-right">{item.profiles?.full_name}</div>
                                     </div>
                                 </div>
@@ -135,7 +152,7 @@ export default function Vinted() {
                         )
                     })}
 
-                    {filteredItems.length === 0 && <div className="col-span-2 text-center text-gray-500 mt-10 p-8 border border-gray-800 rounded-2xl border-dashed">Brak ofert w tej kategorii. Sprzedaj coś!</div>}
+                    {filteredItems.length === 0 && <div className="col-span-2 text-center text-gray-500 mt-10 p-8 border border-gray-800 rounded-2xl border-dashed">Brak ofert w tej kategorii. Zostań pierwszym!</div>}
                 </div>
             )}
 
@@ -190,17 +207,19 @@ export default function Vinted() {
                                         <option>Ubrania</option>
                                         <option>Elektronika</option>
                                         <option>Książki</option>
+                                        <option>Korepetycje</option>
+                                        <option>Usługi</option>
                                         <option>Inne</option>
                                     </select>
                                 </div>
                                 <div className="relative">
                                     <label className="text-xs text-gray-400 font-bold mb-1 block">Cena</label>
                                     <input
-                                        type="number" step="0.01" placeholder="0.00" required
-                                        className="p-3 w-full border border-gray-700 bg-background rounded-xl text-white outline-none focus:border-primary font-bold text-primary pl-12"
+                                        type="number" step="1" placeholder="0" required
+                                        className="p-3 w-full border border-gray-700 bg-background rounded-xl text-white outline-none focus:border-primary font-bold text-primary pl-10"
                                         value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)}
                                     />
-                                    <span className="absolute left-3 top-8 text-gray-500 font-bold pt-0.5">PLN</span>
+                                    <span className="absolute left-3 top-8 text-gray-500 font-bold pt-0.5">TG</span>
                                 </div>
                             </div>
 

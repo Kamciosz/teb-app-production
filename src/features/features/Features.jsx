@@ -11,14 +11,14 @@ export default function Features() {
             </div>
 
             <div className="flex flex-col gap-4">
-                <Link to="/vinted" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition hover:border-primary">
+                <Link to="/rewear" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition hover:border-primary">
                     <div className="flex items-center gap-4">
                         <div className="bg-primary/20 p-3 rounded-full text-primary">
                             <Store size={24} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-white">TEB Vinted</h3>
-                            <p className="text-xs text-gray-400">Szkolny ryneczek podręczników</p>
+                            <h3 className="font-bold text-white">Re-Wear</h3>
+                            <p className="text-xs text-gray-400">Szkolny ryneczek (towary i usługi)</p>
                         </div>
                     </div>
                     <ChevronRight className="text-gray-600" />
