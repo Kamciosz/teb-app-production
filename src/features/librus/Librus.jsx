@@ -601,9 +601,16 @@ export default function Librus() {
 
                             if (!hasAbsences) return null;
 
-                            // Sortowanie po dacie (od najnowszych)
-                            flatRecords[1].sort((a, b) => new Date(b.date) - new Date(a.date));
-                            flatRecords[2].sort((a, b) => new Date(b.date) - new Date(a.date));
+                            // Sortowanie po dacie i numerze lekcji (od najnowszych)
+                            const sortByDateDesc = (a, b) => {
+                                const diff = new Date(b.date) - new Date(a.date);
+                                if (diff !== 0) return diff;
+                                const lA = parseInt(a.lessonNo) || 0;
+                                const lB = parseInt(b.lessonNo) || 0;
+                                return lB - lA;
+                            };
+                            flatRecords[1].sort(sortByDateDesc);
+                            flatRecords[2].sort(sortByDateDesc);
 
                             return (
                                 <div className="mt-8 border-t border-gray-800 pt-6">
@@ -611,7 +618,7 @@ export default function Librus() {
                                         <Clock size={16} className="text-[#e91e63]" /> Szczegóły nieobecności
                                     </h5>
                                     <div className="flex flex-col gap-6">
-                                        {[1, 2].map(sem => {
+                                        {[2, 1].map(sem => {
                                             const records = flatRecords[sem];
                                             if (records.length === 0) return null;
 
