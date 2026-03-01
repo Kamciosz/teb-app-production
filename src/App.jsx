@@ -9,6 +9,7 @@ import Librus from './features/librus/Librus'
 import Admin from './features/admin/Admin'
 import Features from './features/features/Features'
 import Profile from './features/profile/Profile'
+import InstallPrompt from './components/InstallPrompt'
 
 function App() {
     const [session, setSession] = useState(null)
@@ -180,6 +181,9 @@ function App() {
                             <Route path="/admin" element={<Admin />} />
                         </Routes>
                     </main>
+
+                    {/* Proaktywna opcja instalacji aplikacji na telefon PWA */}
+                    <InstallPrompt />
 
                     {/* Bottom Navigation (Apple / Instagram Style) */}
                     <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-[env(safe-area-inset-bottom,16px)] pt-2 px-6 flex justify-between z-50">
