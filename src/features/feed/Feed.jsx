@@ -10,6 +10,7 @@ export default function Feed() {
     const [posts, setPosts] = useState([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [myRole, setMyRole] = useState('student')
 
     // Nowe stany formularza "Onet"
     const [articleTitle, setArticleTitle] = useState('')
@@ -17,8 +18,17 @@ export default function Feed() {
     const [articleHtml, setArticleHtml] = useState('')
 
     useEffect(() => {
+        checkRole()
         fetchPosts()
     }, [])
+
+    async function checkRole() {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+            const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
+            if (data) setMyRole(data.role)
+        }
+    }
 
     async function fetchPosts() {
         const { data, error } = await supabase
@@ -76,7 +86,7 @@ export default function Feed() {
             [{ 'header': [1, 2, false] }],
             ['bold', 'italic', 'underline', 'strike'],
             [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['link', 'image', 'video'],
+            ['link'], // Ukryto 'image' i 'video' - wymaga integracji Storage w przyszlosci
             ['clean']
         ],
     };
@@ -88,9 +98,11 @@ export default function Feed() {
                     <h2 className="text-2xl font-bold text-white tracking-tight">Wiadomości TEB</h2>
                     <div className="text-xs text-primary font-bold">Oficjalny Portal Szkolny</div>
                 </div>
-                <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition active:scale-95 flex items-center gap-2">
-                    <FileText size={18} /> Redaguj
-                </button>
+                {(myRole === 'admin' || myRole === 'editor' || myRole === 'moderator_content' || myRole === 'moderator_users') && (
+                    <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition active:scale-95 flex items-center gap-2">
+                        <FileText size={18} /> Redaguj
+                    </button>
+                )}
             </div>
 
             {loading ? (

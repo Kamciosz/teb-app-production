@@ -180,10 +180,12 @@ export default function ReWear() {
 
                         <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto">
 
+                            {/* Sekcja zdjęć zarezerwowana do implementacji w Fazie Supabase Storage (Oczekuje w task.md)
                             <div className="h-32 bg-background border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary transition group">
                                 <Camera size={32} className="text-gray-500 group-hover:text-primary transition mb-2" />
                                 <span className="text-xs font-bold text-gray-400 group-hover:text-primary transition">Dodaj do 5 zdjęć (Opcjonalnie)</span>
                             </div>
+                            */}
 
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł ogłoszenia</label>
