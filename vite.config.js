@@ -16,7 +16,8 @@ export default defineConfig({
                 description: 'Szkolna aplikacja społecznościowa TEB Edukacja',
                 theme_color: '#121212',
                 background_color: '#121212',
-                display: 'standalone',
+                display: 'fullscreen',
+                display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
                 orientation: 'portrait',
                 start_url: "/",
                 icons: [
