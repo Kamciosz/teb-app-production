@@ -73,14 +73,46 @@ export default function Feed() {
         }
     }
 
-    async function handleUpvote(postId, currentVotes) {
-        const { error } = await supabase.from('feed_posts').update({ upvotes: (currentVotes || 0) + 1 }).eq('id', postId)
-        if (!error) fetchPosts()
-    }
+    async function handleVote(postId, voteType) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+            alert("Zaloguj się, aby głosować!")
+            return
+        }
 
-    async function handleDownvote(postId, currentVotes) {
-        const { error } = await supabase.from('feed_posts').update({ downvotes: (currentVotes || 0) + 1 }).eq('id', postId)
-        if (!error) fetchPosts()
+        // Sprawdzamy czy użytkownik już głosował w ten sam sposób
+        const { data: existingVote } = await supabase
+            .from('feed_votes')
+            .select('vote_type')
+            .eq('post_id', postId)
+            .eq('user_id', session.user.id)
+            .single()
+
+        if (existingVote && existingVote.vote_type === voteType) {
+            // Jeśli klika to samo drugi raz -> usuwamy głos (unvote)
+            const { error } = await supabase
+                .from('feed_votes')
+                .delete()
+                .eq('post_id', postId)
+                .eq('user_id', session.user.id)
+            if (!error) fetchPosts()
+        } else {
+            // W przeciwnym razie -> upsert (nowy głos lub zmiana typu)
+            const { error } = await supabase
+                .from('feed_votes')
+                .upsert({
+                    post_id: postId,
+                    user_id: session.user.id,
+                    vote_type: voteType
+                }, { onConflict: 'post_id,user_id' })
+
+            if (error) {
+                console.error("Błąd głosowania:", error)
+                alert("Nie udało się oddać głosu: " + error.message)
+            } else {
+                fetchPosts()
+            }
+        }
     }
 
     const imageHandler = () => {
@@ -184,11 +216,11 @@ export default function Feed() {
                                         <div className="flex gap-3 items-center">
                                             <ReportButton entityType="feed_post" entityId={post.id} subtle={true} />
                                             <div className="flex gap-3 items-center bg-background rounded-full px-3 py-1">
-                                                <button onClick={() => handleUpvote(post.id, post.upvotes)} className="text-gray-400 hover:text-primary transition flex items-center gap-1 active:scale-125"><ArrowUp size={16} /></button>
+                                                <button onClick={() => handleVote(post.id, 'up')} className="text-gray-400 hover:text-green-500 transition flex items-center gap-1 active:scale-125"><ArrowUp size={16} /></button>
                                                 <span className={`font-bold text-sm ${((post.upvotes || 0) - (post.downvotes || 0)) > 0 ? 'text-green-500' : ((post.upvotes || 0) - (post.downvotes || 0)) < 0 ? 'text-red-500' : 'text-white'}`}>
                                                     {(post.upvotes || 0) - (post.downvotes || 0)}
                                                 </span>
-                                                <button onClick={() => handleDownvote(post.id, post.downvotes)} className="text-gray-400 hover:text-secondary transition flex items-center gap-1 active:scale-125"><ArrowDown size={16} /></button>
+                                                <button onClick={() => handleVote(post.id, 'down')} className="text-gray-400 hover:text-red-500 transition flex items-center gap-1 active:scale-125"><ArrowDown size={16} /></button>
                                             </div>
                                         </div>
                                     </div>
