@@ -176,7 +176,7 @@ export default function Feed() {
                                             <ReportButton entityType="feed_post" entityId={post.id} subtle={true} />
                                             <div className="flex gap-3 items-center bg-background rounded-full px-3 py-1">
                                                 <button onClick={() => handleUpvote(post.id, post.upvotes)} className="text-gray-400 hover:text-primary transition flex items-center gap-1"><ArrowUp size={16} /></button>
-                                                <span className="font-bold text-sm text-white">{post.upvotes - post.downvotes}</span>
+                                                <span className="font-bold text-sm text-white">{(post.upvotes || 0) - (post.downvotes || 0)}</span>
                                                 <button className="text-gray-400 hover:text-secondary transition flex items-center gap-1"><ArrowDown size={16} /></button>
                                             </div>
                                         </div>
