@@ -239,3 +239,9 @@ export default function Feed() {
         </div>
     )
 }
+
+const getPostData = (post) => ({
+    title: post.title || 'Bez tytułu',
+    category: post.category || 'News',
+    html: post.content || ''
+});

@@ -40,7 +40,7 @@ function App() {
         setAuthError('')
         setAuthMessage('')
         let finalEmail = email.trim().toLowerCase()
-        if (!finalEmail.endsWith('@teb.edu.pl')) {
+        if (!finalEmail.includes('@teb.edu.pl')) {
             setAuthError('Dostęp zablokowany. Użyj szkolnego e-maila w domenie @teb.edu.pl')
             return
         }
