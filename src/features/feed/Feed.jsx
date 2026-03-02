@@ -6,6 +6,12 @@ import 'react-quill/dist/quill.snow.css'
 import DOMPurify from 'dompurify'
 import ReportButton from '../../components/ReportButton'
 
+const getPostData = (post) => ({
+    title: post.title || 'Bez tytułu',
+    category: post.category || 'News',
+    html: post.content || ''
+});
+
 export default function Feed() {
     const [posts, setPosts] = useState([])
     const [loading, setLoading] = useState(true)
@@ -240,8 +246,3 @@ export default function Feed() {
     )
 }
 
-const getPostData = (post) => ({
-    title: post.title || 'Bez tytułu',
-    category: post.category || 'News',
-    html: post.content || ''
-});
