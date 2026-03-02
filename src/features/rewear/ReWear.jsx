@@ -164,7 +164,7 @@ export default function ReWear() {
                                     )}
 
                                     <div className="absolute top-2 left-2 z-10">
-                                        <ReportButton entityType="rewear_post" entityId={item.id} subtle={false} />
+                                        <ReportButton entityType="rewear_post" entityId={item.id} subtle={true} />
                                     </div>
 
                                     <div className="absolute top-2 right-2 bg-black/80 backdrop-blur px-2 py-0.5 rounded text-[10px] text-white font-bold border border-gray-700 flex items-center gap-1">
