@@ -40,7 +40,13 @@ function App() {
         setAuthError('')
         setAuthMessage('')
         let finalEmail = email.trim().toLowerCase()
-        if (!finalEmail.includes('@teb.edu.pl')) {
+
+        // Auto-fix dla loginu Librusa (jeśli sam numer, dodaj domenę)
+        if (!finalEmail.includes('@')) {
+            finalEmail = `${finalEmail}@teb.edu.pl`
+        }
+
+        if (!finalEmail.endsWith('@teb.edu.pl')) {
             setAuthError('Dostęp zablokowany. Użyj szkolnego e-maila w domenie @teb.edu.pl')
             return
         }
