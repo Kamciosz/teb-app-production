@@ -46,6 +46,8 @@ CREATE POLICY "Tylko redaktor pisze posty" ON feed_posts FOR INSERT WITH CHECK (
 CREATE POLICY "Autor lub admin kasuje wpis" ON feed_posts FOR DELETE USING (
     auth.uid() = author_id OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
 );
+-- Każdy zalogowany może aktualizować głosy (upvotes/downvotes)
+CREATE POLICY "Każdy może głosować" ON feed_posts FOR UPDATE USING (auth.role() = 'authenticated');
 
 
 -- 3. TABELA VINTED (Szkolny Ryneczek)
