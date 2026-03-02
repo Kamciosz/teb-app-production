@@ -16,11 +16,8 @@ export default function Feed() {
     const [myRole, setMyRole] = useState('student')
     const quillRef = useRef(null)
 
-    const getPostData = (post) => ({
-        title: post.title || 'Bez tytułu',
-        category: post.category || 'News',
-        html: post.content || ''
-    });
+
+
 
     // Nowe stany formularza "Onet"
     const [articleTitle, setArticleTitle] = useState('')
@@ -77,7 +74,12 @@ export default function Feed() {
     }
 
     async function handleUpvote(postId, currentVotes) {
-        const { error } = await supabase.from('feed_posts').update({ upvotes: currentVotes + 1 }).eq('id', postId)
+        const { error } = await supabase.from('feed_posts').update({ upvotes: (currentVotes || 0) + 1 }).eq('id', postId)
+        if (!error) fetchPosts()
+    }
+
+    async function handleDownvote(postId, currentVotes) {
+        const { error } = await supabase.from('feed_posts').update({ downvotes: (currentVotes || 0) + 1 }).eq('id', postId)
         if (!error) fetchPosts()
     }
 
@@ -144,7 +146,11 @@ export default function Feed() {
             ) : (
                 <div className="flex flex-col gap-6">
                     {posts.map(post => {
-                        const parsed = getPostData(post)
+                        const parsed = {
+                            title: post.title || 'Bez tytułu',
+                            category: post.category || 'News',
+                            html: post.content || ''
+                        };
                         const isAdmin = post.profiles?.role === 'admin'
                         return (
                             <article key={post.id} className="bg-surface rounded-2xl border border-gray-800 shadow-xl overflow-hidden flex flex-col">
@@ -178,9 +184,11 @@ export default function Feed() {
                                         <div className="flex gap-3 items-center">
                                             <ReportButton entityType="feed_post" entityId={post.id} subtle={true} />
                                             <div className="flex gap-3 items-center bg-background rounded-full px-3 py-1">
-                                                <button onClick={() => handleUpvote(post.id, post.upvotes)} className="text-gray-400 hover:text-primary transition flex items-center gap-1"><ArrowUp size={16} /></button>
-                                                <span className="font-bold text-sm text-white">{(post.upvotes || 0) - (post.downvotes || 0)}</span>
-                                                <button className="text-gray-400 hover:text-secondary transition flex items-center gap-1"><ArrowDown size={16} /></button>
+                                                <button onClick={() => handleUpvote(post.id, post.upvotes)} className="text-gray-400 hover:text-primary transition flex items-center gap-1 active:scale-125"><ArrowUp size={16} /></button>
+                                                <span className={`font-bold text-sm ${((post.upvotes || 0) - (post.downvotes || 0)) > 0 ? 'text-green-500' : ((post.upvotes || 0) - (post.downvotes || 0)) < 0 ? 'text-red-500' : 'text-white'}`}>
+                                                    {(post.upvotes || 0) - (post.downvotes || 0)}
+                                                </span>
+                                                <button onClick={() => handleDownvote(post.id, post.downvotes)} className="text-gray-400 hover:text-secondary transition flex items-center gap-1 active:scale-125"><ArrowDown size={16} /></button>
                                             </div>
                                         </div>
                                     </div>
