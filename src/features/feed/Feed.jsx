@@ -6,11 +6,8 @@ import 'react-quill/dist/quill.snow.css'
 import DOMPurify from 'dompurify'
 import ReportButton from '../../components/ReportButton'
 
-const getPostData = (post) => ({
-    title: post.title || 'Bez tytułu',
-    category: post.category || 'News',
-    html: post.content || ''
-});
+
+
 
 export default function Feed() {
     const [posts, setPosts] = useState([])
@@ -18,6 +15,12 @@ export default function Feed() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [myRole, setMyRole] = useState('student')
     const quillRef = useRef(null)
+
+    const getPostData = (post) => ({
+        title: post.title || 'Bez tytułu',
+        category: post.category || 'News',
+        html: post.content || ''
+    });
 
     // Nowe stany formularza "Onet"
     const [articleTitle, setArticleTitle] = useState('')
