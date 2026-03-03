@@ -57,7 +57,6 @@ export default function ReWear() {
         if (newItemCategory === 'Korepetycje') dbItemType = 'tutoring'
         if (newItemCategory === 'Usługi') dbItemType = 'service'
 
-        // Walidacja RLS (tylko redaktor etc. dla uslug, ucznionie zwykle)
         setUploading(true)
 
         const { error } = await supabase.from('rewear_posts').insert([
@@ -68,7 +67,8 @@ export default function ReWear() {
                 price_teb_gabki: newItemCurrency === 'TG' ? parseFloat(newItemPrice) : 0,
                 price_pln: newItemCurrency === 'PLN' ? parseFloat(newItemPrice) : 0,
                 item_type: dbItemType,
-                image_url: newItemPhotoUrl
+                image_url: newItemPhotoUrl,
+                status: 'active'
             }
         ])
 
@@ -76,8 +76,13 @@ export default function ReWear() {
 
         if (error) {
             console.error(error)
-            alert("Brak uprawnień. Usługi (Korepetycje) wymagają rangi Korepetytor od SU! Zwykłe przedmioty wstawisz swobodnie.")
+            alert("Błąd publikacji: " + error.message)
         } else {
+            // Nagroda 10 TG za wystawienie
+            const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', session.user.id).single()
+            if (profile) {
+                await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki + 10 }).eq('id', session.user.id)
+            }
             setIsModalOpen(false)
             setNewItemTitle('')
             setNewItemPrice('')

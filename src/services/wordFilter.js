@@ -1,25 +1,24 @@
-const badWords = [
-    'chuj', 'pizda', 'jebać', 'pierdolić', 'kurwa', 'dziwka',
-    'skurwiel', 'cipa', 'pizda', 'kutas', 'dupa', 'pedał'
-];
-
-/**
- * Prosty filtr słów (Word Filter)
- * Wersja PWA Lite - cenzura gwiazdkami
- */
 export const WordFilter = {
-    clean: (text) => {
-        if (!text || typeof text !== 'string') return text;
-        let cleaned = text;
-        badWords.forEach(word => {
-            const regex = new RegExp(word, 'gi');
-            cleaned = cleaned.replace(regex, (match) => '*'.repeat(match.length));
-        });
-        return cleaned;
-    },
+    // Rygorystyczna lista słów (przykładowa, należy ją rozbudować)
+    bannedWords: [
+        'kurwa', 'chuj', 'pizda', 'jebać', 'pierdolić', 'skurwysyn', 
+        'kutas', 'cwel', 'pedał', 'dziwka', 'suka', 'pizdu', 'jebie',
+        'k.u.r.w.a', 'k_u_r_w_a', 'k-u-r-w-a', 'k u r w a',
+        'ch.u.j', 'ch-u-j', 'c.h.u.j',
+        'j.e.b.a.c', 'j-e-b-a-c'
+    ],
 
-    hasBadWords: (text) => {
-        if (!text || typeof text !== 'string') return false;
-        return badWords.some(word => new RegExp(word, 'gi').test(text));
+    clean: (text) => {
+        if (!text) return "";
+        let cleaned = text;
+        
+        WordFilter.bannedWords.forEach(word => {
+            // Fuzzy matching: szukamy słowa ignorując wielkość liter i dodając opcjonalne kropki/myślniki między literami
+            const pattern = word.split('').join('[\\s\\.\\-_]*');
+            const regex = new RegExp(pattern, 'gi');
+            cleaned = cleaned.replace(regex, '####');
+        });
+
+        return cleaned;
     }
 };

@@ -126,6 +126,7 @@ export default function Librus() {
     const [loginError, setLoginError] = useState('');
     const [activeTab, setActiveTab] = useState('oceny');
     const [isLoading, setIsLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false); // Nowy stan dla odświeżania w tle
     const [isAutoLogging, setIsAutoLogging] = useState(false);
     const [simText, setSimText] = useState('');
     const [savedLogin, setSavedLogin] = useState('');
@@ -151,13 +152,13 @@ export default function Librus() {
             const creds = await loadCredentials();
             if (!creds) return;
             setIsAutoLogging(true);
-            setSimText('Odświeżam dane z dziennika...');
+            setSimText('Synchronizacja danych...');
             try {
                 const weekStartIso = toISO(getWeekDays(0)[0]);
                 const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
                 applyData(data, creds.login);
 
-                // Oblicz zapasowy tydzień do przodu i pobierz go w tle po cichu
+                // Odświeżanie w tle kolejnych tygodni
                 const nextWeekIso = toISO(getWeekDays(1)[0]);
                 fetchLibrusData(creds.login, creds.pass, nextWeekIso, true)
                     .then(res => {
@@ -166,12 +167,34 @@ export default function Librus() {
                     .catch(() => { });
             } catch (err) {
                 console.error('Auto-login failed:', err);
-                // Nie czyścimy credentials – może być chwilowy błąd serwera
             } finally {
                 setIsAutoLogging(false);
             }
         })();
     }, []);
+
+    // Automatyczne odświeżanie co 10 minut jeśli zalogowany
+    useEffect(() => {
+        if (!isLoggedIn) return;
+        const interval = setInterval(handleRefreshBackground, 10 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, [isLoggedIn]);
+
+    async function handleRefreshBackground() {
+        const creds = await loadCredentials();
+        if (!creds || isRefreshing || isLoading) return;
+        
+        setIsRefreshing(true);
+        try {
+            const weekStartIso = toISO(getWeekDays(0)[0]);
+            const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
+            applyData(data, creds.login);
+        } catch (err) {
+            console.error('Background refresh failed:', err);
+        } finally {
+            setIsRefreshing(false);
+        }
+    }
 
     function applyData(data, login) {
         setSavedLogin(login);
@@ -372,7 +395,7 @@ export default function Librus() {
     return (
         <div className="pb-20 pt-4 max-w-lg mx-auto w-full">
             {/* Header */}
-            <div className="flex justify-between items-center mb-6 px-1">
+            <div className="flex justify-between items-center mb-6 px-1 relative">
                 <div>
                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
                         <CheckCircle2 size={22} className="text-[#e91e63]" />
@@ -381,16 +404,39 @@ export default function Librus() {
                     <span className="text-xs text-gray-400">Zalogowano jako: <span className="text-[#e91e63] font-semibold">{savedLogin}</span></span>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={handleRefresh} disabled={isLoading}
+                    <button onClick={handleRefresh} disabled={isLoading || isRefreshing}
                         className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition disabled:opacity-40">
-                        <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+                        <RefreshCw size={18} className={isLoading || isRefreshing ? 'animate-spin' : ''} />
                     </button>
                     <button onClick={handleLogout}
                         className="bg-gray-800 p-3 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition">
                         <LogOut size={18} />
                     </button>
                 </div>
+
+                {/* Pasek synchronizacji w tle */}
+                {(isLoading || isRefreshing) && !isAutoLogging && (
+                    <div className="absolute -bottom-4 left-0 w-full flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                        <div className="h-1 flex-1 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#e91e63] animate-progress-fast"></div>
+                        </div>
+                        <span className="text-[10px] text-[#e91e63] font-bold uppercase tracking-widest whitespace-nowrap animate-pulse">
+                            Synchronizacja...
+                        </span>
+                    </div>
+                )}
             </div>
+
+            <style jsx>{`
+                @keyframes progress {
+                    0% { width: 0%; }
+                    50% { width: 70%; }
+                    100% { width: 100%; }
+                }
+                .animate-progress-fast {
+                    animation: progress 2s ease-in-out infinite;
+                }
+            `}</style>
 
             {/* Zakładki */}
             <div className="flex bg-surface rounded-xl p-1.5 mb-6 border border-gray-800 shadow-lg gap-1">

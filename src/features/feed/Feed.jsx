@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { ArrowUp, ArrowDown, X, Image as ImageIcon, Video, FileText, Maximize2 } from 'lucide-react'
+import { ArrowUp, ArrowDown, X, Image as ImageIcon, Video, FileText, Maximize2, MessageCircle, Send } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
@@ -15,7 +15,13 @@ export default function Feed() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedPost, setSelectedPost] = useState(null)
     const [myRole, setMyRole] = useState('student')
+    const [myId, setMyId] = useState(null)
     const quillRef = useRef(null)
+
+    // Komentarze
+    const [comments, setComments] = useState([])
+    const [newComment, setNewComment] = useState('')
+    const [commentsLoading, setCommentsLoading] = useState(false)
 
     // Nowe stany formularza "Onet"
     const [articleTitle, setArticleTitle] = useState('')
@@ -23,16 +29,61 @@ export default function Feed() {
     const [articleHtml, setArticleHtml] = useState('')
 
     useEffect(() => {
-        checkRole()
+        checkUser()
         fetchPosts()
     }, [])
 
-    async function checkRole() {
+    async function checkUser() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
+            setMyId(session.user.id)
             const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
             if (data) setMyRole(data.role)
         }
+    }
+
+    async function fetchComments(postId) {
+        setCommentsLoading(true)
+        const { data, error } = await supabase
+            .from('feed_comments')
+            .select('*, profiles(full_name, role)')
+            .eq('post_id', postId)
+            .order('created_at', { ascending: true })
+        
+        if (data) setComments(data)
+        setCommentsLoading(false)
+    }
+
+    async function handleAddComment(e) {
+        e.preventDefault()
+        if (!newComment.trim() || !selectedPost || !myId) return
+
+        const cleanedComment = WordFilter.clean(newComment.trim())
+        
+        const { data, error } = await supabase
+            .from('feed_comments')
+            .insert([{
+                post_id: selectedPost.id,
+                author_id: myId,
+                content: cleanedComment
+            }])
+            .select('*, profiles(full_name, role)')
+            .single()
+
+        if (data) {
+            setComments(prev => [...prev, data])
+            setNewComment('')
+            // Przyznaj 1 TG za komentarz
+            const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', myId).single()
+            if (profile) {
+                await supabase.from('profiles').update({ teb_gabki: (profile.teb_gabki || 0) + 1 }).eq('id', myId)
+            }
+        }
+    }
+
+    const openPost = (post) => {
+        setSelectedPost(post)
+        fetchComments(post.id)
     }
 
     async function fetchPosts() {
@@ -64,6 +115,11 @@ export default function Feed() {
             console.error(error)
             alert("Błąd publikacji: " + error.message)
         } else {
+            // Nagroda 15 TG za artykuł
+            const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', session.user.id).single()
+            if (profile) {
+                await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki + 15 }).eq('id', session.user.id)
+            }
             setIsModalOpen(false)
             setArticleTitle('')
             setArticleHtml('')
@@ -192,7 +248,7 @@ export default function Feed() {
                                 </div>
 
                                 {firstImg && (
-                                    <div className="h-40 overflow-hidden relative group cursor-pointer" onClick={() => setSelectedPost(post)}>
+                                    <div className="h-40 overflow-hidden relative group cursor-pointer" onClick={() => openPost(post)}>
                                         <img src={firstImg} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
                                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                                             <Maximize2 className="text-white" size={32} />
@@ -201,10 +257,11 @@ export default function Feed() {
                                 )}
 
                                 <div className="p-5">
-                                    <h3 onClick={() => setSelectedPost(post)} className="text-xl font-bold text-white mb-2 leading-tight cursor-pointer hover:text-primary transition">{post.title}</h3>
+                                    <h3 onClick={() => openPost(post)} className="text-xl font-bold text-white mb-2 leading-tight cursor-pointer hover:text-primary transition">{post.title}</h3>
 
                                     <div
-                                        className="text-gray-400 text-sm mb-6 line-clamp-3 leading-relaxed"
+                                        className="text-gray-400 text-sm mb-6 line-clamp-3 leading-relaxed cursor-pointer"
+                                        onClick={() => openPost(post)}
                                         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content.split(' ').slice(0, 30).join(' ') + '...') }}
                                     />
 
@@ -220,7 +277,10 @@ export default function Feed() {
                                         </div>
 
                                         <div className="flex gap-3 items-center">
-                                            <ReportButton entityType="feed_post" entityId={post.id} subtle={true} />
+                                            <button onClick={() => openPost(post)} className="text-gray-500 hover:text-white transition flex items-center gap-1">
+                                                <MessageCircle size={16} />
+                                                <span className="text-xs font-bold">{post.comment_count || 0}</span>
+                                            </button>
                                             <div className="flex gap-3 items-center bg-background rounded-full px-3 py-1">
                                                 <button onClick={() => handleVote(post.id, 'up')} className="text-gray-400 hover:text-green-500 transition flex items-center gap-1 active:scale-125"><ArrowUp size={16} /></button>
                                                 <span className={`font-bold text-sm ${((post.upvotes || 0) - (post.downvotes || 0)) > 0 ? 'text-green-500' : ((post.upvotes || 0) - (post.downvotes || 0)) < 0 ? 'text-red-500' : 'text-white'}`}>
@@ -255,11 +315,69 @@ export default function Feed() {
                             </div>
                         </div>
                         <div
-                            className="text-gray-300 text-lg leading-relaxed prose prose-invert max-w-none 
-                                     prose-img:rounded-3xl prose-img:shadow-2xl prose-img:w-full prose-img:mt-10 mb-10
-                                     prose-a:text-primary prose-a:font-bold"
-                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedPost.content) }}
-                        />
+                                className="text-gray-300 text-lg leading-relaxed prose prose-invert max-w-none 
+                                         prose-img:rounded-3xl prose-img:shadow-2xl prose-img:w-full prose-img:mt-10 mb-10
+                                         prose-a:text-primary prose-a:font-bold
+                                         prose-p:mb-4 prose-li:mb-2"
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedPost.content, {
+                                    ADD_TAGS: ['iframe'],
+                                    ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling']
+                                }).replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"').replace(/<\/iframe>/g, '</iframe></div>') }}
+                            />
+
+                        {/* Sekcja Komentarzy */}
+                        <div className="mt-10 border-t border-gray-800 pt-8">
+                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+                                <MessageCircle className="text-primary" /> Komentarze ({comments.length})
+                            </h3>
+
+                            {/* Formularz dodawania */}
+                            {myId && (
+                                <form onSubmit={handleAddComment} className="mb-8 flex gap-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Napisz co o tym sądzisz..."
+                                        value={newComment}
+                                        onChange={e => setNewComment(e.target.value)}
+                                        className="flex-1 bg-surface border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-primary text-sm"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!newComment.trim()}
+                                        className="bg-primary text-white p-3 rounded-xl hover:bg-primary-dark transition disabled:opacity-50"
+                                    >
+                                        <Send size={20} />
+                                    </button>
+                                </form>
+                            )}
+
+                            {/* Lista komentarzy */}
+                            <div className="space-y-4">
+                                {commentsLoading ? (
+                                    <div className="text-center text-gray-500 animate-pulse">Ładowanie komentarzy...</div>
+                                ) : comments.length === 0 ? (
+                                    <div className="text-center text-gray-500 text-sm py-4">Brak komentarzy. Bądź pierwszy!</div>
+                                ) : (
+                                    comments.map(comment => (
+                                        <div key={comment.id} className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col gap-2">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400">
+                                                        {comment.profiles?.full_name?.charAt(0)}
+                                                    </div>
+                                                    <span className="text-xs font-bold text-gray-200">{comment.profiles?.full_name}</span>
+                                                    {comment.profiles?.role === 'admin' && (
+                                                        <span className="text-[8px] bg-red-500/20 text-red-500 px-1 rounded font-bold uppercase">ADMIN</span>
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] text-gray-600">{new Date(comment.created_at).toLocaleDateString()}</span>
+                                            </div>
+                                            <p className="text-sm text-gray-400 leading-relaxed">{comment.content}</p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

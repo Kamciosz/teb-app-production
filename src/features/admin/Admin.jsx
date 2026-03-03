@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react'
-import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash } from 'lucide-react'
+import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2 } from 'lucide-react'
 import { supabase } from '../../services/supabase'
+import { CleanupService } from '../../services/cleanupService'
 
 export default function Admin() {
-    const [view, setView] = useState('users') // 'users', 'reports', 'groups'
+    const [view, setView] = useState('users') // 'users', 'reports', 'groups', 'system'
     const [users, setUsers] = useState([])
     const [reports, setReports] = useState([])
     const [pendingGroups, setPendingGroups] = useState([])
 
     const [loading, setLoading] = useState(true)
+    const [cleanupLoading, setCleanupLoading] = useState(false)
+    const [cleanupResult, setCleanupResult] = useState(null)
     const [myRoles, setMyRoles] = useState([])
     const [banDuration, setBanDuration] = useState('1440') // 1 day in minutes
 
@@ -17,6 +20,22 @@ export default function Admin() {
     useEffect(() => {
         checkAccessAndFetch()
     }, [view])
+
+    async function handleCleanup() {
+        if (!window.confirm("Czy na pewno chcesz uruchomić Śmieciarkę? Ta operacja trwale usunie stare media i wpisy zgodnie z polityką prywatności.")) return
+        
+        setCleanupLoading(true)
+        setCleanupResult(null)
+        const result = await CleanupService.runCleanup()
+        setCleanupLoading(false)
+        setCleanupResult(result)
+        
+        if (result.success) {
+            alert(`🚛 Sprzątanie zakończone!\nUsunięto:\n- ${result.deleted.chat} wiadomości\n- ${result.deleted.rewear} ofert giełdy\n- ${result.deleted.reports} raportów`)
+        } else {
+            alert("❌ Błąd podczas sprzątania: " + result.error)
+        }
+    }
 
     async function checkAccessAndFetch() {
         const { data: { session } } = await supabase.auth.getSession()
@@ -154,7 +173,84 @@ export default function Admin() {
                 >
                     <Hash size={14} /> Grupy
                 </button>
+                <button
+                    onClick={() => setView('system')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'system' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                >
+                    <Trash2 size={14} /> System
+                </button>
             </div>
+
+            {/* Widok: System / Śmieciarka */}
+            {view === 'system' && (
+                <div className="flex flex-col gap-6 fade-in px-2">
+                    <div className="bg-surface border border-gray-800 p-6 rounded-2xl shadow-xl">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+                                <Trash2 size={30} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Śmieciarka (GC)</h3>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mt-1">Utrzymanie darmowych limitów</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-4 mb-6">
+                            <h4 className="text-sm font-bold text-gray-300 mb-3 flex items-center gap-2">
+                                <ShieldAlert size={16} className="text-red-500" /> Zasady sprzątania:
+                            </h4>
+                            <ul className="space-y-2 text-xs text-gray-400">
+                                <li className="flex justify-between border-b border-gray-800/50 pb-1">
+                                    <span>Czaty (P2P & Grupy)</span>
+                                    <span className="text-red-400 font-bold">starsze niż 8 dni</span>
+                                </li>
+                                <li className="flex justify-between border-b border-gray-800/50 pb-1">
+                                    <span>Giełda Re-Wear</span>
+                                    <span className="text-red-400 font-bold">starsze niż 21 dni</span>
+                                </li>
+                                <li className="flex justify-between">
+                                    <span>Raporty i zgłoszenia</span>
+                                    <span className="text-red-400 font-bold">starsze niż 30 dni</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <button
+                            onClick={handleCleanup}
+                            disabled={cleanupLoading}
+                            className={`w-full py-4 rounded-xl font-bold text-sm transition flex items-center justify-center gap-3 shadow-lg ${cleanupLoading ? 'bg-gray-800 text-gray-500' : 'bg-red-500 text-white hover:bg-red-600 active:scale-95 shadow-red-500/20'}`}
+                        >
+                            {cleanupLoading ? (
+                                <><Loader2 size={20} className="animate-spin" /> Trwa sprzątanie...</>
+                            ) : (
+                                <><Trash2 size={20} /> Uruchom Śmieciarkę</>
+                            )}
+                        </button>
+                    </div>
+
+                    {cleanupResult && cleanupResult.success && (
+                        <div className="bg-green-500/10 border border-green-500/30 p-4 rounded-xl animate-in fade-in slide-in-from-top-4">
+                            <div className="flex items-center gap-2 text-green-500 font-bold text-sm mb-2">
+                                <CheckCircle size={18} /> Raport ze sprzątania:
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="bg-background/50 p-2 rounded-lg text-center">
+                                    <div className="text-lg font-black text-white">{cleanupResult.deleted.chat}</div>
+                                    <div className="text-[9px] text-gray-500 uppercase">Wiadomości</div>
+                                </div>
+                                <div className="bg-background/50 p-2 rounded-lg text-center">
+                                    <div className="text-lg font-black text-white">{cleanupResult.deleted.rewear}</div>
+                                    <div className="text-[9px] text-gray-500 uppercase">Oferty</div>
+                                </div>
+                                <div className="bg-background/50 p-2 rounded-lg text-center">
+                                    <div className="text-lg font-black text-white">{cleanupResult.deleted.reports}</div>
+                                    <div className="text-[9px] text-gray-500 uppercase">Raporty</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Widok: Użytkownicy */}
             {view === 'users' && (

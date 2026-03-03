@@ -111,8 +111,19 @@ function App() {
     }, [])
 
     async function fetchRole(uid) {
-        const { data } = await supabase.from('profiles').select('role').eq('id', uid).single()
-        if (data) setUserRole(data.role)
+        const { data } = await supabase.from('profiles').select('role, teb_gabki').eq('id', uid).single()
+        if (data) {
+            setUserRole(data.role)
+            // Automatyczne TG za codzienne logowanie
+            const lastLogin = localStorage.getItem('last_login_tg')
+            const today = new Date().toLocaleDateString()
+            if (lastLogin !== today) {
+                const newTG = (data.teb_gabki || 0) + 5
+                await supabase.from('profiles').update({ teb_gabki: newTG }).eq('id', uid)
+                localStorage.setItem('last_login_tg', today)
+                console.log('Przyznano 5 TG za codzienne logowanie!')
+            }
+        }
         setLoading(false)
     }
 
