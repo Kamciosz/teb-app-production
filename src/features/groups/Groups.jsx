@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from 'react'
 import { Users, Plus, Hash, ArrowLeft, Send, Search } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
+import MediaUploader from '../../components/common/MediaUploader'
+import { ImageKitService } from '../../services/imageKitService'
 
 export default function Groups() {
     const [view, setView] = useState('list') // 'list', 'new', 'chat'
@@ -111,14 +113,19 @@ export default function Groups() {
     }
 
     async function fetchMessages(groupId) {
-        const { data } = await supabase.from('group_messages')
+        setLoading(true)
+        const { data, error } = await supabase.from('group_messages')
             .select('*, profiles(full_name, role)')
             .eq('group_id', groupId)
             .order('created_at', { ascending: true })
-        if (data) {
+
+        if (error) {
+            console.error("Błąd pobierania wiadomości grupowych:", error)
+        } else if (data) {
             setMessages(data)
             scrollToBottom()
         }
+        setLoading(false)
     }
 
     async function sendMessage(e) {
@@ -126,15 +133,50 @@ export default function Groups() {
         if (!newMessage.trim() || !activeGroup || activeGroup.is_locked) return
 
         const msgText = newMessage.trim()
-        setNewMessage('')
+        const tempId = Math.random().toString(36).substring(7)
 
-        const { error } = await supabase.from('group_messages').insert([{
+        // Optimistic UI
+        const optimisticMsg = {
+            id: tempId,
+            group_id: activeGroup.id,
+            sender_id: myId,
+            content: msgText,
+            created_at: new Date().toISOString(),
+            status: 'sending',
+            profiles: { full_name: 'Ty', role: 'student' } // Tymczasowy profil
+        }
+
+        setMessages(prev => [...prev, optimisticMsg])
+        setNewMessage('')
+        scrollToBottom()
+
+        const { data, error } = await supabase.from('group_messages').insert([{
             group_id: activeGroup.id,
             sender_id: myId,
             content: msgText
-        }])
+        }]).select('*, profiles(full_name, role)').single()
 
-        if (error) alert("Błąd - czat został zablokowany lub nie należysz do grupy.")
+        if (error) {
+            console.error("Błąd wysyłania na grupę:", error)
+            alert("Błąd - czat został zablokowany lub nie należysz do grupy.")
+            setMessages(prev => prev.filter(m => m.id !== tempId))
+        } else if (data) {
+            setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+        }
+    }
+
+    async function sendImage(url) {
+        if (!activeGroup) return
+
+        const { data, error } = await supabase.from('group_messages').insert([{
+            group_id: activeGroup.id,
+            sender_id: myId,
+            content: url
+        }]).select('*, profiles(full_name, role)').single()
+
+        if (error) {
+            console.error("Błąd wysyłania zdjęcia na grupę:", error)
+        }
     }
 
     if (view === 'chat' && activeGroup) {
@@ -183,7 +225,17 @@ export default function Groups() {
                                                     </div>
                                                 )}
                                                 <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${isMe ? 'bg-secondary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
-                                                    {msg.content}
+                                                    {msg.content.startsWith('http') ? (
+                                                        <img
+                                                            src={ImageKitService.getOptimizedUrl(msg.content, 400)}
+                                                            alt="Przesłane zdjęcie"
+                                                            className="rounded-lg cursor-pointer hover:opacity-90 transition"
+                                                            onClick={() => window.open(msg.content, '_blank')}
+                                                            loading="lazy"
+                                                        />
+                                                    ) : (
+                                                        msg.content
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -201,6 +253,7 @@ export default function Groups() {
                             <div className="p-3 text-center text-red-500 text-xs font-bold">Ten kanał został wyciszony przez Moderatora rz. 2.</div>
                         ) : (
                             <form onSubmit={sendMessage} className="p-3 flex gap-2">
+                                <MediaUploader module="tebtalk" onUploadSuccess={sendImage} />
                                 <input
                                     type="text" placeholder="Napisz do wszystkich..."
                                     value={newMessage} onChange={e => setNewMessage(e.target.value)}

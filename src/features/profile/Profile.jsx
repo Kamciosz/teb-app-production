@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react'
-import { User, LogOut, Settings, Award, Heart } from 'lucide-react'
+import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff } from 'lucide-react'
 import { supabase, signOut } from '../../services/supabase'
+import MediaUploader from '../../components/common/MediaUploader'
+import { ImageKitService } from '../../services/imageKitService'
+import TebGabkiRanking from './TebGabkiRanking'
 
 export default function Profile() {
     const [profile, setProfile] = useState(null)
+    const [isEditingName, setIsEditingName] = useState(false)
+    const [newName, setNewName] = useState('')
+    const [isStoreOpen, setIsStoreOpen] = useState(false)
 
     useEffect(() => {
         loadProfile()
@@ -12,13 +17,51 @@ export default function Profile() {
     async function loadProfile() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
-            const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+            const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
             if (data) {
                 setProfile({ ...data, email: session.user.email })
-            } else {
-                setProfile({ full_name: 'Brak Imienia w Bazie', email: session.user.email, role: 'student', reputation: 0 })
+                setNewName(data.full_name)
             }
         }
+    }
+
+    async function updateAvatar(url) {
+        if (profile.teb_gabki < 50) {
+            alert("Zmiana awatara kosztuje 50 TebGąbek!")
+            return
+        }
+
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+
+        const { error } = await supabase.from('profiles')
+            .update({
+                avatar_url: url,
+                teb_gabki: profile.teb_gabki - 50
+            })
+            .eq('id', session.user.id)
+
+        if (error) {
+            alert("Błąd: " + error.message)
+        } else {
+            setProfile(prev => ({ ...prev, avatar_url: url, teb_gabki: prev.teb_gabki - 50 }))
+            setIsStoreOpen(false)
+        }
+    }
+
+    async function handleNameChange() {
+        if (!newName.trim()) return
+        const { error } = await supabase.from('profiles').update({ full_name: newName }).eq('id', profile.id)
+        if (!error) {
+            setProfile(prev => ({ ...prev, full_name: newName }))
+            setIsEditingName(false)
+        }
+    }
+
+    async function togglePrivacy() {
+        const newPrivacy = !profile.is_private
+        const { error } = await supabase.from('profiles').update({ is_private: newPrivacy }).eq('id', profile.id)
+        if (!error) setProfile(prev => ({ ...prev, is_private: newPrivacy }))
     }
 
     if (!profile) return <div className="text-center mt-10 text-gray-400">Ładowanie Profilu...</div>
@@ -32,27 +75,101 @@ export default function Profile() {
 
             <div className="bg-surface border border-gray-800 relative p-6 rounded-xl flex flex-col items-center mb-6 overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary to-secondary"></div>
-                <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center mb-4 border-4 border-background shadow-lg">
-                    <User size={40} className="text-gray-500" />
+                <div className="absolute top-4 right-4">
+                    <button onClick={togglePrivacy} className="text-gray-500 hover:text-white transition">
+                        {profile.is_private ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
                 </div>
-                <h3 className="font-bold text-xl text-white">{profile.full_name}</h3>
+
+                <div className="relative group">
+                    <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center mb-4 border-4 border-background shadow-lg overflow-hidden">
+                        {profile.avatar_url ? (
+                            <img
+                                src={ImageKitService.getOptimizedUrl(profile.avatar_url, 200, 70)}
+                                alt="Avatar"
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <User size={40} className="text-gray-500" />
+                        )}
+                    </div>
+                </div>
+
+                {isEditingName ? (
+                    <div className="flex gap-2 mb-2">
+                        <input
+                            value={newName}
+                            onChange={e => setNewName(e.target.value)}
+                            className="bg-background border border-gray-700 rounded px-2 py-1 text-sm outline-none focus:border-primary"
+                        />
+                        <button onClick={handleNameChange} className="text-primary font-bold text-sm">OK</button>
+                    </div>
+                ) : (
+                    <h3 className="font-bold text-xl text-white flex items-center gap-2">
+                        {profile.full_name}
+                        <Edit2 size={14} className="text-gray-500 cursor-pointer" onClick={() => setIsEditingName(true)} />
+                    </h3>
+                )}
+
                 <p className="text-sm text-gray-400 mb-2">{profile.email}</p>
-                <span className={`text-xs px-3 py-1 rounded-full font-bold ${(profile.role || 'student') === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
-                    Rola: {(profile.role || 'student').toUpperCase()}
-                </span>
+                <div className="flex gap-2">
+                    <span className={`text-[10px] px-3 py-1 rounded-full font-bold ${(profile.role || 'student') === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
+                        {(profile.role || 'student').toUpperCase()}
+                    </span>
+                    {profile.is_private && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-400">PRYWATNY</span>}
+                </div>
             </div>
 
-            <h4 className="font-bold text-gray-300 mb-3 ml-2">Statystyki Społeczności</h4>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between">
-                    <div className="text-gray-400 font-bold text-sm">Punkty Reputacji</div>
-                    <div className="text-xl font-bold text-primary flex items-center gap-1"><Award size={20} /> {profile.reputation || 0}</div>
+                    <div className="text-gray-400 font-bold text-xs uppercase">TebGąbki</div>
+                    <div className="text-xl font-bold text-primary flex items-center gap-1">🪙 {profile.teb_gabki || 0}</div>
                 </div>
-                <div className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between">
-                    <div className="text-gray-400 font-bold text-sm">Polubienia (Otrzymane)</div>
-                    <div className="text-xl font-bold text-secondary flex items-center gap-1"><Heart size={20} /> 0</div>
+                <button
+                    onClick={() => setIsStoreOpen(true)}
+                    className="bg-surface border border-primary/30 p-4 rounded-xl flex items-center justify-between hover:bg-primary/5 transition"
+                >
+                    <div className="text-primary font-bold text-xs uppercase">Sklep</div>
+                    <ShoppingBag size={20} className="text-primary" />
+                </button>
+            </div>
+
+            <h4 className="font-bold text-gray-300 mb-3 ml-2 text-sm uppercase">Odznaki & Statystyki</h4>
+            <div className="bg-surface border border-gray-800 p-4 rounded-xl flex flex-col gap-3">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+                    <span className="text-xs text-gray-400">Ranking Publiczny</span>
+                    <span className="text-xs font-bold">{profile.is_private ? 'Ukryty' : 'Widoczny'}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {profile.role === 'admin' && <div className="text-[10px] bg-red-500/10 text-red-500 p-1 px-2 rounded font-bold border border-red-500/20">PREZES SU</div>}
+                    {profile.teb_gabki > 1000 && <div className="text-[10px] bg-yellow-500/10 text-yellow-500 p-1 px-2 rounded font-bold border border-yellow-500/20">MILIONER</div>}
                 </div>
             </div>
+
+            {/* Modal Sklepu */}
+            {isStoreOpen && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+                    <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative">
+                        <button onClick={() => setIsStoreOpen(false)} className="absolute top-4 right-4 text-gray-500"><X size={20} /></button>
+                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><ShoppingBag className="text-primary" /> Sklep Profilowy</h3>
+
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between bg-background p-4 rounded-xl border border-gray-800">
+                                <div>
+                                    <div className="font-bold text-white text-sm">Nowy Awatar</div>
+                                    <div className="text-xs text-gray-500">Wgraj zdjęcie z CDN (WebP)</div>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                    <span className="text-xs font-bold text-primary">50 TG</span>
+                                    <MediaUploader module="profiles" onUploadSuccess={updateAvatar} />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <TebGabkiRanking />
         </div>
     )
 }

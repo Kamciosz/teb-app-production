@@ -1,7 +1,4 @@
-import React, { useEffect, useState } from 'react'
-import { Plus, X, Search, Filter, Camera, Tag } from 'lucide-react'
-import { supabase } from '../../services/supabase'
-import ReportButton from '../../components/ReportButton'
+import MediaUploader from '../../components/common/MediaUploader'
 
 export default function ReWear() {
     const [items, setItems] = useState([])
@@ -11,11 +8,12 @@ export default function ReWear() {
     // Stany formularza modal "Vinted Pro"
     const [newItemTitle, setNewItemTitle] = useState('')
     const [newItemPrice, setNewItemPrice] = useState('')
+    const [newItemCurrency, setNewItemCurrency] = useState('TG') // TebGąbki lub PLN
     const [newItemDesc, setNewItemDesc] = useState('')
     const [newItemCategory, setNewItemCategory] = useState('Ubrania')
     const [newItemCondition, setNewItemCondition] = useState('Bardzo dobry')
     const [newItemSize, setNewItemSize] = useState('M')
-    const [newItemPhoto, setNewItemPhoto] = useState(null)
+    const [newItemPhotoUrl, setNewItemPhotoUrl] = useState(null)
     const [uploading, setUploading] = useState(false)
 
     // Filtrowanie
@@ -58,31 +56,15 @@ export default function ReWear() {
         // Walidacja RLS (tylko redaktor etc. dla uslug, ucznionie zwykle)
         setUploading(true)
 
-        let uploadedUrl = null
-        if (newItemPhoto) {
-            const fileExt = newItemPhoto.name.split('.').pop()
-            const fileName = `rewear_${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`
-            const filePath = `auctions/${fileName}`
-
-            const { error: uploadError } = await supabase.storage.from('images').upload(filePath, newItemPhoto)
-            if (!uploadError) {
-                const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath)
-                uploadedUrl = publicUrl
-            } else {
-                alert("Błąd wgrywania zdjęcia: " + uploadError.message)
-                setUploading(false)
-                return
-            }
-        }
-
         const { error } = await supabase.from('rewear_posts').insert([
             {
                 seller_id: session.user.id,
                 title: newItemTitle,
                 description: newItemDesc + " |META:" + extraDesc,
-                price_teb_gabki: parseFloat(newItemPrice) || 0,
+                price_teb_gabki: newItemCurrency === 'TG' ? parseFloat(newItemPrice) : 0,
+                price_pln: newItemCurrency === 'PLN' ? parseFloat(newItemPrice) : 0,
                 item_type: dbItemType,
-                image_url: uploadedUrl
+                image_url: newItemPhotoUrl
             }
         ])
 
@@ -96,7 +78,7 @@ export default function ReWear() {
             setNewItemTitle('')
             setNewItemPrice('')
             setNewItemDesc('')
-            setNewItemPhoto(null)
+            setNewItemPhotoUrl(null)
             fetchItems()
         }
     }
@@ -155,7 +137,12 @@ export default function ReWear() {
                             <div key={item.id} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col w-full">
                                 <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden group">
                                     {item.image_url ? (
-                                        <img src={item.image_url} alt={item.title} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                        <img
+                                            src={item.image_url}
+                                            alt={item.title}
+                                            loading="lazy"
+                                            className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+                                        />
                                     ) : (
                                         <>
                                             <Camera className="text-gray-700 mb-2" size={32} />
@@ -182,7 +169,9 @@ export default function ReWear() {
                                         <div className="text-xs text-gray-400 mb-2 truncate">{cleanDescription(item.description)}</div>
                                     </div>
                                     <div className="flex justify-between items-end mt-2">
-                                        <div className="text-xl font-bold text-primary">{item.price_teb_gabki} TG</div>
+                                        <div className="text-xl font-bold text-primary">
+                                            {item.price_teb_gabki > 0 ? `${item.price_teb_gabki} TG` : `${item.price_pln} ZŁ`}
+                                        </div>
                                         <div className="text-[10px] text-gray-500 max-w-[50%] truncate text-right">{item.profiles?.full_name}</div>
                                     </div>
                                 </div>
@@ -212,17 +201,17 @@ export default function ReWear() {
 
                         <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto">
 
-                            <label className="h-32 bg-background border-2 border-dashed border-gray-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary transition group relative overflow-hidden">
-                                <input type="file" className="hidden" accept="image/png, image/jpeg, image/jpg" onChange={e => { if (e.target.files && e.target.files[0]) setNewItemPhoto(e.target.files[0]) }} />
-                                {newItemPhoto ? (
-                                    <img src={URL.createObjectURL(newItemPhoto)} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-80" />
-                                ) : (
-                                    <>
-                                        <Camera size={32} className="text-gray-500 group-hover:text-primary transition mb-2" />
-                                        <span className="text-xs font-bold text-gray-400 group-hover:text-primary transition">Wgraj zdjęcie przedmiotu (Opcjonalnie)</span>
-                                    </>
+                            <div className="bg-background border-2 border-dashed border-gray-700 rounded-xl relative overflow-hidden min-h-[120px]">
+                                <MediaUploader
+                                    module="rewear"
+                                    onUploadSuccess={(url) => setNewItemPhotoUrl(url)}
+                                />
+                                {newItemPhotoUrl && (
+                                    <div className="absolute inset-0 pointer-events-none">
+                                        <img src={newItemPhotoUrl} alt="Preview" className="w-full h-full object-cover opacity-30" />
+                                    </div>
                                 )}
-                            </label>
+                            </div>
 
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł ogłoszenia</label>
@@ -258,13 +247,23 @@ export default function ReWear() {
                                     </select>
                                 </div>
                                 <div className="relative">
-                                    <label className="text-xs text-gray-400 font-bold mb-1 block">Cena</label>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <label className="text-xs text-gray-400 font-bold block">Cena</label>
+                                        <select
+                                            className="text-[10px] bg-background border-none text-primary font-bold outline-none"
+                                            value={newItemCurrency}
+                                            onChange={(e) => setNewItemCurrency(e.target.value)}
+                                        >
+                                            <option value="TG">TG</option>
+                                            <option value="PLN">ZŁ</option>
+                                        </select>
+                                    </div>
                                     <input
-                                        type="number" step="1" placeholder="0" required
+                                        type="number" step="0.01" placeholder="0" required
                                         className="p-3 w-full border border-gray-700 bg-background rounded-xl text-white outline-none focus:border-primary font-bold text-primary pl-10"
                                         value={newItemPrice} onChange={e => setNewItemPrice(e.target.value)}
                                     />
-                                    <span className="absolute left-3 top-8 text-gray-500 font-bold pt-0.5">TG</span>
+                                    <span className="absolute left-3 bottom-3.5 text-gray-500 font-bold">{newItemCurrency}</span>
                                 </div>
                             </div>
 

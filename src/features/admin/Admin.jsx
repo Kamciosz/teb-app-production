@@ -9,9 +9,10 @@ export default function Admin() {
     const [pendingGroups, setPendingGroups] = useState([])
 
     const [loading, setLoading] = useState(true)
-    const [myRole, setMyRole] = useState('student')
+    const [myRoles, setMyRoles] = useState([])
+    const [banDuration, setBanDuration] = useState('1440') // 1 day in minutes
 
-    const ROLES = ['student', 'tutor', 'freelancer', 'editor', 'moderator_content', 'moderator_users', 'admin']
+    const ROLES = ['student', 'teacher', 'admin', 'editor', 'moderator_content', 'moderator_users', 'su_member']
 
     useEffect(() => {
         checkAccessAndFetch()
@@ -23,27 +24,30 @@ export default function Admin() {
 
         const { data: profile } = await supabase
             .from('profiles')
-            .select('role')
+            .select('role, roles')
             .eq('id', session.user.id)
             .single()
 
-        const role = profile?.role || 'student'
-        setMyRole(role)
+        // Obsługa wsteczna: jesli roles jest puste, uzywamy starego role
+        const roles = profile?.roles || (profile?.role ? [profile.role] : ['student'])
+        setMyRoles(roles)
 
-        if (role === 'admin' || role.includes('moderator')) {
-            if (view === 'users' && (role === 'admin' || role === 'moderator_users')) {
+        const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
+        const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
+
+        if (canManageUsers || canManageContent) {
+            if (view === 'users' && canManageUsers) {
                 const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
                 if (data) setUsers(data)
             }
-            if (view === 'reports' && (role === 'admin' || role === 'moderator_users' || role === 'moderator_content')) {
-                // Relacja pozwala pobrac dane zgłaszanego uzytkownika i zglaszajacego
+            if (view === 'reports' && (canManageUsers || canManageContent)) {
                 const { data } = await supabase.from('reports')
                     .select('*, reporter:profiles!reporter_id(full_name)')
                     .eq('status', 'pending')
                     .order('created_at', { ascending: false })
                 if (data) setReports(data)
             }
-            if (view === 'groups' && (role === 'admin' || role === 'moderator_users')) {
+            if (view === 'groups' && canManageUsers) {
                 const { data } = await supabase.from('groups')
                     .select('*, creator:profiles!creator_id(full_name)')
                     .eq('is_approved', false)
@@ -54,24 +58,36 @@ export default function Admin() {
         setLoading(false)
     }
 
-    async function handleRoleChange(userId, currentRole) {
-        if (myRole !== 'admin') {
-            alert('Tylko Super-Admin może modyfikować główne role platformy.')
+    async function toggleRank(userId, currentRoles, rank) {
+        if (!myRoles.includes('admin')) {
+            alert('Tylko Admin Główny może nadawać rangi.')
             return
         }
-        const currentIndex = ROLES.indexOf(currentRole)
-        const nextRole = ROLES[(currentIndex + 1) % ROLES.length]
+        let newRoles = [...(currentRoles || ['student'])]
+        if (newRoles.includes(rank)) {
+            newRoles = newRoles.filter(r => r !== rank)
+        } else {
+            newRoles.push(rank)
+        }
+        if (newRoles.length === 0) newRoles = ['student']
 
-        await supabase.from('profiles').update({ role: nextRole }).eq('id', userId)
+        await supabase.from('profiles').update({ roles: newRoles, role: newRoles[0] }).eq('id', userId)
         checkAccessAndFetch()
     }
 
-    async function toggleBan(userId, isBanned) {
-        if (myRole !== 'admin' && myRole !== 'moderator_users') {
-            alert('Nie masz uprawnień do blokady szkolnej.')
+    async function handleBan(userId, isBanned) {
+        if (!myRoles.includes('admin') && !myRoles.includes('moderator_users')) {
+            alert('Brak uprawnień do moderacji uczniów.')
             return
         }
-        await supabase.from('profiles').update({ is_banned: !isBanned }).eq('id', userId)
+
+        const banUntil = isBanned ? null : new Date(Date.now() + parseInt(banDuration) * 60000).toISOString()
+
+        await supabase.from('profiles').update({
+            is_banned: !isBanned,
+            banned_until: banUntil
+        }).eq('id', userId)
+
         checkAccessAndFetch()
     }
 
@@ -145,31 +161,68 @@ export default function Admin() {
                         <button className="p-2 text-gray-400"><Search size={18} /></button>
                     </div>
 
-                    {users.map(u => (
-                        <div key={u.id} className={`bg-surface border p-4 rounded-xl flex flex-col gap-3 transition ${u.is_banned ? 'border-red-500/50 bg-red-500/5' : 'border-gray-800'}`}>
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <div className={`font-bold text-sm ${u.is_banned ? 'text-red-500 line-through' : 'text-white'}`}>{u.full_name}</div>
-                                    <div className="text-[10px] text-gray-500 font-mono mt-0.5">{u.email}</div>
+                    {users.map(u => {
+                        const userRoles = u.roles || [u.role] || ['student']
+                        return (
+                            <div key={u.id} className={`bg-surface border p-4 rounded-xl flex flex-col gap-3 transition ${u.is_banned ? 'border-red-500/50 bg-red-500/5' : 'border-gray-800'}`}>
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <div className={`font-bold text-sm ${u.is_banned ? 'text-red-500' : 'text-white'}`}>
+                                            {u.full_name}
+                                            {u.is_banned && <span className="text-[10px] ml-2 px-1 bg-red-500 text-white rounded">ZBANOWANY</span>}
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 font-mono mt-0.5">{u.email}</div>
+                                        {u.is_banned && u.banned_until && (
+                                            <div className="text-[10px] text-red-400 font-bold mt-1">Ban do: {new Date(u.banned_until).toLocaleString()}</div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 max-w-[150px] justify-end">
+                                        {userRoles.map(r => (
+                                            <span key={r} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 border border-gray-700 text-gray-400 font-bold uppercase">
+                                                {r}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={() => handleRoleChange(u.id, u.role)}
-                                    className={`text-[10px] px-2 py-1 rounded-sm font-bold border ${u.role === 'admin' ? 'border-red-500 bg-red-500/20 text-red-500' : u.role.includes('moderator') ? 'border-orange-500 bg-orange-500/20 text-orange-500' : 'border-gray-600 text-gray-300 bg-[#1a1a1a]'} hover:border-white transition`}
-                                >
-                                    Ranga: {u.role.toUpperCase()}
-                                </button>
-                            </div>
 
-                            <div className="flex gap-2 mt-2">
-                                <button
-                                    onClick={() => toggleBan(u.id, u.is_banned)}
-                                    className={`flex-1 py-2 rounded-lg text-[10px] font-bold transition flex justify-center items-center gap-1 ${u.is_banned ? 'bg-orange-500/20 text-orange-500 border border-orange-500/50' : 'bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20'}`}
-                                >
-                                    {u.is_banned ? <><UserCheck size={14} /> Odbanuj ucznia</> : <><UserMinus size={14} /> Zablokuj całkowicie</>}
-                                </button>
+                                <div className="border-t border-gray-800/50 pt-3 flex flex-col gap-2">
+                                    <div className="text-[9px] text-gray-500 font-bold uppercase mb-1">Zarządzaj Rangami (Multi-Rank)</div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {ROLES.map(rank => (
+                                            <button
+                                                key={rank}
+                                                onClick={() => toggleRank(u.id, userRoles, rank)}
+                                                className={`text-[9px] px-2 py-1 rounded transition border ${userRoles.includes(rank) ? 'bg-primary/20 border-primary text-primary' : 'bg-[#121212] border-gray-800 text-gray-600 hover:border-gray-600'}`}
+                                            >
+                                                {rank.toUpperCase()}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2 mt-2 items-center">
+                                    <select
+                                        className="bg-background border border-gray-700 rounded text-[10px] text-gray-400 p-1 outline-none"
+                                        value={banDuration}
+                                        onChange={(e) => setBanDuration(e.target.value)}
+                                        disabled={u.is_banned}
+                                    >
+                                        <option value="60">1h</option>
+                                        <option value="1440">24h</option>
+                                        <option value="4320">3 dni</option>
+                                        <option value="10080">7 dni</option>
+                                        <option value="52560000">Permanentny</option>
+                                    </select>
+                                    <button
+                                        onClick={() => handleBan(u.id, u.is_banned)}
+                                        className={`flex-1 py-1.5 rounded text-[10px] font-bold transition flex justify-center items-center gap-1 ${u.is_banned ? 'bg-green-500/10 text-green-500 border border-green-500/30' : 'bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20'}`}
+                                    >
+                                        {u.is_banned ? <><UserCheck size={14} /> Odbanuj</> : <><UserMinus size={14} /> Nałóż karę</>}
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             )}
 

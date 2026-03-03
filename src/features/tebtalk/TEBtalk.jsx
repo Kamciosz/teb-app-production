@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Search, ArrowLeft, Send, MessageCircle } from 'lucide-react'
+import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
+import MediaUploader from '../../components/common/MediaUploader'
+import { ImageKitService } from '../../services/imageKitService'
+import { WordFilter } from '../../services/wordFilter'
 
 export default function TEBtalk() {
     const [view, setView] = useState('list') // 'list', 'chat', 'search'
@@ -13,6 +16,9 @@ export default function TEBtalk() {
     const [newMessage, setNewMessage] = useState('')
     const [myId, setMyId] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [isCreatingGroup, setIsCreatingGroup] = useState(false)
+    const [groupName, setGroupName] = useState('')
+    const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false)
 
     const messagesEndRef = useRef(null)
 
@@ -50,19 +56,36 @@ export default function TEBtalk() {
     }
 
     async function fetchRecentChats(userId) {
-        // Ponieważ brak customowych widoków SQL - pobieramy wszystkich users z ktorymi pisalismy
+        // Pobieramy prywatne wiadomości
         const { data: sentMsg } = await supabase.from('direct_messages').select('receiver_id').eq('sender_id', userId)
         const { data: recvMsg } = await supabase.from('direct_messages').select('sender_id').eq('receiver_id', userId)
 
-        const ids = new Set([
-            ...(sentMsg || []).map(m => m.receiver_id),
-            ...(recvMsg || []).map(m => m.sender_id)
+        const userIds = new Set([
+            ...(sentMsg || []).map(m => m.receiver_id).filter(id => id && id.length > 20), // Proste sprawdzenie UUID
+            ...(recvMsg || []).map(m => m.sender_id).filter(id => id && id.length > 20)
         ])
 
-        if (ids.size > 0) {
-            const { data } = await supabase.from('profiles').select('id, full_name, role').in('id', Array.from(ids))
-            if (data) setRecentChats(data)
+        let chats = []
+        if (userIds.size > 0) {
+            const { data: users } = await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))
+            if (users) chats = users.map(u => ({ ...u, type: 'private' }))
         }
+
+        // Pobieramy wiadomości grupowe (gdzie receiver_id zaczyna się od 'group_')
+        const { data: groupMsg } = await supabase.from('direct_messages').select('receiver_id').ilike('receiver_id', 'group_%')
+        const groupIds = new Set((groupMsg || []).map(m => m.receiver_id))
+
+        if (groupIds.size > 0) {
+            const groups = Array.from(groupIds).map(id => ({
+                id,
+                full_name: id.replace('group_', '').split('_')[0] || 'Grupa',
+                type: 'group',
+                role: 'room'
+            }))
+            chats = [...chats, ...groups]
+        }
+
+        setRecentChats(chats)
         setLoading(false)
     }
 
@@ -72,23 +95,30 @@ export default function TEBtalk() {
             setSearchResults([])
             return
         }
+        // Pracuj mądrze: nie pokazujemy kont prywatnych w wyszukiwarce publicznej
         const { data } = await supabase.from('profiles')
-            .select('id, full_name, role')
+            .select('id, full_name, role, avatar_url, is_private')
             .ilike('full_name', `%${e.target.value}%`)
+            .eq('is_private', false)
             .neq('id', myId)
             .limit(10)
         if (data) setSearchResults(data)
     }
 
     async function fetchMessages(partnerId) {
-        const { data } = await supabase.from('direct_messages')
+        setLoading(true)
+        const { data, error } = await supabase.from('direct_messages')
             .select('*')
             .or(`and(sender_id.eq.${myId},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${myId})`)
             .order('created_at', { ascending: true })
-        if (data) {
+
+        if (error) {
+            console.error("Błąd pobierania wiadomości:", error)
+        } else if (data) {
             setMessages(data)
             scrollToBottom()
         }
+        setLoading(false)
     }
 
     async function sendMessage(e) {
@@ -96,19 +126,71 @@ export default function TEBtalk() {
         if (!newMessage.trim() || !activeChatUser) return
 
         const msgText = newMessage.trim()
-        setNewMessage('')
+        const tempId = Math.random().toString(36).substring(7)
 
-        await supabase.from('direct_messages').insert([{
+        // Optimistic UI - dodaj lokalnie natychmiast
+        const optimisticMsg = {
+            id: tempId,
             sender_id: myId,
             receiver_id: activeChatUser.id,
-            content: msgText
-        }])
+            content: WordFilter.clean(msgText),
+            created_at: new Date().toISOString(),
+            status: 'sending'
+        }
+
+        setMessages(prev => [...prev, optimisticMsg])
+        setNewMessage('')
         scrollToBottom()
+
+        const { data, error } = await supabase.from('direct_messages').insert([{
+            sender_id: myId,
+            receiver_id: activeChatUser.id,
+            content: WordFilter.clean(msgText)
+        }]).select().single()
+
+        if (error) {
+            console.error("Błąd wysyłania:", error)
+            // Oznacz jako błąd lub usuń z listy
+            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m))
+        } else if (data) {
+            // Zamień tymczasową wiadomość na tę z bazy
+            setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+        }
     }
 
-    const openChat = (user) => {
-        setActiveChatUser(user)
+    async function sendImage(url) {
+        if (!activeChatUser) return
+
+        const { data, error } = await supabase.from('direct_messages').insert([{
+            sender_id: myId,
+            receiver_id: activeChatUser.id,
+            content: url // Link z ImageKit
+        }]).select().single()
+
+        if (error) {
+            console.error("Błąd wysyłania zdjęcia:", error)
+        }
+    }
+
+    const openChat = (target) => {
+        setActiveChatUser(target)
         setView('chat')
+    }
+
+    async function createGroup() {
+        if (!groupName.trim()) return
+        const groupId = `group_${groupName.trim()}_${Math.random().toString(36).substring(7)}`
+
+        // Wyślij pierwszą wiadomość powitalną, aby grupa się pojawiła w liście
+        await supabase.from('direct_messages').insert([{
+            sender_id: myId,
+            receiver_id: groupId,
+            content: `Witajcie w grupie: ${groupName.trim()}!`
+        }])
+
+        setIsCreatingGroup(false)
+        setGroupName('')
+        fetchRecentChats(myId)
     }
 
     if (view === 'chat' && activeChatUser) {
@@ -119,13 +201,29 @@ export default function TEBtalk() {
                     <button onClick={() => setView('list')} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                         <ArrowLeft size={20} />
                     </button>
-                    <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold">
-                        {activeChatUser.full_name.charAt(0).toUpperCase()}
+                    <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shadow-sm">
+                        {activeChatUser.type === 'group' ? (
+                            <Users size={20} className="text-secondary" />
+                        ) : activeChatUser.avatar_url ? (
+                            <img src={ImageKitService.getOptimizedUrl(activeChatUser.avatar_url, 100)} alt="Av" className="w-full h-full object-cover" />
+                        ) : (
+                            activeChatUser.full_name.charAt(0).toUpperCase()
+                        )}
                     </div>
-                    <div>
-                        <div className="font-bold text-white leading-tight">{activeChatUser.full_name}</div>
-                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{activeChatUser.role === 'student' ? 'Uczeń' : activeChatUser.role}</div>
+                    <div className="flex-1">
+                        <div className="font-bold text-white leading-tight flex items-center gap-1.5">
+                            {activeChatUser.full_name}
+                            {activeChatUser.role === 'admin' && <span className="bg-red-500 w-2 h-2 rounded-full shadow-[0_0_5px_red]"></span>}
+                        </div>
+                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                            {activeChatUser.type === 'group' ? 'Pokój Grupowy' : (activeChatUser.role === 'student' ? 'Uczeń' : activeChatUser.role)}
+                        </div>
                     </div>
+                    {activeChatUser.type === 'group' && (
+                        <button onClick={() => setIsGroupSettingsOpen(true)} className="p-2 text-gray-500 hover:text-white">
+                            <Settings size={20} />
+                        </button>
+                    )}
                 </div>
 
                 {/* Pole Wiadomości */}
@@ -146,7 +244,17 @@ export default function TEBtalk() {
                                         </div>
                                     )}
                                     <div className={`max-w-[75%] p-3 rounded-2xl text-sm ${isMe ? 'bg-primary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
-                                        {msg.content}
+                                        {msg.content.startsWith('http') ? (
+                                            <img
+                                                src={ImageKitService.getOptimizedUrl(msg.content, 400)}
+                                                alt="Przesłane zdjęcie"
+                                                className="rounded-lg cursor-pointer hover:opacity-90 transition"
+                                                onClick={() => window.open(msg.content, '_blank')}
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            msg.content
+                                        )}
                                     </div>
                                 </div>
                             )
@@ -156,18 +264,38 @@ export default function TEBtalk() {
                 </div>
 
                 {/* Pole Wprowadzania */}
-                <form onSubmit={sendMessage} className="p-3 bg-[#1a1a1a] border-t border-gray-800 flex gap-2 shrink-0 pb-6">
-                    <input
-                        type="text"
-                        placeholder="Napisz wiadomość..."
-                        value={newMessage}
-                        onChange={e => setNewMessage(e.target.value)}
-                        className="flex-1 bg-background border border-gray-700 rounded-full px-4 text-white outline-none focus:border-primary text-sm"
-                    />
-                    <button type="submit" disabled={!newMessage.trim()} className="bg-primary hover:bg-primary-dark disabled:opacity-50 text-white w-10 h-10 rounded-full flex items-center justify-center transition">
-                        <Send size={18} className="translate-x-[1px]" />
-                    </button>
-                </form>
+                <div className="p-3 bg-[#1a1a1a] border-t border-gray-800 flex flex-col gap-2 shrink-0 pb-6">
+                    <form onSubmit={sendMessage} className="flex gap-2">
+                        <MediaUploader module="tebtalk" onUploadSuccess={sendImage} />
+                        <input
+                            type="text"
+                            placeholder="Napisz wiadomość..."
+                            value={newMessage}
+                            onChange={e => setNewMessage(e.target.value)}
+                            className="flex-1 bg-background border border-gray-700 rounded-full px-4 text-white outline-none focus:border-primary text-sm"
+                        />
+                        <button type="submit" disabled={!newMessage.trim()} className="bg-primary hover:bg-primary-dark disabled:opacity-50 text-white w-10 h-10 rounded-full flex items-center justify-center transition">
+                            <Send size={18} className="translate-x-[1px]" />
+                        </button>
+                    </form>
+                </div>
+
+                {/* Modal Ustawień Grupy */}
+                {isGroupSettingsOpen && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+                        <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative">
+                            <button onClick={() => setIsGroupSettingsOpen(false)} className="absolute top-4 right-4 text-gray-500"><X size={20} /></button>
+                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-secondary" /> Ustawienia Grupy</h3>
+                            <div className="space-y-4 text-sm text-gray-400">
+                                <p>To jest tymczasowy pokój. Możesz dodać do 5 osób (limit testowy).</p>
+                                <div className="p-3 bg-background border border-red-900/30 rounded-lg text-red-400 text-xs flex items-center gap-2">
+                                    <LogOut size={14} />
+                                    <span>Opuść grupę (Wkrótce)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         )
     }
@@ -180,9 +308,14 @@ export default function TEBtalk() {
                     <div className="text-xs text-gray-500 font-bold">Prywatny komunikator</div>
                 </div>
                 {view === 'list' && (
-                    <button onClick={() => setView('search')} className="p-2.5 bg-surface border border-gray-700 rounded-full text-white cursor-pointer active:scale-95 transition">
-                        <Search size={18} />
-                    </button>
+                    <div className="flex gap-2">
+                        <button onClick={() => setIsCreatingGroup(true)} className="p-2.5 bg-surface border border-gray-700 rounded-full text-secondary cursor-pointer active:scale-95 transition">
+                            <Users size={18} />
+                        </button>
+                        <button onClick={() => setView('search')} className="p-2.5 bg-surface border border-gray-700 rounded-full text-white cursor-pointer active:scale-95 transition">
+                            <Search size={18} />
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -204,8 +337,12 @@ export default function TEBtalk() {
                         <div className="flex flex-col gap-2">
                             {searchResults.map(user => (
                                 <div key={user.id} onClick={() => openChat(user)} className="bg-surface border border-gray-800 p-3 rounded-xl flex items-center gap-3 cursor-pointer hover:border-primary transition">
-                                    <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold">
-                                        {user.full_name.charAt(0).toUpperCase()}
+                                    <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden">
+                                        {user.avatar_url ? (
+                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url, 100)} alt="Av" className="w-full h-full object-cover" />
+                                        ) : (
+                                            user.full_name.charAt(0).toUpperCase()
+                                        )}
                                     </div>
                                     <div className="font-bold text-white text-sm">{user.full_name}</div>
                                 </div>
@@ -231,10 +368,15 @@ export default function TEBtalk() {
                         <div className="flex flex-col gap-2">
                             {recentChats.map(user => (
                                 <div key={user.id} onClick={() => openChat(user)} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:border-gray-600 transition">
-                                    <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-lg relative">
-                                        {user.full_name.charAt(0).toUpperCase()}
-                                        {/* Green dot online indicator mock */}
-                                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-surface rounded-full"></div>
+                                    <div className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold text-lg relative overflow-hidden">
+                                        {user.type === 'group' ? (
+                                            <Users size={24} className="text-secondary" />
+                                        ) : user.avatar_url ? (
+                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url, 120)} alt="Av" className="w-full h-full object-cover" />
+                                        ) : (
+                                            user.full_name.charAt(0).toUpperCase()
+                                        )}
+                                        {user.type !== 'group' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-surface rounded-full z-10"></div>}
                                     </div>
                                     <div className="flex-1">
                                         <div className="font-bold text-white leading-tight">{user.full_name}</div>
@@ -244,6 +386,39 @@ export default function TEBtalk() {
                             ))}
                         </div>
                     )}
+                </div>
+            )}
+            {/* Modal Tworzenia Grupy */}
+            {isCreatingGroup && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+                    <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+                        <button onClick={() => setIsCreatingGroup(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={20} /></button>
+                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2 tracking-tight">Nowa Grupa</h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] text-gray-500 font-bold uppercase ml-1">Nazwa Grupy</label>
+                                <input
+                                    type="text"
+                                    placeholder="np. Giełda 4A..."
+                                    value={groupName}
+                                    onChange={e => setGroupName(e.target.value)}
+                                    className="w-full mt-1 p-3 bg-background border border-gray-800 rounded-xl text-white outline-none focus:border-secondary transition"
+                                />
+                            </div>
+                            <button
+                                onClick={createGroup}
+                                disabled={!groupName.trim()}
+                                className="w-full py-3 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-black font-bold rounded-xl flex items-center justify-center gap-2 transition"
+                            >
+                                <Plus size={18} /> Stwórz Pokój
+                            </button>
+                        </div>
+
+                        <p className="text-[10px] text-gray-600 mt-4 text-center">
+                            Wiadomości w grupach są publiczne dla każdego, <br /> kto zna identyfikator pokoju.
+                        </p>
+                    </div>
                 </div>
             )}
         </div>
