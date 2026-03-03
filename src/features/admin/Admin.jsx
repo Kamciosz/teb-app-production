@@ -31,6 +31,7 @@ export default function Admin() {
         // Obsługa wsteczna: jesli roles jest puste, uzywamy starego role
         const roles = profile?.roles || (profile?.role ? [profile.role] : ['student'])
         setMyRoles(roles)
+        const myRole = roles[0] || 'student'
 
         const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
         const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
@@ -107,6 +108,8 @@ export default function Admin() {
     }
 
     if (loading) return <div className="text-center text-primary mt-10 animate-pulse">Weryfikacja Modeli Bezpieczeństwa (RLS)...</div>
+
+    const myRole = myRoles[0] || 'student'
 
     if (myRole === 'student' || myRole === 'editor' || myRole === 'tutor' || myRole === 'freelancer') {
         return (

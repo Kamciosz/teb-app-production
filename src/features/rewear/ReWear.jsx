@@ -1,3 +1,7 @@
+import React, { useState, useEffect } from 'react'
+import { Search, Filter, Camera, Plus, X, Tag } from 'lucide-react'
+import { supabase } from '../../services/supabase'
+import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
 
 export default function ReWear() {
