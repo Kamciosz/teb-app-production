@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import { Home, LayoutGrid, User, ShieldAlert } from 'lucide-react'
 import { supabase, signInWithEmail, signUpWithEmail } from './services/supabase'
 import { NotificationService } from './services/notificationService'
+import { ToastProvider } from './context/ToastContext'
 
 import Feed from './features/feed/Feed'
 import ReWear from './features/rewear/ReWear'
@@ -204,50 +205,52 @@ function App() {
 
     // Jesteś zalogowany -> Router Aplikacji
     return (
-        <Router>
-            <div className="min-h-[100dvh] bg-black flex justify-center">
-                <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
-                    {/* Header z logo TEB */}
-                    <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
-                            <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                Beta-3.1
-                            </span>
-                        </div>
-                    </header>
+        <ToastProvider>
+            <Router>
+                <div className="min-h-[100dvh] bg-black flex justify-center">
+                    <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
+                        {/* Header z logo TEB */}
+                        <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
+                                <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                                    Beta-3.2
+                                </span>
+                            </div>
+                        </header>
 
-                    {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
-                    <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
-                        <Routes>
-                            <Route path="/" element={<Feed />} />
-                            <Route path="/features" element={<Features />} />
-                            <Route path="/profile" element={<Profile />} />
-                            <Route path="/rewear" element={<ReWear />} />
-                            <Route path="/librus" element={<Librus />} />
-                            <Route path="/tebtalk" element={<TEBtalk />} />
-                            <Route path="/groups" element={<Groups />} />
-                            <Route path="/admin" element={<Admin />} />
-                            <Route path="/privacy" element={<PrivacyPolicy />} />
-                        </Routes>
-                    </main>
+                        {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
+                        <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
+                            <Routes>
+                                <Route path="/" element={<Feed />} />
+                                <Route path="/features" element={<Features />} />
+                                <Route path="/profile" element={<Profile />} />
+                                <Route path="/rewear" element={<ReWear />} />
+                                <Route path="/librus" element={<Librus />} />
+                                <Route path="/tebtalk" element={<TEBtalk />} />
+                                <Route path="/groups" element={<Groups />} />
+                                <Route path="/admin" element={<Admin />} />
+                                <Route path="/privacy" element={<PrivacyPolicy />} />
+                            </Routes>
+                        </main>
 
-                    {/* Proaktywna opcja instalacji aplikacji na telefon PWA */}
-                    <InstallPrompt />
+                        {/* Proaktywna opcja instalacji aplikacji na telefon PWA */}
+                        <InstallPrompt />
 
-                    {/* Skrypt informujący o nowych wersjach z GitHuba do pobrania dla urządzenia */}
-                    <ReloadPrompt />
+                        {/* Skrypt informujący o nowych wersjach z GitHuba do pobrania dla urządzenia */}
+                        <ReloadPrompt />
 
-                    {/* Bottom Navigation (Apple / Instagram Style) */}
-                    <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-[env(safe-area-inset-bottom,24px)] pt-2 px-6 flex justify-between z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-                        <NavLink to="/" icon={<Home />} />
-                        <NavLink to="/features" icon={<LayoutGrid />} />
-                        <NavLink to="/profile" icon={<User />} />
-                        {userRoles.includes('admin') && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
-                    </nav>
+                        {/* Bottom Navigation (Apple / Instagram Style) */}
+                        <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-[env(safe-area-inset-bottom,24px)] pt-2 px-6 flex justify-between z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+                            <NavLink to="/" icon={<Home />} />
+                            <NavLink to="/features" icon={<LayoutGrid />} />
+                            <NavLink to="/profile" icon={<User />} />
+                            {userRoles.includes('admin') && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
+                        </nav>
+                    </div>
                 </div>
-            </div>
-        </Router>
+            </Router>
+        </ToastProvider>
     )
 }
 

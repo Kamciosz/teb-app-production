@@ -8,7 +8,7 @@ import { Upload, X, Loader2, FileWarning } from 'lucide-react';
  * @param {string} module - 'profiles' | 'rewear' | 'tebtalk' | 'articles'
  * @param {Function} onUploadSuccess - zwraca URL do zapisu w DB
  */
-const MediaUploader = ({ module = 'general', onUploadSuccess }) => {
+const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -62,7 +62,7 @@ const MediaUploader = ({ module = 'general', onUploadSuccess }) => {
 
     return (
         <div className="media-uploader-container">
-            <label className={`upload-box ${uploading ? 'uploading' : ''}`}>
+            <label className={`cursor-pointer ${uploading ? 'opacity-50' : ''}`}>
                 <input
                     type="file"
                     accept="image/*"
@@ -71,22 +71,34 @@ const MediaUploader = ({ module = 'general', onUploadSuccess }) => {
                     disabled={uploading}
                 />
 
-                {uploading ? (
-                    <div className="flex flex-col items-center">
-                        <Loader2 className="animate-spin mb-2" />
-                        <span className="text-sm">Kompresowanie...</span>
-                    </div>
+                {children ? (
+                    uploading ? (
+                        <div className="w-9 h-9 flex items-center justify-center">
+                            <Loader2 className="animate-spin text-primary" size={20} />
+                        </div>
+                    ) : (
+                        children
+                    )
                 ) : (
-                    <div className="flex flex-col items-center cursor-pointer">
-                        <Upload size={32} className="text-blue-500 mb-2" />
-                        <span className="text-sm font-medium">Dodaj zdjęcie</span>
-                        <span className="text-xs text-gray-400 mt-1">
-                            Format: WebP zoptymalizowany
-                        </span>
-                        {module === 'articles' && (
-                            <span className="text-[10px] text-primary mt-1">
-                                Filmy: Wklej link YT w treści
-                            </span>
+                    <div className={`upload-box ${uploading ? 'uploading' : ''}`}>
+                        {uploading ? (
+                            <div className="flex flex-col items-center">
+                                <Loader2 className="animate-spin mb-2" />
+                                <span className="text-sm">Kompresowanie...</span>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center cursor-pointer">
+                                <Upload size={32} className="text-blue-500 mb-2" />
+                                <span className="text-sm font-medium">Dodaj zdjęcie</span>
+                                <span className="text-xs text-gray-400 mt-1">
+                                    Format: WebP zoptymalizowany
+                                </span>
+                                {module === 'articles' && (
+                                    <span className="text-[10px] text-primary mt-1">
+                                        Filmy: Wklej link YT w treści
+                                    </span>
+                                )}
+                            </div>
                         )}
                     </div>
                 )}
@@ -99,27 +111,29 @@ const MediaUploader = ({ module = 'general', onUploadSuccess }) => {
                 </div>
             )}
 
-            <style jsx>{`
-                .upload-box {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    border: 2px dashed rgba(255, 255, 255, 0.1);
-                    border-radius: 16px;
-                    padding: 24px;
-                    background: rgba(255, 255, 255, 0.05);
-                    backdrop-filter: blur(10px);
-                    transition: all 0.2s ease;
-                }
-                .upload-box:hover {
-                    border-color: #3b82f6;
-                    background: rgba(59, 130, 246, 0.05);
-                }
-                .uploading {
-                    opacity: 0.7;
-                    cursor: wait;
-                }
-            `}</style>
+            {!children && (
+                <style jsx>{`
+                    .upload-box {
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        border: 2px dashed rgba(255, 255, 255, 0.1);
+                        border-radius: 16px;
+                        padding: 24px;
+                        background: rgba(255, 255, 255, 0.05);
+                        backdrop-filter: blur(10px);
+                        transition: all 0.2s ease;
+                    }
+                    .upload-box:hover {
+                        border-color: #3b82f6;
+                        background: rgba(59, 130, 246, 0.05);
+                    }
+                    .uploading {
+                        opacity: 0.7;
+                        cursor: wait;
+                    }
+                `}</style>
+            )}
         </div>
     );
 };

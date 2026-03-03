@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2 } from 'lucide-react'
+import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
 import { WordFilter } from '../../services/wordFilter'
+import { useToast } from '../../context/ToastContext'
 
 export default function TEBtalk() {
     const [view, setView] = useState('list') // 'list', 'chat', 'search', 'friends'
@@ -22,7 +23,8 @@ export default function TEBtalk() {
     const [friends, setFriends] = useState([])
     const [groupMembers, setGroupMembers] = useState([])
     const [isAddingMember, setIsAddingMember] = useState(false)
-
+    
+    const toast = useToast()
     const messagesEndRef = useRef(null)
 
     useEffect(() => {
@@ -205,6 +207,7 @@ export default function TEBtalk() {
 
         if (error) {
             console.error("Błąd wysyłania:", error)
+            toast.error("Nie udało się wysłać wiadomości.")
             setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m))
         } else if (data) {
             setMessages(prev => prev.map(m => m.id === tempId ? data : m))
@@ -224,7 +227,10 @@ export default function TEBtalk() {
         else payload.receiver_id = activeChatUser.id
 
         const { error } = await supabase.from(tableName).insert([payload])
-        if (error) console.error("Błąd wysyłania zdjęcia:", error)
+        if (error) {
+            console.error("Błąd wysyłania zdjęcia:", error)
+            toast.error("Błąd wysyłania zdjęcia.")
+        }
     }
 
     async function deleteMessage(messageId) {
@@ -240,6 +246,7 @@ export default function TEBtalk() {
 
         if (error) {
             console.error("Błąd usuwania wiadomości:", error)
+            toast.error("Nie udało się usunąć wiadomości.")
         } else {
             setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: 'Wiadomość usunięta', is_deleted: true } : m))
         }
@@ -255,12 +262,22 @@ export default function TEBtalk() {
             .select()
             .single()
         
-        if (groupErr) return alert("Błąd tworzenia grupy")
+        if (groupErr) {
+            console.error(groupErr)
+            toast.error("Błąd tworzenia grupy.")
+            return
+        }
 
         // 2. Dodaj siebie jako admina
-        await supabase
+        const { error: memberErr } = await supabase
             .from('chat_group_members')
             .insert([{ group_id: group.id, user_id: myId, role: 'admin' }])
+
+        if (memberErr) {
+            console.error("Błąd dodawania admina:", memberErr)
+            // Nie przerywamy, bo grupa powstała, ale RLS mógł zablokować insert
+            // Jednak po naprawie SQL (Tworca dodaje siebie) powinno działać.
+        }
 
         // 3. Wyślij powitanie
         await supabase.from('chat_group_messages').insert([{
@@ -272,6 +289,7 @@ export default function TEBtalk() {
         setIsCreatingGroup(false)
         setGroupName('')
         fetchRecentChats(myId)
+        toast.success("Grupa utworzona pomyślnie!")
     }
 
     async function addMember(userId) {
@@ -279,10 +297,13 @@ export default function TEBtalk() {
             .from('chat_group_members')
             .insert([{ group_id: activeChatUser.id, user_id: userId, role: 'member' }])
         
-        if (error) alert("Użytkownik jest już w grupie lub błąd")
-        else {
+        if (error) {
+            console.error(error)
+            toast.error("Nie udało się dodać użytkownika.")
+        } else {
             fetchGroupMembers(activeChatUser.id)
             setIsAddingMember(false)
+            toast.success("Użytkownik dodany!")
         }
     }
 
@@ -290,8 +311,11 @@ export default function TEBtalk() {
         const { error } = await supabase
             .from('friends')
             .insert([{ user_id: myId, friend_id: friendId, status: 'pending' }])
-        if (error) alert("Zaproszenie już wysłane")
-        else alert("Zaproszenie wysłane!")
+        if (error) {
+            toast.info("Zaproszenie już wysłane lub błąd.")
+        } else {
+            toast.success("Zaproszenie wysłane!")
+        }
     }
 
     const openChat = (target) => {
@@ -388,20 +412,46 @@ export default function TEBtalk() {
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Pole Wprowadzania */}
-                <div className="p-3 bg-[#1a1a1a] border-t border-gray-800 flex flex-col gap-2 shrink-0 pb-6">
-                    <form onSubmit={sendMessage} className="flex gap-2">
-                        <MediaUploader module="tebtalk" onUploadSuccess={sendImage} />
-                        <input
-                            type="text"
-                            placeholder="Napisz wiadomość..."
-                            value={newMessage}
-                            onChange={e => setNewMessage(e.target.value)}
-                            className="flex-1 bg-background border border-gray-700 rounded-full px-4 text-white outline-none focus:border-primary text-sm"
-                        />
-                        <button type="submit" disabled={!newMessage.trim()} className="bg-primary hover:bg-primary-dark disabled:opacity-50 text-white w-10 h-10 rounded-full flex items-center justify-center transition">
-                            <Send size={18} className="translate-x-[1px]" />
-                        </button>
+                {/* Pole Wprowadzania - Messenger Style */}
+                <div className="p-2 bg-[#1a1a1a] border-t border-gray-800 flex items-end gap-2 shrink-0 pb-4">
+                    <form onSubmit={sendMessage} className="flex-1 flex items-end gap-2 relative">
+                        {/* Przycisk załączników (Spinacz / Plus) */}
+                        <div className="mb-1">
+                            <MediaUploader module="tebtalk" onUploadSuccess={sendImage}>
+                                <div className="w-9 h-9 rounded-full bg-gray-800 text-primary flex items-center justify-center hover:bg-gray-700 transition cursor-pointer">
+                                    <Plus size={20} />
+                                </div>
+                            </MediaUploader>
+                        </div>
+
+                        {/* Input Field */}
+                        <div className="flex-1 bg-gray-800/50 border border-gray-700 rounded-[20px] flex items-center min-h-[40px] px-4 py-2 transition-all focus-within:border-primary focus-within:bg-gray-800">
+                            <input
+                                type="text"
+                                placeholder="Napisz wiadomość..."
+                                value={newMessage}
+                                onChange={e => setNewMessage(e.target.value)}
+                                className="w-full bg-transparent text-white text-[15px] outline-none placeholder-gray-500 max-h-[100px] overflow-y-auto"
+                                style={{ resize: 'none' }}
+                            />
+                            <button type="button" className="text-gray-400 hover:text-yellow-400 transition ml-2 p-1">
+                                <Smile size={20} />
+                            </button>
+                        </div>
+
+                        {/* Send Button */}
+                        {newMessage.trim() ? (
+                            <button type="submit" className="mb-1 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-dark transition shadow-lg shadow-primary/20 animate-in zoom-in duration-200">
+                                <Send size={18} className="translate-x-[1px] translate-y-[1px]" />
+                            </button>
+                        ) : (
+                            <div className="mb-1 w-9 h-9 flex items-center justify-center text-primary">
+                                {/* Opcjonalnie: Przycisk Like/Kciuk gdy pusto, jak w Messengerze */}
+                                <div className="cursor-pointer hover:scale-110 transition active:scale-95" onClick={() => setNewMessage('👍')}>
+                                    <span className="text-xl">👍</span>
+                                </div>
+                            </div>
+                        )}
                     </form>
                 </div>
 
