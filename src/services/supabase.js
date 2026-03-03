@@ -2,10 +2,43 @@ import { createClient } from '@supabase/supabase-js'
 
 // Te klucze pobiera się z panelu Supabase -> Settings -> API po utworzeniu projektu
 // Podczas deploymentu na Vercel będą one ukryte w variables (.env)
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'ZAMIEŃ_NA_SWOJ_URL_Z_SUPABASE'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'ZAMIEŃ_NA_SWÓJ_ANON_KEY_Z_SUPABASE'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+let supabaseInstance
+
+try {
+    if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('ZAMIEŃ')) {
+        console.warn('Supabase credentials missing or invalid. App will run in limited mode.')
+        throw new Error('Missing credentials')
+    }
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey)
+} catch (e) {
+    // Fallback mock to prevent app crash on import
+    supabaseInstance = {
+        auth: {
+            getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+            onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
+            signInWithPassword: () => Promise.reject(new Error('Supabase not configured correctly')),
+            signUp: () => Promise.reject(new Error('Supabase not configured correctly')),
+            signOut: () => Promise.resolve({ error: null }),
+            resetPasswordForEmail: () => Promise.resolve({ error: null })
+        },
+        from: () => ({
+            select: () => ({
+                eq: () => ({
+                    single: () => Promise.resolve({ data: null, error: null })
+                }),
+                order: () => Promise.resolve({ data: [], error: null })
+            }),
+            insert: () => Promise.resolve({ error: new Error('Supabase not configured') }),
+            delete: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: new Error('Supabase not configured') }) }) }),
+            upsert: () => Promise.resolve({ error: new Error('Supabase not configured') })
+        })
+    }
+}
+
+export const supabase = supabaseInstance
 
 // Logowanie Tradycyjne
 export async function signInWithEmail(email, password) {

@@ -1,12 +1,22 @@
 import ImageKit from "imagekit-javascript";
 
-// Konfiguracja ImageKit
-// Dane powinny być docelowo w pliku .env
-const imagekit = new ImageKit({
-    publicKey: import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY || "",
-    urlEndpoint: import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || "",
-    authenticationEndpoint: import.meta.env.VITE_IMAGEKIT_AUTH_ENDPOINT || "",
-});
+let imagekit;
+
+try {
+    // Konfiguracja ImageKit
+    // Dane powinny być docelowo w pliku .env
+    imagekit = new ImageKit({
+        publicKey: import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY || "dummy_key",
+        urlEndpoint: import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || "https://ik.imagekit.io/dummy",
+        authenticationEndpoint: import.meta.env.VITE_IMAGEKIT_AUTH_ENDPOINT || "http://localhost:3000/auth",
+    });
+} catch (error) {
+    console.warn("ImageKit initialization failed:", error);
+    imagekit = {
+        upload: (opts, cb) => cb(new Error("ImageKit not initialized"), null),
+        url: () => ""
+    };
+}
 
 /**
  * Serwis do obsługi mediów przez ImageKit.io

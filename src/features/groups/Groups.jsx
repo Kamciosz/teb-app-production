@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Users, Plus, Hash, ArrowLeft, Send, Search } from 'lucide-react'
+import { Users, Plus, Hash, ArrowLeft, Send, Search, X } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'

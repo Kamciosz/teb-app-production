@@ -97,6 +97,9 @@ function App() {
             setSession(session)
             if (session) fetchRole(session.user.id)
             else setLoading(false)
+        }).catch(err => {
+            console.error("Auth session error:", err)
+            setLoading(false)
         })
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
