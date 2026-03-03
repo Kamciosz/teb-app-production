@@ -22,7 +22,48 @@ export default function Profile() {
             if (data) {
                 setProfile({ ...data, email: session.user.email })
                 setNewName(data.full_name)
+                fetchBadges(session.user.id)
             }
+        }
+    }
+
+    async function fetchBadges(uid) {
+        const { data } = await supabase.from('user_badges').select('badge_type').eq('user_id', uid)
+        if (data) setProfile(prev => ({ ...prev, badges: data.map(b => b.badge_type) }))
+    }
+
+    const AVAILABLE_BADGES = [
+        { id: 'pres_tech', label: 'Przewodniczący Tech', icon: '🎓', price: 500 },
+        { id: 'pres_liceum', label: 'Przewodniczący Liceum', icon: '📚', price: 500 },
+        { id: 'top_rich', label: 'Top Gąbka', icon: '💰', price: 1000 },
+        { id: 'helper', label: 'Pomocna Dłoń', icon: '🤝', price: 200 },
+        { id: 'beta_tester', label: 'Beta Tester', icon: '🧪', price: 0 }
+    ]
+
+    async function buyBadge(badgeId, price) {
+        if (profile.teb_gabki < price) {
+            alert("Nie masz wystarczającej liczby TebGąbek!")
+            return
+        }
+        if (profile.badges?.includes(badgeId)) {
+            alert("Już posiadasz tę odznakę!")
+            return
+        }
+
+        const { error: badgeErr } = await supabase.from('user_badges').insert([{ user_id: profile.id, badge_type: badgeId }])
+        if (badgeErr) {
+            alert("Błąd zakupu: " + badgeErr.message)
+            return
+        }
+
+        const { error: tgErr } = await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki - price }).eq('id', profile.id)
+        if (!tgErr) {
+            alert("Zakupiono odznakę!")
+            setProfile(prev => ({ 
+                ...prev, 
+                teb_gabki: prev.teb_gabki - price,
+                badges: [...(prev.badges || []), badgeId]
+            }))
         }
     }
 
@@ -114,9 +155,11 @@ export default function Profile() {
 
                 <p className="text-sm text-gray-400 mb-2">{profile.email}</p>
                 <div className="flex gap-2">
-                    <span className={`text-[10px] px-3 py-1 rounded-full font-bold ${(profile.role || 'student') === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
-                        {(profile.role || 'student').toUpperCase()}
-                    </span>
+                    {(profile.roles || ['student']).map(role => (
+                        <span key={role} className={`text-[10px] px-3 py-1 rounded-full font-bold ${role === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
+                            {role.toUpperCase()}
+                        </span>
+                    ))}
                     {profile.is_private && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-400">PRYWATNY</span>}
                 </div>
             </div>
@@ -142,8 +185,17 @@ export default function Profile() {
                     <span className="text-xs font-bold">{profile.is_private ? 'Ukryty' : 'Widoczny'}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {profile.role === 'admin' && <div className="text-[10px] bg-red-500/10 text-red-500 p-1 px-2 rounded font-bold border border-red-500/20">PREZES SU</div>}
+                    {profile.roles?.includes('admin') && <div className="text-[10px] bg-red-500/10 text-red-500 p-1 px-2 rounded font-bold border border-red-500/20">PREZES SU</div>}
                     {profile.teb_gabki > 1000 && <div className="text-[10px] bg-yellow-500/10 text-yellow-500 p-1 px-2 rounded font-bold border border-yellow-500/20">MILIONER</div>}
+                    {profile.badges?.map(badgeId => {
+                        const b = AVAILABLE_BADGES.find(x => x.id === badgeId)
+                        if (!b) return null
+                        return (
+                            <div key={badgeId} title={b.label} className="text-[10px] bg-primary/10 text-primary p-1 px-2 rounded font-bold border border-primary/20 flex items-center gap-1">
+                                <span>{b.icon}</span> {b.label.toUpperCase()}
+                            </div>
+                        )
+                    })}
                 </div>
             </div>
 
@@ -163,6 +215,32 @@ export default function Profile() {
                                 <div className="flex flex-col items-end gap-2">
                                     <span className="text-xs font-bold text-primary">50 TG</span>
                                     <MediaUploader module="profiles" onUploadSuccess={updateAvatar} />
+                                </div>
+                            </div>
+
+                            <div className="pt-2">
+                                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-3">Odznaki do kupienia</div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {AVAILABLE_BADGES.map(badge => {
+                                        const owned = profile.badges?.includes(badge.id)
+                                        return (
+                                            <button 
+                                                key={badge.id}
+                                                disabled={owned || profile.teb_gabki < badge.price}
+                                                onClick={() => buyBadge(badge.id, badge.price)}
+                                                className={`flex items-center justify-between p-3 rounded-xl border transition ${owned ? 'bg-green-500/5 border-green-500/30' : 'bg-background border-gray-800 hover:border-primary/50'}`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-xl">{badge.icon}</span>
+                                                    <div className="text-left">
+                                                        <div className="text-xs font-bold text-white">{badge.label}</div>
+                                                        <div className="text-[9px] text-gray-500">{owned ? 'JUŻ POSIADASZ' : `${badge.price} TG`}</div>
+                                                    </div>
+                                                </div>
+                                                {!owned && <ShoppingBag size={14} className="text-primary" />}
+                                            </button>
+                                        )
+                                    })}
                                 </div>
                             </div>
                         </div>

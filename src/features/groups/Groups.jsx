@@ -179,6 +179,20 @@ export default function Groups() {
         }
     }
 
+    async function deleteMessage(messageId) {
+        if (!window.confirm("Czy chcesz usunąć tę wiadomość?")) return
+        
+        const { error } = await supabase
+            .from('group_messages')
+            .update({ is_deleted: true })
+            .eq('id', messageId)
+            .eq('sender_id', myId)
+
+        if (!error) {
+            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true } : m))
+        }
+    }
+
     if (view === 'chat' && activeGroup) {
         const isMember = userGroups.includes(activeGroup.id)
 
@@ -219,13 +233,23 @@ export default function Groups() {
                                         <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-2 group relative`}>
                                             {!isMe && <span className="text-[10px] text-gray-500 font-bold ml-1 mb-0.5">{msg.profiles?.full_name}</span>}
                                             <div className="flex items-center gap-2">
+                                                {isMe && !msg.is_deleted && (
+                                                    <button 
+                                                        onClick={() => deleteMessage(msg.id)}
+                                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-500 hover:text-red-500"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
                                                 {!isMe && (
                                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <ReportButton entityType="group_message" entityId={msg.id} subtle={true} />
                                                     </div>
                                                 )}
-                                                <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${isMe ? 'bg-secondary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
-                                                    {msg.content.startsWith('http') ? (
+                                                <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.is_deleted ? 'bg-gray-800/30 text-gray-600 italic border border-gray-800' : isMe ? 'bg-secondary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
+                                                    {msg.is_deleted ? (
+                                                        'Wiadomość usunięta'
+                                                    ) : msg.content.startsWith('http') ? (
                                                         <img
                                                             src={ImageKitService.getOptimizedUrl(msg.content, 400)}
                                                             alt="Przesłane zdjęcie"

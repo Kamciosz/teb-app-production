@@ -339,13 +339,30 @@ export default function Admin() {
                                 <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg">NOWE ZGŁOSZENIE</div>
 
                                 <div>
-                                    <div className="text-xs text-gray-400 font-bold mb-1">MIEJSCE: <span className="text-white uppercase px-1 rounded bg-[#1a1a1a]">{r.reported_entity_type.replace('_', ' ')}</span></div>
-                                    <div className="text-sm font-bold text-red-400 mb-1 flex items-center gap-2">
-                                        Powód: {r.reason.toUpperCase()}
+                                        <div className="text-xs text-gray-400 font-bold mb-1">MIEJSCE: <span className="text-white uppercase px-1 rounded bg-[#1a1a1a]">{r.reported_entity_type.replace('_', ' ')}</span></div>
+                                        <div className="text-sm font-bold text-red-400 mb-1 flex items-center gap-2">
+                                            Powód: {r.reason.toUpperCase()}
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 mb-2">Zgłaszający: {r.reporter?.full_name || 'Nieznany'} • {new Date(r.created_at).toLocaleString()}</div>
+                                        <div className="text-[9px] text-gray-600 font-mono bg-background p-2 rounded mb-2">ID TREŚCI: {r.reported_entity_id}</div>
+                                        
+                                        {/* Wyświetlanie Kontekstu (Beta-3.2+) */}
+                                        {r.context && (
+                                            <div className="mt-3 bg-black/40 border border-gray-800 rounded-lg p-3">
+                                                <div className="text-[9px] text-gray-500 uppercase font-black mb-2 flex items-center gap-1">
+                                                    <ShieldAlert size={10} /> Kontekst Rozmowy (±5 wiadomości):
+                                                </div>
+                                                <div className="flex flex-col gap-1.5">
+                                                    {JSON.parse(r.context).map((ctx, i) => (
+                                                        <div key={i} className={`text-[10px] leading-tight ${ctx.t.includes(r.reported_entity_id) ? 'bg-red-500/10 p-1 rounded' : ''}`}>
+                                                            <span className="font-bold text-gray-300">{ctx.u}: </span>
+                                                            <span className="text-gray-400">{ctx.t}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="text-[10px] text-gray-500 mb-2">Zgłaszający: {r.reporter?.full_name || 'Nieznany'} • {new Date(r.created_at).toLocaleString()}</div>
-                                    <div className="text-[9px] text-gray-600 font-mono bg-background p-2 rounded">ID TREŚCI: {r.reported_entity_id}</div>
-                                </div>
 
                                 <div className="flex gap-2 mt-1">
                                     <button onClick={() => resolveReport(r.id, 'resolved')} className="flex-1 bg-green-500 text-white py-2 rounded-lg text-[10px] font-bold transition flex justify-center items-center gap-1 active:scale-95 shadow-lg shadow-green-500/20">

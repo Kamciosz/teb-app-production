@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Home, LayoutGrid, User, ShieldAlert } from 'lucide-react'
 import { supabase, signInWithEmail, signUpWithEmail } from './services/supabase'
+import { NotificationService } from './services/notificationService'
 
 import Feed from './features/feed/Feed'
 import ReWear from './features/rewear/ReWear'
@@ -18,7 +19,7 @@ import ReloadPrompt from './components/ReloadPrompt'
 function App() {
     const [session, setSession] = useState(null)
     const [loading, setLoading] = useState(true)
-    const [userRole, setUserRole] = useState('student')
+    const [userRoles, setUserRoles] = useState(['student'])
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
@@ -111,9 +112,9 @@ function App() {
     }, [])
 
     async function fetchRole(uid) {
-        const { data } = await supabase.from('profiles').select('role, teb_gabki').eq('id', uid).single()
+        const { data } = await supabase.from('profiles').select('roles, teb_gabki').eq('id', uid).single()
         if (data) {
-            setUserRole(data.role)
+            setUserRoles(data.roles || ['student'])
             // Automatyczne TG za codzienne logowanie
             const lastLogin = localStorage.getItem('last_login_tg')
             const today = new Date().toLocaleDateString()
@@ -123,6 +124,11 @@ function App() {
                 localStorage.setItem('last_login_tg', today)
                 console.log('Przyznano 5 TG za codzienne logowanie!')
             }
+
+            // Rejestracja powiadomień Push
+            NotificationService.requestPermission().then(granted => {
+                if (granted) NotificationService.subscribeUser(uid)
+            })
         }
         setLoading(false)
     }
@@ -229,7 +235,7 @@ function App() {
                         <NavLink to="/" icon={<Home />} />
                         <NavLink to="/features" icon={<LayoutGrid />} />
                         <NavLink to="/profile" icon={<User />} />
-                        {userRole === 'admin' && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
+                        {userRoles.includes('admin') && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
                     </nav>
                 </div>
             </div>

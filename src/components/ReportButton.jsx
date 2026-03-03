@@ -16,13 +16,45 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        const { error } = await supabase.from('reports').insert([{
+        let reportData = {
             reporter_id: session.user.id,
             reported_entity_type: entityType,
             reported_entity_id: entityId,
             reason: reason,
             status: 'pending'
-        }])
+        }
+
+        // Pobieranie kontekstu dla wiadomości (Context Report)
+        if (entityType === 'group_message' || entityType === 'direct_message') {
+            const tableName = entityType === 'group_message' ? 'group_messages' : 'direct_messages'
+            
+            // Pobierz wiadomość, którą zgłoszono, aby znać jej datę/grupę
+            const { data: mainMsg } = await supabase.from(tableName).select('*').eq('id', entityId).single()
+            
+            if (mainMsg) {
+                // Pobierz 5 przed i 5 po (łącznie 11 wiadomości)
+                const { data: context } = await supabase
+                    .from(tableName)
+                    .select('content, sender_id, created_at, profiles(full_name)')
+                    .eq(entityType === 'group_message' ? 'group_id' : 'conversation_id', mainMsg.group_id || mainMsg.conversation_id)
+                    .order('created_at', { ascending: true })
+                
+                if (context) {
+                    const idx = context.findIndex(m => m.created_at === mainMsg.created_at)
+                    const start = Math.max(0, idx - 5)
+                    const end = Math.min(context.length, idx + 6)
+                    const slicedContext = context.slice(start, end)
+                    
+                    reportData.context = JSON.stringify(slicedContext.map(m => ({
+                        u: m.profiles?.full_name,
+                        t: m.content,
+                        d: m.created_at
+                    })))
+                }
+            }
+        }
+
+        const { error } = await supabase.from('reports').insert([reportData])
 
         setLoading(false)
         if (!error) {
