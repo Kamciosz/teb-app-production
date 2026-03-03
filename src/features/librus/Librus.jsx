@@ -235,22 +235,47 @@ export default function Librus() {
         setIsLoading(true);
         setSimText('Łączę z Synergią...');
         setLoginError('');
+
+        // Auto-fix: Librus login often works better without 'u' if proxy expects numeric
+        // But we keep it as user typed, just trimming spaces
+        const cleanLogin = loginInput.trim(); 
+
         try {
-            setTimeout(() => setSimText('Autoryzacja...'), 800);
+            setTimeout(() => setSimText('Autoryzacja (może potrwać 30s)...'), 800);
+            
+            // 1. Fetch main data (Grades + Attendance)
+            // We send weekStart to get timetable too, but if it fails, we might need retry logic
             const weekStartIso = toISO(getWeekDays(0)[0]);
-            const data = await fetchLibrusData(loginInput, passInput, weekStartIso);
-            await saveCredentials(loginInput, passInput);
-            applyData(data, loginInput);
+            
+            // Retry logic for unstable proxy
+            let data = null;
+            let attempt = 0;
+            const maxAttempts = 2;
+
+            while(attempt < maxAttempts && !data) {
+                try {
+                    attempt++;
+                    if(attempt > 1) setSimText(`Próba ${attempt}/${maxAttempts}...`);
+                    data = await fetchLibrusData(cleanLogin, passInput, weekStartIso);
+                } catch (err) {
+                    if (attempt === maxAttempts) throw err;
+                    await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+                }
+            }
+
+            await saveCredentials(cleanLogin, passInput);
+            applyData(data, cleanLogin);
 
             // Oprócz powyższego dociągamy na przyszłość jeszcze jeden tydzień planów (nieblokująco) 
             const nextWeekIso = toISO(getWeekDays(1)[0]);
-            fetchLibrusData(loginInput, passInput, nextWeekIso, true)
+            fetchLibrusData(cleanLogin, passInput, nextWeekIso, true)
                 .then(res => {
                     if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
                 })
                 .catch(() => { });
         } catch (err) {
-            setLoginError(err.message || 'Błąd połączenia. Spróbuj ponownie.');
+            console.error(err);
+            setLoginError(err.message || 'Błąd połączenia z serwerem Librus. Spróbuj ponownie.');
         } finally {
             setIsLoading(false);
         }
