@@ -141,7 +141,7 @@ export default function Admin() {
     }
 
     return (
-        <div className="pb-10 fade-in">
+        <div className="pb-10 fade-in max-w-4xl mx-auto">
             <div className="flex justify-between items-center mb-6 px-1">
                 <div>
                     <h2 className="text-2xl font-bold text-red-500 tracking-tight flex items-center gap-2">
@@ -255,12 +255,13 @@ export default function Admin() {
             {/* Widok: Użytkownicy */}
             {view === 'users' && (
                 <div className="flex flex-col gap-3 fade-in">
-                    <div className="flex bg-surface border border-gray-800 rounded-xl p-2 mb-2">
+                    <div className="flex bg-surface border border-gray-800 rounded-xl p-2 mb-2 max-w-md">
                         <input type="text" placeholder="Szukaj ucznia do moderacji..." className="bg-transparent text-white pl-2 outline-none w-full text-sm font-bold" />
                         <button className="p-2 text-gray-400"><Search size={18} /></button>
                     </div>
 
-                    {users.map(u => {
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {users.map(u => {
                         const userRoles = u.roles || [u.role] || ['student']
                         return (
                             <div key={u.id} className={`bg-surface border p-4 rounded-xl flex flex-col gap-3 transition ${u.is_banned ? 'border-red-500/50 bg-red-500/5' : 'border-gray-800'}`}>
@@ -322,6 +323,7 @@ export default function Admin() {
                             </div>
                         )
                     })}
+                    </div>
                 </div>
             )}
 
@@ -334,7 +336,8 @@ export default function Admin() {
                             Szkoła jest czysta. Brak otwartych ticketów z incydentami.
                         </div>
                     ) : (
-                        reports.map(r => (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {reports.map(r => (
                             <div key={r.id} className="bg-surface border border-red-500/30 p-4 rounded-xl flex flex-col gap-3 shadow-[0_0_15px_rgba(239,68,68,0.1)] relative overflow-hidden">
                                 <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg">NOWE ZGŁOSZENIE</div>
 
@@ -373,7 +376,8 @@ export default function Admin() {
                                     </button>
                                 </div>
                             </div>
-                        ))
+                        ))}
+                        </div>
                     )}
                 </div>
             )}

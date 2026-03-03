@@ -26,13 +26,21 @@ export const CleanupService = {
 
             if (chatErr) console.error("Błąd czyszczenia czatu:", chatErr)
 
-            // 2. Usuwanie starych wiadomości grupowych
+            // 2. Usuwanie starych wiadomości grupowych (Publicznych)
             const { count: groupChatCount, error: groupChatErr } = await supabase
                 .from('group_messages')
                 .delete({ count: 'exact' })
                 .lt('created_at', chatThreshold)
 
             if (groupChatErr) console.error("Błąd czyszczenia czatu grupowego:", groupChatErr)
+
+            // 2b. Usuwanie starych wiadomości grupowych (Prywatnych - Beta-3.2)
+            const { count: privateGroupChatCount, error: privateGroupChatErr } = await supabase
+                .from('chat_group_messages')
+                .delete({ count: 'exact' })
+                .lt('created_at', chatThreshold)
+
+            if (privateGroupChatErr) console.error("Błąd czyszczenia czatu grupowego prywatnego:", privateGroupChatErr)
 
             // 3. Usuwanie starych postów Re-Wear (w Twojej bazie tabela to rewear_posts)
             const { count: rewearCount, error: rewearErr } = await supabase
@@ -54,7 +62,7 @@ export const CleanupService = {
             return {
                 success: true,
                 deleted: {
-                    chat: (chatCount || 0) + (groupChatCount || 0),
+                    chat: (chatCount || 0) + (groupChatCount || 0) + (privateGroupChatCount || 0),
                     rewear: rewearCount || 0,
                     reports: reportCount || 0
                 }

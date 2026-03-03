@@ -12,6 +12,7 @@ import Features from './features/features/Features'
 import Profile from './features/profile/Profile'
 import TEBtalk from './features/tebtalk/TEBtalk'
 import Groups from './features/groups/Groups'
+import PrivacyPolicy from './features/privacy/PrivacyPolicy'
 
 import InstallPrompt from './components/InstallPrompt'
 import ReloadPrompt from './components/ReloadPrompt'
@@ -191,6 +192,12 @@ function App() {
                 <button onClick={() => { setIsRegister(!isRegister); setAuthError(''); setAuthMessage('') }} className="mt-6 text-sm text-gray-500 underline">
                     {isRegister ? 'Masz już konto? Zaloguj się' : 'Jesteś tu pierwszy raz? Zarejestruj się'}
                 </button>
+
+                <div className="mt-auto pb-4">
+                    <Link to="/privacy" className="text-[10px] text-gray-600 uppercase font-bold tracking-widest hover:text-primary transition">
+                        Polityka Prywatności & Regulamin
+                    </Link>
+                </div>
             </div>
         )
     }
@@ -221,6 +228,7 @@ function App() {
                             <Route path="/tebtalk" element={<TEBtalk />} />
                             <Route path="/groups" element={<Groups />} />
                             <Route path="/admin" element={<Admin />} />
+                            <Route path="/privacy" element={<PrivacyPolicy />} />
                         </Routes>
                     </main>
 

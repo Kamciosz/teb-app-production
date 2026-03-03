@@ -17,6 +17,7 @@ export default function ReWear() {
     const [newItemCategory, setNewItemCategory] = useState('Ubrania')
     const [newItemCondition, setNewItemCondition] = useState('Bardzo dobry')
     const [newItemSize, setNewItemSize] = useState('M')
+    const [newItemSubject, setNewItemSubject] = useState('Matematyka')
     const [newItemPhotoUrl, setNewItemPhotoUrl] = useState(null)
     const [uploading, setUploading] = useState(false)
 
@@ -49,7 +50,8 @@ export default function ReWear() {
         const extraDesc = JSON.stringify({
             category: newItemCategory,
             condition: newItemCondition,
-            size: newItemCategory === 'Ubrania' ? newItemSize : null
+            size: newItemCategory === 'Ubrania' ? newItemSize : null,
+            subject: newItemCategory === 'Korepetycje' ? newItemSubject : null
         })
 
         // Definicja Typu RLS na podstawie kategorii
@@ -169,6 +171,11 @@ export default function ReWear() {
                                     {meta.size && (
                                         <div className="absolute bottom-2 left-2 bg-background/90 px-2 py-1 rounded text-[10px] text-white font-bold border border-gray-700">
                                             {meta.size}
+                                        </div>
+                                    )}
+                                    {meta.subject && (
+                                        <div className="absolute bottom-2 left-2 bg-primary/90 px-2 py-1 rounded text-[10px] text-white font-bold border border-primary/50 uppercase">
+                                            {meta.subject}
                                         </div>
                                     )}
                                 </div>
@@ -302,6 +309,23 @@ export default function ReWear() {
                                             <option>L</option>
                                             <option>XL</option>
                                             <option>XXL</option>
+                                        </select>
+                                    </div>
+                                )}
+                                {newItemCategory === 'Korepetycje' && (
+                                    <div>
+                                        <label className="text-xs text-gray-400 font-bold mb-1 block">Przedmiot</label>
+                                        <select
+                                            className="w-full p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-primary appearance-none cursor-pointer text-sm"
+                                            value={newItemSubject} onChange={e => setNewItemSubject(e.target.value)}
+                                        >
+                                            <option>Matematyka</option>
+                                            <option>Polski</option>
+                                            <option>Angielski</option>
+                                            <option>Informatyka</option>
+                                            <option>Programowanie</option>
+                                            <option>Zawodowe</option>
+                                            <option>Inne</option>
                                         </select>
                                     </div>
                                 )}

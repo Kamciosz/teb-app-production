@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff, X } from 'lucide-react'
+import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff, X, Shield } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { supabase, signOut } from '../../services/supabase'
 import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
@@ -198,6 +199,19 @@ export default function Profile() {
                     })}
                 </div>
             </div>
+
+            <Link to="/privacy" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between hover:bg-gray-800 transition mb-6 group">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-white transition">
+                        <Shield size={20} />
+                    </div>
+                    <div>
+                        <div className="text-sm font-bold text-white leading-none">Prywatność & Dane</div>
+                        <div className="text-[10px] text-gray-500 uppercase mt-1">Zasady, limity i Śmieciarka</div>
+                    </div>
+                </div>
+                <Edit2 size={16} className="text-gray-700 group-hover:text-white transition" />
+            </Link>
 
             {/* Modal Sklepu */}
             {isStoreOpen && (
