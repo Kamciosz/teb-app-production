@@ -1,4 +1,5 @@
-import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff, X } from 'lucide-react'
 import { supabase, signOut } from '../../services/supabase'
 import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
