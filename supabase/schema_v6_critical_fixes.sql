@@ -30,38 +30,38 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 -- 2a. direct_messages
 DROP POLICY IF EXISTS "Wysylanie wiadomosci wlasnych" ON direct_messages;
 CREATE POLICY "Wysylanie wiadomosci wlasnych" ON direct_messages FOR INSERT WITH CHECK (
-    auth.uid() = sender_id AND
-    (SELECT is_banned FROM profiles WHERE id = auth.uid()) IS NOT TRUE
+    auth.uid()::uuid = sender_id::uuid AND
+    (SELECT is_banned FROM profiles WHERE id::uuid = auth.uid()::uuid) IS NOT TRUE
 );
 
 -- 2b. groups (kółka i grupy tematyczne)
 DROP POLICY IF EXISTS "Zakladanie nowej grupy" ON groups;
 CREATE POLICY "Zakladanie nowej grupy" ON groups FOR INSERT WITH CHECK (
-    creator_id = auth.uid() AND
-    (SELECT is_banned FROM profiles WHERE id = auth.uid()) IS NOT TRUE
+    creator_id::uuid = auth.uid()::uuid AND
+    (SELECT is_banned FROM profiles WHERE id::uuid = auth.uid()::uuid) IS NOT TRUE
 );
 
 -- 2c. group_members
 DROP POLICY IF EXISTS "Zapisywanie sie do pustych grup" ON group_members;
 CREATE POLICY "Zapisywanie sie do pustych grup" ON group_members FOR INSERT WITH CHECK (
-    user_id = auth.uid() AND
-    (SELECT is_banned FROM profiles WHERE id = auth.uid()) IS NOT TRUE
+    user_id::uuid = auth.uid()::uuid AND
+    (SELECT is_banned FROM profiles WHERE id::uuid = auth.uid()::uuid) IS NOT TRUE
 );
 
 -- 2d. group_messages (dodaj też is_locked IS NOT TRUE zamiast = false)
 DROP POLICY IF EXISTS "Pisanie na tablicy Grupy" ON group_messages;
 CREATE POLICY "Pisanie na tablicy Grupy" ON group_messages FOR INSERT WITH CHECK (
-    sender_id = auth.uid() AND
-    (EXISTS (SELECT 1 FROM group_members WHERE group_id = group_messages.group_id AND user_id = auth.uid())) AND
-    (SELECT is_locked FROM groups WHERE id = group_messages.group_id) IS NOT TRUE AND
-    (SELECT is_banned FROM profiles WHERE id = auth.uid()) IS NOT TRUE
+    sender_id::uuid = auth.uid()::uuid AND
+    (EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id::uuid = group_messages.group_id::uuid AND gm.user_id::uuid = auth.uid()::uuid)) AND
+    (SELECT is_locked FROM groups WHERE id::uuid = group_messages.group_id::uuid) IS NOT TRUE AND
+    (SELECT is_banned FROM profiles WHERE id::uuid = auth.uid()::uuid) IS NOT TRUE
 );
 
 -- 2e. rewear_posts – usuń restrykcję item_type (kategoria jest w JSON metadanych)
 DROP POLICY IF EXISTS "Kontrola wstawiania towarów" ON rewear_posts;
 CREATE POLICY "Kontrola wstawiania towarów" ON rewear_posts FOR INSERT WITH CHECK (
-    auth.uid() = seller_id AND
-    (SELECT is_banned FROM profiles WHERE id = auth.uid()) IS NOT TRUE
+    auth.uid()::uuid = seller_id::uuid AND
+    (SELECT is_banned FROM profiles WHERE id::uuid = auth.uid()::uuid) IS NOT TRUE
 );
 
 
@@ -70,29 +70,36 @@ CREATE POLICY "Kontrola wstawiania towarów" ON rewear_posts FOR INSERT WITH CHE
 
 -- Najpierw usuń starą politykę FOR ALL, która blokuje INSERT (dla nowej grupy nie ma jeszcze memberów)
 DROP POLICY IF EXISTS "Zarzadzanie czlonkami" ON chat_group_members;
+DROP POLICY IF EXISTS "Widocznosc czlonkow grup" ON chat_group_members;
+DROP POLICY IF EXISTS "Odczyt czlonkow grupy" ON chat_group_members;
+DROP POLICY IF EXISTS "Tworca dodaje siebie" ON chat_group_members;
+DROP POLICY IF EXISTS "Tworca dodaje siebie jako admin" ON chat_group_members;
+DROP POLICY IF EXISTS "Admin grupy dodaje czlonkow" ON chat_group_members;
+DROP POLICY IF EXISTS "Zarzadzanie istniejacymi czlonkami" ON chat_group_members;
+DROP POLICY IF EXISTS "Opuszczenie grupy" ON chat_group_members;
 
 -- Dodaj granularniejsze polityki w miejsce jednej FOR ALL
 CREATE POLICY "Odczyt czlonkow grupy" ON chat_group_members FOR SELECT USING (
-    EXISTS (SELECT 1 FROM chat_group_members cgm WHERE cgm.group_id = chat_group_members.group_id AND cgm.user_id = auth.uid())
+    EXISTS (SELECT 1 FROM chat_group_members cgm WHERE cgm.group_id::uuid = chat_group_members.group_id::uuid AND cgm.user_id::uuid = auth.uid()::uuid)
 );
 
 -- Twórca grupy dodaje siebie jako admin (pierwsza rola, zanim ktokolwiek inny jest w grupie)
 CREATE POLICY "Tworca dodaje siebie jako admin" ON chat_group_members FOR INSERT WITH CHECK (
-    (SELECT creator_id FROM chat_groups WHERE id = group_id) = auth.uid()
+    (SELECT creator_id::uuid FROM chat_groups WHERE id::uuid = group_id::uuid) = auth.uid()::uuid
 );
 
 -- Admin grupy może dodawać nowych członków
 CREATE POLICY "Admin grupy dodaje czlonkow" ON chat_group_members FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM chat_group_members WHERE group_id = chat_group_members.group_id AND user_id = auth.uid() AND role = 'admin')
+    EXISTS (SELECT 1 FROM chat_group_members cgm2 WHERE cgm2.group_id::uuid = group_id::uuid AND cgm2.user_id::uuid = auth.uid()::uuid AND cgm2.role = 'admin')
 );
 
 -- Admin grupy lub sam użytkownik może usunąć/zaktualizować
 CREATE POLICY "Zarzadzanie istniejacymi czlonkami" ON chat_group_members FOR UPDATE USING (
-    EXISTS (SELECT 1 FROM chat_group_members WHERE group_id = chat_group_members.group_id AND user_id = auth.uid() AND role = 'admin')
+    EXISTS (SELECT 1 FROM chat_group_members cgm3 WHERE cgm3.group_id::uuid = chat_group_members.group_id::uuid AND cgm3.user_id::uuid = auth.uid()::uuid AND cgm3.role = 'admin')
 );
 CREATE POLICY "Opuszczenie grupy" ON chat_group_members FOR DELETE USING (
-    auth.uid() = user_id OR
-    EXISTS (SELECT 1 FROM chat_group_members WHERE group_id = chat_group_members.group_id AND user_id = auth.uid() AND role = 'admin')
+    auth.uid()::uuid = user_id::uuid OR
+    EXISTS (SELECT 1 FROM chat_group_members cgm4 WHERE cgm4.group_id::uuid = chat_group_members.group_id::uuid AND cgm4.user_id::uuid = auth.uid()::uuid AND cgm4.role = 'admin')
 );
 
 
@@ -100,8 +107,8 @@ CREATE POLICY "Opuszczenie grupy" ON chat_group_members FOR DELETE USING (
 -- Brakująca polityka UPDATE dla group_messages (dla soft-delete)
 DROP POLICY IF EXISTS "Soft-delete wlasnych wiadomosci" ON group_messages;
 CREATE POLICY "Soft-delete wlasnych wiadomosci" ON group_messages FOR UPDATE USING (
-    sender_id = auth.uid() OR
-    (SELECT role FROM profiles WHERE id = auth.uid()) IN ('admin', 'moderator_content', 'moderator_users')
+    sender_id::uuid = auth.uid()::uuid OR
+    (SELECT role FROM profiles WHERE id::uuid = auth.uid()::uuid) IN ('admin', 'moderator_content', 'moderator_users')
 );
 
 
