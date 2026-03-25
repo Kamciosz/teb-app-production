@@ -24,17 +24,31 @@ try {
             signOut: () => Promise.resolve({ error: null }),
             resetPasswordForEmail: () => Promise.resolve({ error: null })
         },
-        from: () => ({
-            select: () => ({
-                eq: () => ({
-                    single: () => Promise.resolve({ data: null, error: null })
-                }),
-                order: () => Promise.resolve({ data: [], error: null })
-            }),
-            insert: () => Promise.resolve({ error: new Error('Supabase not configured') }),
-            delete: () => ({ eq: () => ({ eq: () => Promise.resolve({ error: new Error('Supabase not configured') }) }) }),
-            upsert: () => Promise.resolve({ error: new Error('Supabase not configured') })
-        })
+        from: () => {
+            const notConfiguredError = new Error('Supabase not configured')
+            const chain = () => ({
+                eq: chain,
+                neq: chain,
+                in: chain,
+                ilike: chain,
+                lt: chain,
+                lte: chain,
+                gt: chain,
+                or: chain,
+                order: chain,
+                limit: chain,
+                select: chain,
+                single: () => Promise.resolve({ data: null, error: notConfiguredError }),
+                then: (resolve) => Promise.resolve({ data: null, error: notConfiguredError, count: 0 }).then(resolve),
+            })
+            return {
+                select: chain,
+                insert: () => ({ ...chain(), select: chain }),
+                update: () => chain(),
+                upsert: () => Promise.resolve({ error: notConfiguredError }),
+                delete: () => chain(),
+            }
+        }
     }
 }
 

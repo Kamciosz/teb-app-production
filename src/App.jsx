@@ -195,9 +195,9 @@ function App() {
                 </button>
 
                 <div className="mt-auto pb-4">
-                    <Link to="/privacy" className="text-[10px] text-gray-600 uppercase font-bold tracking-widest hover:text-primary transition">
+                    <a href="/privacy" className="text-[10px] text-gray-600 uppercase font-bold tracking-widest hover:text-primary transition">
                         Polityka Prywatności & Regulamin
-                    </Link>
+                    </a>
                 </div>
             </div>
         )

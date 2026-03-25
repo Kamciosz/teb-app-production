@@ -1787,7 +1787,7 @@ class Fe {
     this.cacheWillUpdate = async ({ response: t }) => this._cacheableResponse.isResponseCacheable(t) ? t : null, this._cacheableResponse = new Be(e);
   }
 }
-be([{"revision":"1872c500de691dce40960bb85481de07","url":"registerSW.js"},{"revision":"b07e4f72c755b11940a5b44fa2e9975b","url":"index.html"},{"revision":null,"url":"assets/index-BISg2ij1.css"},{"revision":null,"url":"assets/index-B80vCa40.js"},{"revision":"ef310db18d760e6b54776bf915d303ed","url":"logo.svg"},{"revision":"cdaaab60807b80bd732abe9965738aa0","url":"pwa-192x192.png"},{"revision":"8429f75a21fd903396f26636c2f47d23","url":"pwa-512x512.png"},{"revision":"5906a2275716081a246f1ac0039a845e","url":"manifest.webmanifest"}]);
+be([{"revision":"1872c500de691dce40960bb85481de07","url":"registerSW.js"},{"revision":"f1a829dc03729a1f4d88be3ecd49d305","url":"index.html"},{"revision":null,"url":"assets/index-CAIJ3jwt.js"},{"revision":null,"url":"assets/index-BISg2ij1.css"},{"revision":"ef310db18d760e6b54776bf915d303ed","url":"logo.svg"},{"revision":"cdaaab60807b80bd732abe9965738aa0","url":"pwa-192x192.png"},{"revision":"8429f75a21fd903396f26636c2f47d23","url":"pwa-512x512.png"},{"revision":"5906a2275716081a246f1ac0039a845e","url":"manifest.webmanifest"}]);
 _e();
 I(
   /^https:\/\/fonts\.googleapis\.com\/.*/i,
