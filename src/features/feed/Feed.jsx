@@ -37,8 +37,12 @@ export default function Feed() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
             setMyId(session.user.id)
-            const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).single()
-            if (data) setMyRole(data.role)
+            const { data } = await supabase.from('profiles').select('role, roles').eq('id', session.user.id).single()
+            if (data) {
+                // Kompatybilność wsteczna: jeśli roles jest puste, używamy starego role
+                const effectiveRoles = data.roles || (data.role ? [data.role] : ['student'])
+                setMyRole(effectiveRoles[0] || 'student')
+            }
         }
     }
 
@@ -430,10 +434,6 @@ export default function Feed() {
                     </div>
                 </div>
             )}
-            <style jsx>{`
-                .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-                @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-            `}</style>
         </div>
     )
 }

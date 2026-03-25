@@ -39,7 +39,7 @@ try {
                 limit: chain,
                 select: chain,
                 single: () => Promise.resolve({ data: null, error: notConfiguredError }),
-                then: (resolve) => Promise.resolve({ data: null, error: notConfiguredError, count: 0 }).then(resolve),
+                then: (resolve, reject) => Promise.resolve({ data: null, error: notConfiguredError, count: 0 }).then(resolve, reject),
             })
             return {
                 select: chain,

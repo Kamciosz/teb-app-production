@@ -140,73 +140,80 @@ function App() {
     // Widok ekranu logowania tradycyjnego
     if (!session) {
         return (
-            <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center p-4">
-                <div className="flex items-center gap-2 mb-4">
-                    <h1 className="text-4xl font-bold text-primary">TEB-APP</h1>
-                    <span className="bg-red-500/20 text-red-500 border border-red-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
-                        Beta-3.1
-                    </span>
-                </div>
-                <p className="text-gray-400 text-center mb-6 max-w-sm text-sm">
-                    Aplikacja jest bezpieczna. Zamknięty obieg autoryzacji pozwala na rejestrację WYŁĄCZNIE dla domen <strong>@teb.edu.pl</strong>
-                </p>
+            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                <Routes>
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route path="*" element={
+                        <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center p-4">
+                            <div className="flex items-center gap-2 mb-4">
+                                <h1 className="text-4xl font-bold text-primary">TEB-APP</h1>
+                                <span className="bg-red-500/20 text-red-500 border border-red-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
+                                    Beta-3.1
+                                </span>
+                            </div>
+                            <p className="text-gray-400 text-center mb-6 max-w-sm text-sm">
+                                Aplikacja jest bezpieczna. Zamknięty obieg autoryzacji pozwala na rejestrację WYŁĄCZNIE dla domen <strong>@teb.edu.pl</strong>
+                            </p>
 
-                <form onSubmit={handleAuth} className="w-full max-w-xs flex flex-col gap-3">
-                    {isRegister && (
-                        <input
-                            type="text" placeholder="Imię i Nazwisko (Opcjonalnie)"
-                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
-                            value={fullName} onChange={e => setFullName(e.target.value)}
-                        />
-                    )}
-                    <input
-                        type="email" placeholder="Twój szkolny E-mail (@teb.edu.pl)" required
-                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
-                        value={email} onChange={e => setEmail(e.target.value)}
-                    />
-                    <input
-                        type="password" placeholder="Hasło" required
-                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
-                        value={password} onChange={e => setPassword(e.target.value)}
-                    />
-                    {isRegister && (
-                        <input
-                            type="password" placeholder="Potwierdź hasło (Min. 6 znaków)" required minLength={6}
-                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
-                            value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                        />
-                    )}
+                            <form onSubmit={handleAuth} className="w-full max-w-xs flex flex-col gap-3">
+                                {isRegister && (
+                                    <input
+                                        type="text" placeholder="Imię i Nazwisko (Opcjonalnie)"
+                                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                                        value={fullName} onChange={e => setFullName(e.target.value)}
+                                    />
+                                )}
+                                <input
+                                    type="email" placeholder="Twój szkolny E-mail (@teb.edu.pl)" required
+                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                                    value={email} onChange={e => setEmail(e.target.value)}
+                                />
+                                <input
+                                    type="password" placeholder="Hasło" required
+                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                                    value={password} onChange={e => setPassword(e.target.value)}
+                                />
+                                {isRegister && (
+                                    <input
+                                        type="password" placeholder="Potwierdź hasło (Min. 6 znaków)" required minLength={6}
+                                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                                        value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                                    />
+                                )}
 
-                    {authError && <div className="text-red-500 text-xs text-center font-bold px-2">{authError}</div>}
-                    {authMessage && <div className="text-green-400 text-xs text-center font-bold px-2">{authMessage}</div>}
+                                {authError && <div className="text-red-500 text-xs text-center font-bold px-2">{authError}</div>}
+                                {authMessage && <div className="text-green-400 text-xs text-center font-bold px-2">{authMessage}</div>}
 
-                    <button type="submit" className="mt-2 bg-primary text-white px-6 py-3 rounded-xl font-bold w-full shadow-[0_0_15px_rgba(59,130,246,0.3)] transition transform hover:scale-105">
-                        {isRegister ? 'Załóż Konto (Weryfikacja)' : 'Zaloguj się'}
-                    </button>
-                    {!isRegister && (
-                        <button type="button" onClick={handleResetPassword} className="text-xs text-primary underline text-right w-full mt-1 pr-2">
-                            Nie pamiętasz hasła?
-                        </button>
-                    )}
-                </form>
+                                <button type="submit" className="mt-2 bg-primary text-white px-6 py-3 rounded-xl font-bold w-full shadow-[0_0_15px_rgba(59,130,246,0.3)] transition transform hover:scale-105">
+                                    {isRegister ? 'Załóż Konto (Weryfikacja)' : 'Zaloguj się'}
+                                </button>
+                                {!isRegister && (
+                                    <button type="button" onClick={handleResetPassword} className="text-xs text-primary underline text-right w-full mt-1 pr-2">
+                                        Nie pamiętasz hasła?
+                                    </button>
+                                )}
+                            </form>
 
-                <button onClick={() => { setIsRegister(!isRegister); setAuthError(''); setAuthMessage('') }} className="mt-6 text-sm text-gray-500 underline">
-                    {isRegister ? 'Masz już konto? Zaloguj się' : 'Jesteś tu pierwszy raz? Zarejestruj się'}
-                </button>
+                            <button onClick={() => { setIsRegister(!isRegister); setAuthError(''); setAuthMessage('') }} className="mt-6 text-sm text-gray-500 underline">
+                                {isRegister ? 'Masz już konto? Zaloguj się' : 'Jesteś tu pierwszy raz? Zarejestruj się'}
+                            </button>
 
-                <div className="mt-auto pb-4">
-                    <a href="/privacy" className="text-[10px] text-gray-600 uppercase font-bold tracking-widest hover:text-primary transition">
-                        Polityka Prywatności & Regulamin
-                    </a>
-                </div>
-            </div>
+                            <div className="mt-auto pb-4">
+                                <Link to="/privacy" className="text-[10px] text-gray-600 uppercase font-bold tracking-widest hover:text-primary transition">
+                                    Polityka Prywatności & Regulamin
+                                </Link>
+                            </div>
+                        </div>
+                    } />
+                </Routes>
+            </Router>
         )
     }
 
     // Jesteś zalogowany -> Router Aplikacji
     return (
         <ToastProvider>
-            <Router>
+            <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <div className="min-h-[100dvh] bg-black flex justify-center">
                     <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
                         {/* Header z logo TEB */}
