@@ -54,10 +54,10 @@ export default function ReWear() {
             subject: newItemCategory === 'Korepetycje' ? newItemSubject : null
         })
 
-        // Definicja Typu RLS na podstawie kategorii
-        let dbItemType = 'item'
-        if (newItemCategory === 'Korepetycje') dbItemType = 'tutoring'
-        if (newItemCategory === 'Usługi') dbItemType = 'service'
+        // item_type zawsze 'item' - kategoria jest przechowywana w JSON metadanych
+        // RLS dozwala 'tutoring'/'service' tylko dla ról tutor/freelancer,
+        // więc używamy 'item' dla wszystkich i filtrujemy po kategorii w UI
+        const dbItemType = 'item'
 
         setUploading(true)
 
