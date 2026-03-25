@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft } from 'lucide-react'
+import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft, MessageCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
@@ -10,6 +11,8 @@ export default function ReWear() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedItem, setSelectedItem] = useState(null)
     const [myUserId, setMyUserId] = useState(null)
+
+    const navigate = useNavigate()
 
     // Role zalogowanego użytkownika (do blokady Korepetycje/Usługi)
     const [userRoles, setUserRoles] = useState(['student'])
@@ -52,7 +55,7 @@ export default function ReWear() {
         if (!confirm('Czy na pewno chcesz usunąć to ogłoszenie?')) return
         const { error } = await supabase
             .from('rewear_posts')
-            .update({ status: 'inactive' })
+            .update({ status: 'archived' })
             .eq('id', itemId)
             .eq('seller_id', myUserId)
         if (error) {
@@ -67,7 +70,7 @@ export default function ReWear() {
     async function fetchItems() {
         const { data, error } = await supabase
             .from('rewear_posts')
-            .select('*, profiles(full_name)')
+            .select('*, profiles(full_name, avatar_url, role)')
             .eq('status', 'active')
             .order('created_at', { ascending: false })
 
@@ -305,6 +308,23 @@ export default function ReWear() {
                                             {new Date(selectedItem.created_at).toLocaleDateString('pl-PL')}
                                         </div>
                                     </div>
+                                    {!isOwner && (
+                                        <button
+                                            onClick={() => navigate('/tebtalk', {
+                                                state: {
+                                                    openChatWith: {
+                                                        id: selectedItem.seller_id,
+                                                        full_name: selectedItem.profiles?.full_name || 'Sprzedawca',
+                                                        avatar_url: selectedItem.profiles?.avatar_url || null,
+                                                        role: selectedItem.profiles?.role || 'student',
+                                                    }
+                                                }
+                                            })}
+                                            className="w-full py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)] mt-1"
+                                        >
+                                            <MessageCircle size={16} /> Napisz do sprzedawcy
+                                        </button>
+                                    )}
                                     {isOwner && (
                                         <button
                                             onClick={() => handleDeleteItem(selectedItem.id)}

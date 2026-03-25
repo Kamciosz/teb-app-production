@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
@@ -26,6 +27,7 @@ export default function TEBtalk() {
     
     const toast = useToast()
     const messagesEndRef = useRef(null)
+    const location = useLocation()
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -35,6 +37,11 @@ export default function TEBtalk() {
                 fetchFriends(session.user.id)
             }
         })
+        // Auto-open chat if navigated from ReWear (or another screen) with seller info
+        if (location.state?.openChatWith) {
+            setActiveChatUser({ ...location.state.openChatWith, type: 'private' })
+            setView('chat')
+        }
     }, [])
 
     useEffect(() => {
@@ -210,7 +217,13 @@ export default function TEBtalk() {
             toast.error("Nie udało się wysłać wiadomości.")
             setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m))
         } else if (data) {
-            setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+            // Zastąp optimistic msg realnym — uwzględnia przypadek, gdy Realtime
+            // dodał już tę wiadomość przed odpowiedzią insertu (race condition).
+            setMessages(prev => {
+                const withoutTemp = prev.filter(m => m.id !== tempId)
+                const alreadyAdded = withoutTemp.some(m => m.id === data.id)
+                return alreadyAdded ? withoutTemp : [...withoutTemp, data]
+            })
         }
     }
 
