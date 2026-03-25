@@ -9,6 +9,9 @@ export default function ReWear() {
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
 
+    // Role zalogowanego użytkownika (do blokady Korepetycje/Usługi)
+    const [userRoles, setUserRoles] = useState(['student'])
+
     // Stany formularza modal "Vinted Pro"
     const [newItemTitle, setNewItemTitle] = useState('')
     const [newItemPrice, setNewItemPrice] = useState('')
@@ -24,9 +27,23 @@ export default function ReWear() {
     // Filtrowanie
     const [activeFilter, setActiveFilter] = useState('Wszystko')
 
+    const canTutor = userRoles.some(r => ['tutor', 'admin'].includes(r))
+    const canService = userRoles.some(r => ['freelancer', 'admin'].includes(r))
+
     useEffect(() => {
         fetchItems()
+        loadUserRoles()
     }, [])
+
+    async function loadUserRoles() {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) return
+        const { data } = await supabase.from('profiles').select('role, roles').eq('id', session.user.id).single()
+        if (data) {
+            const effectiveRoles = data.roles || (data.role ? [data.role] : ['student'])
+            setUserRoles(effectiveRoles)
+        }
+    }
 
     async function fetchItems() {
         const { data, error } = await supabase
@@ -54,10 +71,24 @@ export default function ReWear() {
             subject: newItemCategory === 'Korepetycje' ? newItemSubject : null
         })
 
-        // item_type zawsze 'item' - kategoria jest przechowywana w JSON metadanych
-        // RLS dozwala 'tutoring'/'service' tylko dla ról tutor/freelancer,
-        // więc używamy 'item' dla wszystkich i filtrujemy po kategorii w UI
-        const dbItemType = 'item'
+        // Definicja item_type z walidacją roli nadanej przez administratora
+        let dbItemType = 'item'
+        if (newItemCategory === 'Korepetycje') {
+            if (!canTutor) {
+                alert('Ogłoszenia Korepetycji mogą wystawiać tylko użytkownicy z rolą Korepetytora.\nSkontaktuj się z administratorem, aby uzyskać tę rolę.')
+                setUploading(false)
+                return
+            }
+            dbItemType = 'tutoring'
+        }
+        if (newItemCategory === 'Usługi') {
+            if (!canService) {
+                alert('Ogłoszenia Usług mogą wystawiać tylko użytkownicy z rolą Freelancera.\nSkontaktuj się z administratorem, aby uzyskać tę rolę.')
+                setUploading(false)
+                return
+            }
+            dbItemType = 'service'
+        }
 
         setUploading(true)
 
