@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Filter, Camera, Plus, X, Tag } from 'lucide-react'
+import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
@@ -8,6 +8,8 @@ export default function ReWear() {
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
+    const [selectedItem, setSelectedItem] = useState(null)
+    const [myUserId, setMyUserId] = useState(null)
 
     // Role zalogowanego użytkownika (do blokady Korepetycje/Usługi)
     const [userRoles, setUserRoles] = useState(['student'])
@@ -38,10 +40,27 @@ export default function ReWear() {
     async function loadUserRoles() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
+        setMyUserId(session.user.id)
         const { data } = await supabase.from('profiles').select('role, roles').eq('id', session.user.id).single()
         if (data) {
             const effectiveRoles = data.roles || (data.role ? [data.role] : ['student'])
             setUserRoles(effectiveRoles)
+        }
+    }
+
+    async function handleDeleteItem(itemId) {
+        if (!confirm('Czy na pewno chcesz usunąć to ogłoszenie?')) return
+        const { error } = await supabase
+            .from('rewear_posts')
+            .update({ status: 'inactive' })
+            .eq('id', itemId)
+            .eq('seller_id', myUserId)
+        if (error) {
+            console.error(error)
+            alert('Błąd usuwania: ' + error.message)
+        } else {
+            setSelectedItem(null)
+            fetchItems()
         }
     }
 
@@ -176,7 +195,7 @@ export default function ReWear() {
                     {filteredItems.map(item => {
                         const meta = parseDescription(item.description)
                         return (
-                            <div key={item.id} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col w-full">
+                            <div key={item.id} onClick={() => setSelectedItem(item)} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col w-full cursor-pointer hover:border-gray-600 transition">
                                 <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden group">
                                     {item.image_url ? (
                                         <img
@@ -229,6 +248,77 @@ export default function ReWear() {
                     {filteredItems.length === 0 && <div className="col-span-2 text-center text-gray-500 mt-10 p-8 border border-gray-800 rounded-2xl border-dashed">Brak ofert w tej kategorii. Zostań pierwszym!</div>}
                 </div>
             )}
+
+            {/* Modal Szczegółów Oferty */}
+            {selectedItem && (() => {
+                const meta = parseDescription(selectedItem.description)
+                const isOwner = selectedItem.seller_id === myUserId
+                return (
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
+                        <div className="bg-surface border border-gray-700 w-full max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col max-h-[92vh]">
+                            <div className="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-3xl sm:rounded-t-2xl">
+                                <button onClick={() => setSelectedItem(null)} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
+                                    <ArrowLeft size={20} />
+                                </button>
+                                <div className="flex gap-2">
+                                    <ReportButton entityType="rewear_post" entityId={selectedItem.id} subtle={true} />
+                                    {isOwner && (
+                                        <button
+                                            onClick={() => handleDeleteItem(selectedItem.id)}
+                                            className="p-2 text-red-500 hover:text-red-400 transition"
+                                            title="Usuń ogłoszenie"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="overflow-y-auto">
+                                {selectedItem.image_url ? (
+                                    <img src={selectedItem.image_url} alt={selectedItem.title} className="w-full h-56 object-cover" />
+                                ) : (
+                                    <div className="w-full h-40 bg-[#1a1a1a] flex items-center justify-center">
+                                        <Camera className="text-gray-700" size={40} />
+                                    </div>
+                                )}
+                                <div className="p-5 flex flex-col gap-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <h3 className="text-xl font-bold text-white leading-tight">{selectedItem.title}</h3>
+                                        <div className="text-2xl font-bold text-primary whitespace-nowrap">
+                                            {selectedItem.price_teb_gabki > 0 ? `${selectedItem.price_teb_gabki} TG` : `${selectedItem.price_pln} ZŁ`}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 flex-wrap">
+                                        <span className="px-3 py-1 bg-background border border-gray-700 rounded-full text-xs font-bold text-gray-300 flex items-center gap-1">
+                                            <Tag size={10} className="text-primary" /> {meta.condition}
+                                        </span>
+                                        {meta.category && <span className="px-3 py-1 bg-background border border-gray-700 rounded-full text-xs font-bold text-gray-300">{meta.category}</span>}
+                                        {meta.size && <span className="px-3 py-1 bg-background border border-gray-700 rounded-full text-xs font-bold text-gray-300">Rozmiar: {meta.size}</span>}
+                                        {meta.subject && <span className="px-3 py-1 bg-primary/20 border border-primary/30 rounded-full text-xs font-bold text-primary">{meta.subject}</span>}
+                                    </div>
+                                    <p className="text-sm text-gray-300 leading-relaxed">{cleanDescription(selectedItem.description)}</p>
+                                    <div className="pt-3 border-t border-gray-800 flex items-center justify-between">
+                                        <div className="text-xs text-gray-500">
+                                            Wystawił: <span className="text-white font-bold">{selectedItem.profiles?.full_name}</span>
+                                        </div>
+                                        <div className="text-xs text-gray-600">
+                                            {new Date(selectedItem.created_at).toLocaleDateString('pl-PL')}
+                                        </div>
+                                    </div>
+                                    {isOwner && (
+                                        <button
+                                            onClick={() => handleDeleteItem(selectedItem.id)}
+                                            className="w-full py-3 bg-red-900/20 text-red-500 border border-red-900/30 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-900/40 transition mt-1"
+                                        >
+                                            <Trash2 size={16} /> Usuń ogłoszenie
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            })()}
 
             {/* FAB (Floating Action Button) do szybkiego aparatu/oferty */}
             <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(59,130,246,0.5)] z-40 transition transform active:scale-95">

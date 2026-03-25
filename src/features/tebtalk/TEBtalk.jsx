@@ -51,13 +51,13 @@ export default function TEBtalk() {
                     const msg = payload.new
                     if (isGroup) {
                         if (msg.group_id === activeChatUser.id) {
-                            setMessages(prev => [...prev, msg])
+                            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
                             scrollToBottom()
                         }
                     } else {
                         if ((msg.sender_id === myId && msg.receiver_id === activeChatUser.id) ||
                             (msg.sender_id === activeChatUser.id && msg.receiver_id === myId)) {
-                            setMessages(prev => [...prev, msg])
+                            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
                             scrollToBottom()
                         }
                     }
@@ -262,8 +262,8 @@ export default function TEBtalk() {
             .select()
             .single()
         
-        if (groupErr) {
-            console.error(groupErr)
+        if (groupErr || !group) {
+            console.error(groupErr || 'No group data returned')
             toast.error("Błąd tworzenia grupy.")
             return
         }
