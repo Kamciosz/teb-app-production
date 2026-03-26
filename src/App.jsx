@@ -221,7 +221,7 @@ function App() {
                             <div className="flex items-center gap-2">
                                 <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
                                 <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                    Beta-3.2
+                                    Beta-3.3
                                 </span>
                             </div>
                         </header>
