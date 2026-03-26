@@ -13,6 +13,7 @@ export default function Admin() {
     const [cleanupLoading, setCleanupLoading] = useState(false)
     const [cleanupResult, setCleanupResult] = useState(null)
     const [myRoles, setMyRoles] = useState([])
+    const [myId, setMyId] = useState(null)
     const [banDuration, setBanDuration] = useState('1440') // 1 day in minutes
 
     const ROLES = ['student', 'teacher', 'admin', 'editor', 'moderator_content', 'moderator_users', 'su_member']
@@ -40,6 +41,7 @@ export default function Admin() {
     async function checkAccessAndFetch() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
+        setMyId(session.user.id)
 
         const { data: profile } = await supabase
             .from('profiles')
@@ -81,6 +83,11 @@ export default function Admin() {
     async function toggleRank(userId, currentRoles, rank) {
         if (!myRoles.includes('admin')) {
             alert('Tylko Admin Główny może nadawać rangi.')
+            return
+        }
+        // Zabezpieczenie: admin nie może odebrać sobie roli 'admin'
+        if (userId === myId && rank === 'admin' && currentRoles.includes('admin')) {
+            alert('Nie możesz odebrać sobie uprawnień Administratora. Poproś innego admina.')
             return
         }
         let newRoles = [...(currentRoles || ['student'])]

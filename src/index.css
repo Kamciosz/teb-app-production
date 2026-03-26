@@ -26,6 +26,16 @@ body {
     flex-direction: column;
 }
 
+/* Animacje */
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* Dostosowanie Quill.js - Edytora tekstu Onet */
 .ql-editor {
     min-height: 12rem;
