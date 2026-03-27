@@ -1,9 +1,11 @@
 import { supabase } from './supabase';
 
 export const NotificationService = {
-    // Klucz VAPID (Publiczny) - uczeń musi go wygenerować w Supabase lub własnym backendzie
-    // Jeśli go nie ma, używamy placeholder'a
-    VAPID_PUBLIC_KEY: 'BJn_v0_4u5ZzX7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X',
+    // Klucz VAPID (Publiczny) - prefer env var `VITE_VAPID_PUBLIC_KEY` injected at build time.
+    // Jeśli nie dostarczono, pozostawiamy wartość domyślną (może być placeholderem).
+    VAPID_PUBLIC_KEY: (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_VAPID_PUBLIC_KEY)
+        ? import.meta.env.VITE_VAPID_PUBLIC_KEY
+        : 'BJn_v0_4u5ZzX7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X',
 
     async requestPermission() {
         if (!('Notification' in window)) {
@@ -25,11 +27,26 @@ export const NotificationService = {
             let subscription = await registration.pushManager.getSubscription();
             
             if (!subscription) {
-                // Subskrybuj
-                subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: this.urlBase64ToUint8Array(this.VAPID_PUBLIC_KEY)
-                });
+                // Prepare applicationServerKey (validate first)
+                const keyArray = (() => {
+                    try {
+                        if (!this.VAPID_PUBLIC_KEY || /PLACEHOLDER|X{3,}/i.test(this.VAPID_PUBLIC_KEY)) return null;
+                        return this.urlBase64ToUint8Array(this.VAPID_PUBLIC_KEY);
+                    } catch (err) {
+                        console.warn('Invalid VAPID key, skipping push subscription:', err);
+                        return null;
+                    }
+                })();
+
+                if (!keyArray) {
+                    console.warn('Push subscription skipped: invalid or missing VAPID public key.');
+                } else {
+                    // Subskrybuj
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: keyArray
+                    });
+                }
             }
 
             // Zapisz subskrypcję w Supabase
@@ -50,17 +67,21 @@ export const NotificationService = {
     },
 
     urlBase64ToUint8Array(base64String) {
-        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding)
-            .replace(/-/g, '+')
-            .replace(/_/g, '/');
+        if (!base64String || typeof base64String !== 'string') throw new Error('Invalid base64 string');
+        // Convert from base64url to base64 and normalize
+        const cleaned = base64String.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - (cleaned.length % 4)) % 4);
+        const base64 = cleaned + padding;
 
-        const rawData = window.atob(base64);
-        const outputArray = new Uint8Array(rawData.length);
-
-        for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i);
+        try {
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        } catch (err) {
+            throw new Error('Failed to decode VAPID key. Ensure it is a valid base64url string. ' + err.message);
         }
-        return outputArray;
     }
 };
