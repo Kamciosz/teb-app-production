@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import imageCompression from 'browser-image-compression';
-import { uploadImageToR2 } from '../../services/r2Upload';
+import { ImageKitService } from '../../services/imageKitService';
 import { useToast } from '../../context/ToastContext';
-import { Upload, X, Loader2, FileWarning } from 'lucide-react';
+import { Upload, Loader2, FileWarning } from 'lucide-react';
 
 /**
  * Inteligentny Uploader z kompresją WebP
@@ -12,6 +12,13 @@ import { Upload, X, Loader2, FileWarning } from 'lucide-react';
 const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
+    const fileInputRef = useRef(null);
+
+    // Otwiera natywne okno wyboru pliku — ref+click działa niezawodnie na PC i mobile
+    const openFilePicker = (e) => {
+        if (e) e.preventDefault();
+        if (!uploading) fileInputRef.current?.click();
+    };
 
     // Limity modułów zgodnie ze strategią Beta 3.2
     const config = {
@@ -27,6 +34,8 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        // Reset — pozwala wybrać ten sam plik ponownie
+        e.target.value = '';
 
         // 1. Blokada formatów (Pracuj mądrze, nie ciężko)
         const blockedExtensions = ['txt', 'sql', 'exe', 'bin'];
@@ -43,9 +52,11 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
             // 2. Kompresja na telefonie ucznia (Oszczędzanie transferu)
             const options = {
                 maxSizeMB: config.maxSizeMB,
-                maxWidthOrHeight: config.maxWidthOrHeight,
-                useWebWorker: true,
-                fileType: 'image/webp' // Konwersja wymuszona do WebP
+                // Cap any module-specific max dimension to 1920px to avoid huge uploads
+                maxWidthOrHeight: Math.min(config.maxWidthOrHeight || 1920, 1920),
+                useWebWorker: false, // false = stabilne na Safari iOS i Android WebView
+                fileType: 'image/webp', // Konwersja wymuszona do WebP
+                initialQuality: config.quality || 0.8
             };
 
             const compressedFile = await imageCompression(file, options);
@@ -53,8 +64,8 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
             // 3. Wysyłka do CDN
                 const fileName = `${module}_${Date.now()}.webp`;
                 let url = null;
-                // Prefer Cloudflare R2 when configured (server endpoint will provide presigned URL)
-                url = await uploadImageToR2(compressedFile);
+                // Upload to ImageKit via signed server auth
+                url = await ImageKitService.upload(compressedFile, fileName, module);
 
             if (onUploadSuccess) onUploadSuccess(url);
         } catch (err) {
@@ -81,47 +92,60 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
 
     return (
         <div className="media-uploader-container">
-            <label className={`cursor-pointer ${uploading ? 'opacity-50' : ''}`}>
-                <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    hidden
-                    disabled={uploading}
-                />
+            {/* Input ukryty przez CSS — nie przez atrybut hidden, który blokuje klik na niektórych przeglądarkach */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+                disabled={uploading}
+            />
 
-                {children ? (
-                    uploading ? (
+            {children ? (
+                /* Tryb z children — np. ikona aparatu w TEBtalk */
+                <div
+                    onClick={openFilePicker}
+                    className={`cursor-pointer select-none ${uploading ? 'pointer-events-none opacity-50' : ''}`}
+                >
+                    {uploading ? (
                         <div className="w-9 h-9 flex items-center justify-center">
                             <Loader2 className="animate-spin text-primary" size={20} />
                         </div>
                     ) : (
                         children
-                    )
-                ) : (
-                    <div className={`upload-box ${uploading ? 'uploading' : ''}`}>
-                        {uploading ? (
-                            <div className="flex flex-col items-center">
-                                <Loader2 className="animate-spin mb-2" />
-                                <span className="text-sm">Kompresowanie...</span>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center cursor-pointer">
-                                <Upload size={32} className="text-blue-500 mb-2" />
-                                <span className="text-sm font-medium">Dodaj zdjęcie</span>
-                                <span className="text-xs text-gray-400 mt-1">
-                                    Format: WebP zoptymalizowany
+                    )}
+                </div>
+            ) : (
+                /* Tryb domyślny — duże pole klikalne */
+                <div
+                    onClick={openFilePicker}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openFilePicker(e)}
+                    className={`upload-box select-none ${uploading ? 'uploading' : 'cursor-pointer'}`}
+                >
+                    {uploading ? (
+                        <div className="flex flex-col items-center">
+                            <Loader2 className="animate-spin mb-2" />
+                            <span className="text-sm">Wysyłanie zdjęcia...</span>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center">
+                            <Upload size={32} className="text-blue-500 mb-2" />
+                            <span className="text-sm font-medium">Dodaj zdjęcie</span>
+                            <span className="text-xs text-gray-400 mt-1">
+                                Kliknij lub dotknij, aby wybrać
+                            </span>
+                            {module === 'articles' && (
+                                <span className="text-[10px] text-primary mt-1">
+                                    Filmy: Wklej link YT w treści
                                 </span>
-                                {module === 'articles' && (
-                                    <span className="text-[10px] text-primary mt-1">
-                                        Filmy: Wklej link YT w treści
-                                    </span>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </label>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {error && (
                 <div className="mt-2 flex items-center text-red-500 text-xs gap-1">
@@ -131,7 +155,7 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
             )}
 
             {!children && (
-                <style jsx>{`
+                <style>{`
                     .upload-box {
                         display: flex;
                         align-items: center;
@@ -140,8 +164,9 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
                         border-radius: 16px;
                         padding: 24px;
                         background: rgba(255, 255, 255, 0.05);
-                        backdrop-filter: blur(10px);
                         transition: all 0.2s ease;
+                        width: 100%;
+                        min-height: 100px;
                     }
                     .upload-box:hover {
                         border-color: #3b82f6;
@@ -150,6 +175,7 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
                     .uploading {
                         opacity: 0.7;
                         cursor: wait;
+                        pointer-events: none;
                     }
                 `}</style>
             )}

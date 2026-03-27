@@ -1,30 +1,60 @@
-import { uploadImageToR2 } from './r2Upload';
+import imageCompression from 'browser-image-compression';
 
-const R2_PUBLIC = import.meta.env.VITE_R2_PUBLIC_URL || import.meta.env.NEXT_PUBLIC_R2_PUBLIC_URL || import.meta.env.R2_PUBLIC_URL || '';
+const IMAGEKIT_ENDPOINT = import.meta.env.IMAGEKIT_URL_ENDPOINT || import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || '';
 
-// Legacy name preserved for compatibility with existing imports.
-// This service now prefers Cloudflare R2; ImageKit has been removed.
 export const ImageKitService = {
-    upload: async (file, fileName, folder = 'general') => {
-        if (!R2_PUBLIC) {
-            throw new Error('No upload provider configured. Set VITE_R2_PUBLIC_URL to enable uploads.');
+    upload: async (file, fileName, folder = '') => {
+        if (!file) throw new Error('No file provided');
+
+        // Plik jest już skompresowany przez MediaUploader — brak podwójnej kompresji
+        const toUpload = file;
+
+        // Get authentication parameters from server
+        const folderQuery = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+        const authRes = await fetch(`/api/imagekit-auth${folderQuery}`);
+        if (!authRes.ok) {
+            const text = await authRes.text().catch(() => '');
+            const err = new Error('Failed to get ImageKit auth: ' + (text || authRes.status));
+            err.status = authRes.status;
+            err.body = text;
+            throw err;
         }
-        return await uploadImageToR2(file);
+        const auth = await authRes.json();
+
+        const form = new FormData();
+        form.append('file', toUpload);
+        form.append('fileName', fileName || `upload_${Date.now()}.webp`);
+        if (folder) form.append('folder', folder);
+        if (auth.publicKey) form.append('publicKey', auth.publicKey);
+        if (auth.signature) form.append('signature', auth.signature);
+        if (auth.token) form.append('token', auth.token);
+        if (auth.expire) form.append('expire', auth.expire);
+
+        const res = await fetch('https://upload.imagekit.io/api/v1/files/upload', { method: 'POST', body: form });
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            const err = new Error('ImageKit upload failed: ' + (text || res.status));
+            err.status = res.status;
+            err.body = text;
+            throw err;
+        }
+        const body = await res.json();
+        // Prefer full url returned by ImageKit
+        return body.url || (body.filePath && auth.urlEndpoint ? `${auth.urlEndpoint.replace(/\/+$/, '')}${body.filePath}` : null);
     },
 
-    // For display URLs: if path is already absolute return as-is, otherwise prefix with R2 public base.
-    getOptimizedUrl: (path, width = 800, quality = 80) => {
+    getOptimizedUrl: (path) => {
         if (!path) return '';
         try {
-            // if it's already a full URL, just return it
-            const url = new URL(path);
-            return path;
+            const u = new URL(path);
+            const q = u.search ? '&' : '?';
+            return `${path}${q}tr=w-auto,q-auto,f-auto`;
         } catch (e) {
-            if (!R2_PUBLIC) return path;
-            const base = R2_PUBLIC.replace(/\/+$/, '');
+            if (!IMAGEKIT_ENDPOINT) return path;
+            const base = IMAGEKIT_ENDPOINT.replace(/\/+$/, '');
             const p = path.replace(/^\/+/, '');
-            // Append query hints (not required for R2 but may be useful for downstream CDN)
-            return `${base}/${encodeURIComponent(p)}${width ? `?w=${width}&q=${quality}` : ''}`;
+            const q = p.includes('?') ? '&' : '?';
+            return `${base}/${p}${q}tr=w-auto,q-auto,f-auto`;
         }
     }
 };
