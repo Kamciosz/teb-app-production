@@ -1,20 +1,40 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 
 export default function ReloadPrompt() {
     const [needRefresh, setNeedRefresh] = useState(false);
     const [offlineReady, setOfflineReady] = useState(false);
     const [waitingWorker, setWaitingWorker] = useState(null);
+    const refreshingRef = useRef(false);
+    const reloadTimeoutRef = useRef(null);
 
     useEffect(() => {
         if (!('serviceWorker' in navigator)) return;
 
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (refreshing) return;
-            refreshing = true;
-            window.location.reload();
-        });
+        const onControllerChange = async () => {
+            if (refreshingRef.current) return;
+            refreshingRef.current = true;
+
+            if (reloadTimeoutRef.current) {
+                clearTimeout(reloadTimeoutRef.current);
+                reloadTimeoutRef.current = null;
+            }
+
+            try {
+                if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                }
+            } catch (e) {
+                console.warn('Failed to clear caches on controllerchange', e);
+            } finally {
+                const url = new URL(window.location.href);
+                url.searchParams.set('_sw', Date.now());
+                window.location.replace(url.toString());
+            }
+        };
+
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
 
         navigator.serviceWorker.getRegistration().then((reg) => {
             if (!reg) return;
@@ -44,13 +64,62 @@ export default function ReloadPrompt() {
                 setNeedRefresh(true);
             }
         });
+
+        return () => {
+            navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+            if (reloadTimeoutRef.current) {
+                clearTimeout(reloadTimeoutRef.current);
+                reloadTimeoutRef.current = null;
+            }
+        };
     }, []);
 
-    const updateServiceWorker = () => {
-        if (waitingWorker) {
-            // Nakazanie zamrożonemu workerowi przejąć stery strony,
-            // Przeładowanie wykona się automatycznie dzięki nasłuchiwaczowi controllerchange 
-            waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+    const updateServiceWorker = async () => {
+        if (waitingWorker && 'serviceWorker' in navigator) {
+            try {
+                waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+
+                // fallback: if controllerchange doesn't fire, clear caches and reload
+                reloadTimeoutRef.current = setTimeout(async () => {
+                    if (refreshingRef.current) return;
+                    refreshingRef.current = true;
+                    try {
+                        if ('caches' in window) {
+                            const keys = await caches.keys();
+                            await Promise.all(keys.map(k => caches.delete(k)));
+                        }
+                    } catch (e) {
+                        console.warn('Failed to clear caches (fallback)', e);
+                    }
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('_sw', Date.now());
+                    window.location.replace(url.toString());
+                }, 5000);
+            } catch (e) {
+                console.error('Error posting SKIP_WAITING', e);
+                try {
+                    if ('caches' in window) {
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map(k => caches.delete(k)));
+                    }
+                } catch (err) {}
+                const url = new URL(window.location.href);
+                url.searchParams.set('_sw', Date.now());
+                window.location.replace(url.toString());
+            }
+        } else {
+            // No waiting worker: still attempt to clear caches and reload
+            try {
+                if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                }
+            } catch (e) {
+                console.warn('Failed to clear caches', e);
+            }
+            const url = new URL(window.location.href);
+            url.searchParams.set('_sw', Date.now());
+            window.location.replace(url.toString());
         }
     };
 

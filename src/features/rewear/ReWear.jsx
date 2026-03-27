@@ -257,8 +257,8 @@ export default function ReWear() {
                 const meta = parseDescription(selectedItem.description)
                 const isOwner = selectedItem.seller_id === myUserId
                 return (
-                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
-                        <div className="bg-surface border border-gray-700 w-full max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col max-h-[92vh] overflow-hidden">
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end sm:items-center p-0">
+                        <div className="bg-surface border border-gray-700 w-full h-full sm:h-auto sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden">
                             <div className="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-3xl sm:rounded-t-2xl">
                                 <button onClick={() => setSelectedItem(null)} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                                     <ArrowLeft size={20} />
@@ -276,7 +276,7 @@ export default function ReWear() {
                                     )}
                                 </div>
                             </div>
-                            <div className="overflow-y-auto max-h-[82vh] sm:max-h-[92vh]">
+                            <div className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+2rem)]">
                                 {selectedItem.image_url ? (
                                     <img src={selectedItem.image_url} alt={selectedItem.title} className="w-full h-auto max-h-[40vh] sm:h-56 object-contain" />
                                 ) : (
@@ -347,16 +347,16 @@ export default function ReWear() {
 
             {/* Modal "Vinted Pro" */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface border border-gray-700 w-full max-w-md rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh]">
-                        <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-2xl">
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end sm:items-center p-0">
+                    <div className="bg-surface border border-gray-700 w-full h-full sm:h-auto sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-2xl sm:rounded-t-2xl">
                             <h3 className="text-lg font-bold text-white">Wystaw Przedmiot</h3>
                             <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white transition bg-background p-1 rounded-full">
                                 <X size={20} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto">
+                        <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 pb-[calc(env(safe-area-inset-bottom)+2rem)]">
 
                             <div className="bg-background border-2 border-dashed border-gray-700 rounded-xl relative overflow-hidden min-h-[120px]">
                                 <MediaUploader
