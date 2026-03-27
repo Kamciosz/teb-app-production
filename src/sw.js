@@ -80,3 +80,16 @@ self.addEventListener('notificationclick', (event) => {
         })
     );
 });
+
+// Allow the page to tell the SW to skip waiting and become active immediately
+self.addEventListener('message', (event) => {
+    if (!event.data) return;
+    if (event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
+// Ensure the activated service worker takes control of uncontrolled clients
+self.addEventListener('activate', (event) => {
+    event.waitUntil(clients.claim());
+});
