@@ -15,6 +15,23 @@ test('rewear upload flow', async ({ page }, info) => {
     networkEvents.push(evt)
   })
 
+  // Mock ImageKit auth & upload to make the test deterministic and not rely on real keys
+  await page.route('**/api/imagekit-auth**', async route => {
+    const body = JSON.stringify({
+      publicKey: 'public_test',
+      urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || 'https://ik.imagekit.io/test',
+      signature: 'testsig',
+      token: 'testtoken',
+      expire: Math.floor(Date.now() / 1000) + 600
+    })
+    await route.fulfill({ status: 200, headers: { 'Content-Type': 'application/json' }, body })
+  })
+
+  await page.route('**/upload.imagekit.io/api/v1/files/upload**', async route => {
+    const body = JSON.stringify({ url: (process.env.IMAGEKIT_URL_ENDPOINT || 'https://ik.imagekit.io/test') + '/tmp_uploads/test.png', filePath: '/tmp_uploads/test.png' })
+    await route.fulfill({ status: 200, headers: { 'Content-Type': 'application/json' }, body })
+  })
+
   const base = process.env.BASE_URL || 'http://localhost:4173'
   const email = process.env.TEST_USER_EMAIL || 'szymon.sosnowski2@teb.edu.pl'
   const password = process.env.TEST_USER_PASSWORD || 'kamciosz12%Pusia'
@@ -37,12 +54,13 @@ test('rewear upload flow', async ({ page }, info) => {
   // Upload file
   const fileInput = form.locator('input[type="file"]')
   await expect(fileInput).toHaveCount(1)
-  const uploadRespPromise = page.waitForResponse(r => r.url().includes('/api/generate-upload') && r.request().method() === 'POST', { timeout: 10000 }).catch(() => null)
+  // Wait for ImageKit auth and upload requests (either to our auth endpoint or ImageKit upload endpoint)
+  const uploadRespPromise = page.waitForResponse(r => (r.url().includes('/api/imagekit-auth') || r.url().includes('upload.imagekit.io/api/v1/files/upload')) && r.request().method() === 'POST', { timeout: 15000 }).catch(() => null)
   await fileInput.setInputFiles(imagePath)
   const uploadResp = await uploadRespPromise
   let publicUrl: string | null = null
   if (uploadResp) {
-    try { const json = await uploadResp.json(); publicUrl = json.publicUrl || json.public_url || null } catch (e) {}
+    try { const json = await uploadResp.json(); publicUrl = json.url || json.publicUrl || json.public_url || null } catch (e) {}
   }
 
   // Fill required fields and submit

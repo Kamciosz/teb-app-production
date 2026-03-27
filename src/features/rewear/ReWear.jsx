@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
+import { ImageKitService } from '../../services/imageKitService'
 
 export default function ReWear() {
     const [items, setItems] = useState([])
@@ -202,7 +203,7 @@ export default function ReWear() {
                                 <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden group">
                                     {item.image_url ? (
                                         <img
-                                            src={item.image_url}
+                                            src={ImageKitService.getOptimizedUrl(item.image_url)}
                                             alt={item.title}
                                             loading="lazy"
                                             className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
@@ -278,7 +279,7 @@ export default function ReWear() {
                             </div>
                             <div className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+2rem)]">
                                 {selectedItem.image_url ? (
-                                    <img src={selectedItem.image_url} alt={selectedItem.title} className="w-full h-auto max-h-[40vh] sm:h-56 object-contain" />
+                                    <img src={ImageKitService.getOptimizedUrl(selectedItem.image_url)} alt={selectedItem.title} className="w-full h-auto max-h-[40vh] sm:h-56 object-contain" />
                                 ) : (
                                     <div className="w-full max-h-[30vh] h-40 bg-[#1a1a1a] flex items-center justify-center">
                                         <Camera className="text-gray-700" size={40} />

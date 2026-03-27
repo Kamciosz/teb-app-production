@@ -262,6 +262,7 @@ export default function Feed() {
                         // Wyciąganie pierwszego obrazka jako miniatura (Opcjonalnie)
                         const firstImgMatch = post.content?.match(/<img[^>]+src="([^">]+)"/);
                         const firstImg = firstImgMatch ? firstImgMatch[1] : null;
+                        const optimizedFirstImg = firstImg ? ImageKitService.getOptimizedUrl(firstImg) : null;
 
                         return (
                             <article key={post.id} className="bg-surface rounded-2xl border border-gray-800 shadow-xl overflow-hidden flex flex-col transition hover:border-gray-700">
@@ -274,7 +275,7 @@ export default function Feed() {
 
                                 {firstImg && (
                                     <div className="h-40 overflow-hidden relative group cursor-pointer" onClick={() => openPost(post)}>
-                                        <img src={firstImg} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
+                                        <img src={optimizedFirstImg} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
                                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                                             <Maximize2 className="text-white" size={32} />
                                         </div>
@@ -344,10 +345,20 @@ export default function Feed() {
                                          prose-img:rounded-3xl prose-img:shadow-2xl prose-img:w-full prose-img:mt-10 mb-10
                                          prose-a:text-primary prose-a:font-bold
                                          prose-p:mb-4 prose-li:mb-2"
-                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedPost.content, {
-                                    ADD_TAGS: ['iframe'],
-                                    ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling']
-                                }).replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"').replace(/<\/iframe>/g, '</iframe></div>') }}
+                                dangerouslySetInnerHTML={{ __html: (() => {
+                                    const sanitized = DOMPurify.sanitize(selectedPost.content, {
+                                        ADD_TAGS: ['iframe'],
+                                        ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling']
+                                    });
+                                    const withIframes = sanitized
+                                        .replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"')
+                                        .replace(/<\/iframe>/g, '</iframe></div>');
+                                    try {
+                                        return withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img src="${ImageKitService.getOptimizedUrl(src)}"`);
+                                    } catch (e) {
+                                        return withIframes;
+                                    }
+                                })() }}
                             />
 
                         {/* Sekcja Komentarzy */}
