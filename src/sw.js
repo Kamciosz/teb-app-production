@@ -31,6 +31,21 @@ registerRoute(
     })
 );
 
+// Cache images served from Cloudflare R2 public URL (set at build time)
+const R2_PUBLIC_URL = (self.__R2_PUBLIC_URL || '').replace(/\/+$/, '');
+if (R2_PUBLIC_URL) {
+    registerRoute(
+        ({ url }) => url.href.startsWith(R2_PUBLIC_URL),
+        new CacheFirst({
+            cacheName: 'r2-images-cache',
+            plugins: [
+                new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 }),
+                new CacheableResponsePlugin({ statuses: [0, 200] })
+            ]
+        })
+    );
+}
+
 // --- OBSŁUGA POWIADOMIEŃ PUSH ---
 
 self.addEventListener('push', (event) => {

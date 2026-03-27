@@ -4,6 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+    // Inject R2 public URL into the service worker at build time.
+    // Set VITE_R2_PUBLIC_URL (or NEXT_PUBLIC_R2_PUBLIC_URL) in your environment before building.
+    define: {
+        'self.__R2_PUBLIC_URL': JSON.stringify(process.env.VITE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || ''),
+    },
     plugins: [
         react(),
         VitePWA({

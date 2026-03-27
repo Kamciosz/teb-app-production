@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { ImageKitService } from '../../services/imageKitService';
+import { uploadImageToR2 } from '../../services/r2Upload';
 import { Upload, X, Loader2, FileWarning } from 'lucide-react';
 
 /**
@@ -36,7 +37,7 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
         setError(null);
         setUploading(true);
 
-        try {
+            try {
             // 2. Kompresja na telefonie ucznia (Oszczędzanie transferu)
             const options = {
                 maxSizeMB: config.maxSizeMB,
@@ -48,8 +49,20 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
             const compressedFile = await imageCompression(file, options);
 
             // 3. Wysyłka do CDN
-            const fileName = `${module}_${Date.now()}.webp`;
-            const url = await ImageKitService.upload(compressedFile, fileName, module);
+                const fileName = `${module}_${Date.now()}.webp`;
+                let url = null;
+                // Prefer Cloudflare R2 when configured (server endpoint will provide presigned URL)
+                try {
+                    if (import.meta.env.VITE_R2_PUBLIC_URL) {
+                        url = await uploadImageToR2(compressedFile);
+                    } else {
+                        url = await ImageKitService.upload(compressedFile, fileName, module);
+                    }
+                } catch (err) {
+                    // If R2 upload failed, fallback to ImageKit
+                    console.warn('R2 upload failed, falling back to ImageKit:', err?.message || err);
+                    url = await ImageKitService.upload(compressedFile, fileName, module);
+                }
 
             if (onUploadSuccess) onUploadSuccess(url);
         } catch (err) {
