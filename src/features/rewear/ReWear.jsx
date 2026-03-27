@@ -258,7 +258,7 @@ export default function ReWear() {
                 const isOwner = selectedItem.seller_id === myUserId
                 return (
                     <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end justify-center sm:items-center p-0 sm:p-4">
-                        <div className="bg-surface border border-gray-700 w-full max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col max-h-[92vh]">
+                        <div className="bg-surface border border-gray-700 w-full max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col max-h-[92vh] overflow-hidden">
                             <div className="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-3xl sm:rounded-t-2xl">
                                 <button onClick={() => setSelectedItem(null)} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                                     <ArrowLeft size={20} />
@@ -276,11 +276,11 @@ export default function ReWear() {
                                     )}
                                 </div>
                             </div>
-                            <div className="overflow-y-auto">
+                            <div className="overflow-y-auto max-h-[82vh] sm:max-h-[92vh]">
                                 {selectedItem.image_url ? (
-                                    <img src={selectedItem.image_url} alt={selectedItem.title} className="w-full h-56 object-cover" />
+                                    <img src={selectedItem.image_url} alt={selectedItem.title} className="w-full h-auto max-h-[40vh] sm:h-56 object-contain" />
                                 ) : (
-                                    <div className="w-full h-40 bg-[#1a1a1a] flex items-center justify-center">
+                                    <div className="w-full max-h-[30vh] h-40 bg-[#1a1a1a] flex items-center justify-center">
                                         <Camera className="text-gray-700" size={40} />
                                     </div>
                                 )}

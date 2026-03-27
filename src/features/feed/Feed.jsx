@@ -14,7 +14,7 @@ export default function Feed() {
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedPost, setSelectedPost] = useState(null)
-    const [myRole, setMyRole] = useState('student')
+    const [myRoles, setMyRoles] = useState(['student'])
     const [myId, setMyId] = useState(null)
     const quillRef = useRef(null)
 
@@ -37,11 +37,19 @@ export default function Feed() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
             setMyId(session.user.id)
-            const { data } = await supabase.from('profiles').select('role, roles').eq('id', session.user.id).single()
-            if (data) {
-                // Kompatybilność wsteczna: jeśli roles jest puste, używamy starego role
-                const effectiveRoles = data.roles || (data.role ? [data.role] : ['student'])
-                setMyRole(effectiveRoles[0] || 'student')
+            try {
+                const { data, error } = await supabase.from('profiles').select('role, roles').eq('id', session.user.id).single()
+                if (error) {
+                    console.error('Failed to load profile roles', error)
+                    setMyRoles(['student'])
+                } else if (data) {
+                    // Kompatybilność wsteczna: jeśli roles jest puste, używamy starego `role`
+                    const effectiveRoles = (data.roles && data.roles.length) ? data.roles : (data.role ? [data.role] : ['student'])
+                    setMyRoles(effectiveRoles)
+                }
+            } catch (err) {
+                console.error('Error loading profile roles', err)
+                setMyRoles(['student'])
             }
         }
     }
@@ -225,11 +233,14 @@ export default function Feed() {
                     <h2 className="text-2xl font-bold text-white tracking-tight">Wiadomości TEB</h2>
                     <div className="text-xs text-primary font-bold">Oficjalny Portal Szkolny</div>
                 </div>
-                {(myRole === 'admin' || myRole === 'editor' || myRole === 'moderator_content') && (
-                    <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition active:scale-95 flex items-center gap-2">
-                        <FileText size={18} /> Redaguj
-                    </button>
-                )}
+                {(() => {
+                    const canPublish = myRoles.some(r => ['admin', 'editor', 'redaktor', 'moderator_content'].includes(r))
+                    return canPublish && (
+                        <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition active:scale-95 flex items-center gap-2">
+                            <FileText size={18} /> Redaguj
+                        </button>
+                    )
+                })()}
             </div>
 
             {loading ? (
