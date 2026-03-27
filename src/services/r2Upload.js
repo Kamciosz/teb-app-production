@@ -34,7 +34,7 @@ export async function uploadImageToR2(file, { maxSizeMB = 1, maxWidthOrHeight = 
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ fileType: 'image/webp' }),
+    body: JSON.stringify({ fileType: 'image/webp', size: compressedFile.size }),
   });
 
   if (!res.ok) {
