@@ -359,17 +359,46 @@ export default function ReWear() {
 
                         <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 pb-[calc(env(safe-area-inset-bottom)+2rem)]">
 
-                            <div className="bg-background border-2 border-dashed border-gray-700 rounded-xl relative overflow-hidden min-h-[120px]">
-                                <MediaUploader
-                                    module="rewear"
-                                    onUploadSuccess={(url) => setNewItemPhotoUrl(url)}
-                                />
-                                {newItemPhotoUrl && (
-                                    <div className="absolute inset-0 pointer-events-none">
-                                        <img src={newItemPhotoUrl} alt="Preview" className="w-full h-full object-cover opacity-30" />
+                            {newItemPhotoUrl ? (
+                                <div className="relative rounded-xl overflow-hidden border-2 border-green-700 bg-background">
+                                    <img
+                                        src={newItemPhotoUrl}
+                                        alt="Podgląd zdjęcia"
+                                        className="w-full h-48 object-cover"
+                                    />
+                                    {/* Badge z licznikiem */}
+                                    <div className="absolute bottom-2 left-2 bg-black/70 backdrop-blur text-green-400 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 border border-green-800">
+                                        <span>✓</span> 1 zdjęcie dodane
                                     </div>
-                                )}
-                            </div>
+                                    {/* Przycisk usunięcia */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewItemPhotoUrl(null)}
+                                        className="absolute top-2 right-2 bg-black/70 backdrop-blur text-white p-1.5 rounded-full hover:bg-red-900/80 transition border border-gray-700"
+                                        title="Usuń zdjęcie"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                    {/* Przycisk zmiany zdjęcia */}
+                                    <div className="absolute top-2 left-2">
+                                        <MediaUploader
+                                            module="rewear"
+                                            onUploadSuccess={(url) => setNewItemPhotoUrl(url)}
+                                        >
+                                            <div className="bg-black/70 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full border border-gray-600 hover:border-primary transition">
+                                                Zmień
+                                            </div>
+                                        </MediaUploader>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-background border-2 border-dashed border-gray-700 rounded-xl relative overflow-hidden min-h-[120px]">
+                                    <MediaUploader
+                                        module="rewear"
+                                        onUploadSuccess={(url) => setNewItemPhotoUrl(url)}
+                                    />
+                                </div>
+                            )}
 
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł ogłoszenia</label>
