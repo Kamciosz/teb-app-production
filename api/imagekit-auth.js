@@ -46,7 +46,7 @@ export default async function handler(req, res) {
   try {
     // Generate ImageKit authentication parameters using built-in crypto
     const token = randomBytes(16).toString('hex');
-    const expire = Math.floor(Date.now() / 1000) + 3600; // valid 1 hour
+    const expire = Math.floor(Date.now() / 1000) + 2400; // valid 40 min (must be < 1h per ImageKit docs)
     const signature = createHmac('sha1', privateKey)
       .update(token + expire)
       .digest('hex');
