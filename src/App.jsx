@@ -99,9 +99,25 @@ function App() {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session)
             if (session) fetchRole(session.user.id)
-            else setLoading(false)
+            else {
+                // In local dev/testing, allow a mocked session so we can test flows without real auth.
+                if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_LOCAL_MOCK === '1') {
+                    const fake = { user: { id: 'local-test-user', email: 'local@test' } }
+                    setSession(fake)
+                    setUserRoles(['student'])
+                    setLoading(false)
+                } else {
+                    setLoading(false)
+                }
+            }
         }).catch(err => {
             console.error("Auth session error:", err)
+            // Fallback to dev mocked session when running locally
+            if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_LOCAL_MOCK === '1') {
+                const fake = { user: { id: 'local-test-user', email: 'local@test' } }
+                setSession(fake)
+                setUserRoles(['student'])
+            }
             setLoading(false)
         })
 

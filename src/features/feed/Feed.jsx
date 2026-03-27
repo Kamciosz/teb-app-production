@@ -6,6 +6,7 @@ import 'react-quill/dist/quill.snow.css'
 import DOMPurify from 'dompurify'
 import ReportButton from '../../components/ReportButton'
 import { ImageKitService } from '../../services/imageKitService'
+import { useToast } from '../../context/ToastContext'
 import imageCompression from 'browser-image-compression'
 import { WordFilter } from '../../services/wordFilter'
 
@@ -32,6 +33,8 @@ export default function Feed() {
         checkUser()
         fetchPosts()
     }, [])
+
+    const toast = useToast();
 
     async function checkUser() {
         const { data: { session } } = await supabase.auth.getSession()
@@ -206,7 +209,14 @@ export default function Feed() {
                 quill.insertEmbed(range.index, 'image', url);
             } catch (err) {
                 console.error("Quill Upload Error:", err);
-                alert("Błąd wgrywania zdjęcia.");
+                const status = err && err.status ? err.status : null;
+                if (status === 429) {
+                    toast.error('Przekroczono limit przesyłania plików. Spróbuj później.');
+                } else if (status === 413) {
+                    toast.error('Plik jest za duży dla Twojego konta.');
+                } else {
+                    toast.error('Błąd wgrywania zdjęcia.');
+                }
             }
         };
     };

@@ -1,0 +1,83 @@
+import { test, expect } from '@playwright/test'
+import path from 'path'
+import fs from 'fs'
+
+test('rewear upload flow', async ({ page }, info) => {
+  const consoleLogs: Array<any> = []
+  const networkEvents: Array<any> = []
+
+  page.on('console', msg => consoleLogs.push({ type: msg.type(), text: msg.text() }))
+  page.on('pageerror', err => consoleLogs.push({ type: 'pageerror', text: err.message }))
+  page.on('request', req => networkEvents.push({ type: 'request', url: req.url(), method: req.method(), postData: req.postData() }))
+  page.on('response', async res => {
+    const evt: any = { type: 'response', url: res.url(), status: res.status() }
+    try { evt.body = await res.text() } catch (e) {}
+    networkEvents.push(evt)
+  })
+
+  const base = process.env.BASE_URL || 'http://localhost:4173'
+  const email = process.env.TEST_USER_EMAIL || 'szymon.sosnowski2@teb.edu.pl'
+  const password = process.env.TEST_USER_PASSWORD || 'kamciosz12%Pusia'
+  const imagePath = process.env.TEST_IMAGEPath || path.resolve(process.cwd(), 'tmp_uploads/test.png')
+
+  await page.goto(base, { waitUntil: 'networkidle' })
+
+  // Fill login form
+  await page.fill('input[type="email"]', email)
+  await page.fill('input[type="password"]', password)
+  await page.click('button[type="submit"]')
+  await page.waitForLoadState('networkidle')
+
+  // Go to rewear and open modal
+  await page.goto(`${base}/rewear`, { waitUntil: 'networkidle' })
+  await page.click('button.fixed.bottom-24.right-6, button[aria-label="add"]', { timeout: 5000 }).catch(() => page.click('button.bg-primary.rounded-full'))
+  const form = page.locator('form:visible')
+  await expect(form).toBeVisible({ timeout: 5000 })
+
+  // Upload file
+  const fileInput = form.locator('input[type="file"]')
+  await expect(fileInput).toHaveCount(1)
+  const uploadRespPromise = page.waitForResponse(r => r.url().includes('/api/generate-upload') && r.request().method() === 'POST', { timeout: 10000 }).catch(() => null)
+  await fileInput.setInputFiles(imagePath)
+  const uploadResp = await uploadRespPromise
+  let publicUrl: string | null = null
+  if (uploadResp) {
+    try { const json = await uploadResp.json(); publicUrl = json.publicUrl || json.public_url || null } catch (e) {}
+  }
+
+  // Fill required fields and submit
+  const title = `E2E Test Item ${Date.now()}`
+  await form.locator('input[type="text"]').first().fill(title)
+  await form.locator('input[type="number"]').first().fill('1')
+  await form.locator('textarea').first().fill('E2E test description')
+
+  const insertRespPromise = page.waitForResponse(r => r.url().includes('rewear_posts') && (r.request().method() === 'POST' || r.request().method() === 'POST'), { timeout: 15000 }).catch(() => null)
+  await form.locator('button[type="submit"]').click()
+  const insertResp = await insertRespPromise
+
+  // Check DOM for the new item
+  let appeared = false
+  try {
+    await page.waitForSelector(`text=${title}`, { timeout: 10000 })
+    appeared = true
+  } catch (e) { appeared = false }
+
+  // Save screenshot and result JSON
+  const screenshotPath = path.join(process.cwd(), 'reports', `upload_rewear_${Date.now()}.png`)
+  await page.screenshot({ path: screenshotPath, fullPage: true })
+  const result = {
+    success: appeared || !!insertResp,
+    publicUrl,
+    uploadResponse: uploadResp ? { url: uploadResp.url(), status: uploadResp.status() } : null,
+    insertResponse: insertResp ? { url: insertResp.url(), status: insertResp.status(), body: await (insertResp.text().catch(() => null)) } : null,
+    consoleLogs,
+    networkEvents,
+  }
+  const outPath = path.join(process.cwd(), 'reports', `upload_rewear_result_${Date.now()}.json`)
+  fs.mkdirSync(path.join(process.cwd(), 'reports'), { recursive: true })
+  fs.writeFileSync(outPath, JSON.stringify(result, null, 2))
+  console.log('RESULT_FILE:', outPath)
+  console.log('PUBLIC_URL:', publicUrl || '—')
+
+  expect(result.success).toBeTruthy()
+})

@@ -92,7 +92,7 @@ export default function PrivacyPolicy() {
                     <p className="text-xs text-gray-500 leading-relaxed">
                         Masz prawo do wglądu w swoje dane, ich poprawiania oraz żądania usunięcia konta. 
                         Wszystkie zdjęcia profilowe są przechowywane na zewnętrznym serwerze CDN z włączoną kompresją. 
-                        Aplikacja nie udostępnia Twoich danych podmiotom trzecim poza infrastrukturą niezbędną do działania (Supabase, ImageKit).
+                        Aplikacja nie udostępnia Twoich danych podmiotom trzecim poza infrastrukturą niezbędną do działania (Supabase, Cloudflare R2).
                     </p>
                 </section>
 

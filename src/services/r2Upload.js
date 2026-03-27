@@ -39,7 +39,10 @@ export async function uploadImageToR2(file, { maxSizeMB = 1, maxWidthOrHeight = 
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error('Failed to obtain presigned upload URL: ' + res.status + ' ' + text);
+    const err = new Error('Failed to obtain presigned upload URL: ' + (text || res.status));
+    err.status = res.status;
+    err.body = text;
+    throw err;
   }
 
   const body = await res.json();
@@ -56,7 +59,10 @@ export async function uploadImageToR2(file, { maxSizeMB = 1, maxWidthOrHeight = 
 
   if (!uploadRes.ok) {
     const text = await uploadRes.text().catch(() => '');
-    throw new Error('Upload to R2 failed: ' + uploadRes.status + ' ' + text);
+    const err = new Error('Upload to R2 failed: ' + (text || uploadRes.status));
+    err.status = uploadRes.status;
+    err.body = text;
+    throw err;
   }
 
   return publicUrl;

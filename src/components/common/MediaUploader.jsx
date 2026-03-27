@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import imageCompression from 'browser-image-compression';
-import { ImageKitService } from '../../services/imageKitService';
 import { uploadImageToR2 } from '../../services/r2Upload';
+import { useToast } from '../../context/ToastContext';
 import { Upload, X, Loader2, FileWarning } from 'lucide-react';
 
 /**
@@ -21,6 +21,8 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
         articles: { maxSizeMB: 0.3, maxWidthOrHeight: 1000, quality: 0.8 }, // ~300 KB
         general: { maxSizeMB: 0.3, maxWidthOrHeight: 1000, quality: 0.8 }
     }[module];
+
+    const toast = useToast();
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
@@ -52,22 +54,26 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
                 const fileName = `${module}_${Date.now()}.webp`;
                 let url = null;
                 // Prefer Cloudflare R2 when configured (server endpoint will provide presigned URL)
-                try {
-                    if (import.meta.env.VITE_R2_PUBLIC_URL) {
-                        url = await uploadImageToR2(compressedFile);
-                    } else {
-                        url = await ImageKitService.upload(compressedFile, fileName, module);
-                    }
-                } catch (err) {
-                    // If R2 upload failed, fallback to ImageKit
-                    console.warn('R2 upload failed, falling back to ImageKit:', err?.message || err);
-                    url = await ImageKitService.upload(compressedFile, fileName, module);
-                }
+                url = await uploadImageToR2(compressedFile);
 
             if (onUploadSuccess) onUploadSuccess(url);
         } catch (err) {
             console.error("Upload error:", err);
-            setError("Błąd podczas wgrywania zdjęcia.");
+            // Show contextual toasts for known server-side statuses
+            const status = err && err.status ? err.status : null;
+            if (status === 429) {
+                toast.error('Przekroczono limit przesyłania plików. Spróbuj ponownie później.');
+                setError('Przekroczono limit przesyłania plików.');
+            } else if (status === 413) {
+                toast.error('Plik jest za duży dla Twojego konta.');
+                setError('Plik za duży.');
+            } else if (status === 401 || status === 403) {
+                toast.error('Nieautoryzowane. Zaloguj się ponownie.');
+                setError('Nieautoryzowane.');
+            } else {
+                toast.error('Wgrywanie nie powiodło się. Spróbuj ponownie.');
+                setError('Błąd podczas wgrywania zdjęcia.');
+            }
         } finally {
             setUploading(false);
         }
