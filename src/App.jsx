@@ -280,7 +280,7 @@ function App() {
                             <NavLink to="/" icon={<Home />} />
                             <NavLink to="/features" icon={<LayoutGrid />} />
                             <NavLink to="/profile" icon={<User />} />
-                            {userRoles.includes('admin') && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
+                            {userRoles.some(role => ['admin', 'moderator_users', 'moderator_content'].includes(role)) && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
                         </nav>
                     </div>
                 </div>
