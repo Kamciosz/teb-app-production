@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile } from 'lucide-react'
+import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, UserX } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
@@ -27,6 +27,8 @@ export default function TEBtalk() {
     const [friends, setFriends] = useState([])
     const [groupMembers, setGroupMembers] = useState([])
     const [isAddingMember, setIsAddingMember] = useState(false)
+    const [myBlockedIds, setMyBlockedIds] = useState([])
+    const [blockedByIds, setBlockedByIds] = useState([])
     
     const toast = useToast()
     const messagesEndRef = useRef(null)
@@ -36,8 +38,7 @@ export default function TEBtalk() {
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
                 setMyId(session.user.id)
-                fetchRecentChats(session.user.id)
-                fetchFriends(session.user.id)
+                loadCommunicationState(session.user.id)
             }
         })
         // Auto-open chat if navigated from ReWear (or another screen) with seller info
@@ -85,17 +86,56 @@ export default function TEBtalk() {
         }, 100)
     }
 
-    async function fetchFriends(userId) {
+    function isBlockedRelationship(userId) {
+        return myBlockedIds.includes(userId) || blockedByIds.includes(userId)
+    }
+
+    function isAcceptedFriend(userId) {
+        return friends.some(friend => friend.id === userId)
+    }
+
+    async function fetchBlocks(userId) {
+        const [{ data: myBlocks }, { data: blockedMe }] = await Promise.all([
+            supabase.from('user_blocks').select('blocked_user_id').eq('blocking_user_id', userId),
+            supabase.from('user_blocks').select('blocking_user_id').eq('blocked_user_id', userId)
+        ])
+
+        const blocked = (myBlocks || []).map(row => row.blocked_user_id)
+        const blockedBy = (blockedMe || []).map(row => row.blocking_user_id)
+
+        setMyBlockedIds(blocked)
+        setBlockedByIds(blockedBy)
+
+        return { blocked, blockedBy }
+    }
+
+    async function loadCommunicationState(userId) {
+        const blockState = await fetchBlocks(userId)
+        await Promise.all([
+            fetchRecentChats(userId, blockState),
+            fetchFriends(userId, blockState)
+        ])
+    }
+
+    async function fetchFriends(userId, blockState = null) {
+        const blocked = new Set(blockState?.blocked || myBlockedIds)
+        const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
         const { data, error } = await supabase
             .from('friends')
             .select(`
                 friend_id,
-                profiles!friends_friend_id_fkey (id, full_name, avatar_url, role)
+                profiles!friends_friend_id_fkey (id, full_name, avatar_url, role, dm_friends_only)
             `)
             .eq('user_id', userId)
             .eq('status', 'accepted')
         
-        if (data) setFriends(data.map(f => f.profiles))
+        if (data) {
+            setFriends(
+                data
+                    .map(f => f.profiles)
+                    .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
+            )
+        }
     }
 
     async function fetchGroupMembers(groupId) {
@@ -111,8 +151,10 @@ export default function TEBtalk() {
         if (data) setGroupMembers(data)
     }
 
-    async function fetchRecentChats(userId) {
+    async function fetchRecentChats(userId, blockState = null) {
         setLoading(true)
+        const blocked = new Set(blockState?.blocked || myBlockedIds)
+        const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
         // 1. Prywatne wiadomości
         const { data: sentMsg } = await supabase.from('direct_messages').select('receiver_id').eq('sender_id', userId)
         const { data: recvMsg } = await supabase.from('direct_messages').select('sender_id').eq('receiver_id', userId)
@@ -124,8 +166,12 @@ export default function TEBtalk() {
 
         let chats = []
         if (userIds.size > 0) {
-            const { data: users } = await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))
-            if (users) chats = users.map(u => ({ ...u, type: 'private' }))
+            const { data: users } = await supabase.from('profiles').select('id, full_name, role, avatar_url, dm_friends_only').in('id', Array.from(userIds))
+            if (users) {
+                chats = users
+                    .filter(u => !blocked.has(u.id) && !blockedBy.has(u.id))
+                    .map(u => ({ ...u, type: 'private' }))
+            }
         }
 
         // 2. Grupy w których jestem
@@ -156,12 +202,55 @@ export default function TEBtalk() {
             return
         }
         const { data } = await supabase.from('profiles')
-            .select('id, full_name, role, avatar_url, is_private')
+            .select('id, full_name, role, avatar_url, is_private, dm_friends_only')
             .ilike('full_name', `%${e.target.value}%`)
             .eq('is_private', false)
             .neq('id', myId)
             .limit(10)
-        if (data) setSearchResults(data)
+        if (data) setSearchResults(data.filter(user => !isBlockedRelationship(user.id)))
+    }
+
+    async function toggleBlock(userId) {
+        const isBlocked = myBlockedIds.includes(userId)
+
+        if (isBlocked) {
+            const { error } = await supabase
+                .from('user_blocks')
+                .delete()
+                .eq('blocking_user_id', myId)
+                .eq('blocked_user_id', userId)
+
+            if (error) {
+                console.error(error)
+                toast.error('Nie udało się odblokować użytkownika.')
+                return
+            }
+
+            toast.success('Użytkownik został odblokowany.')
+        } else {
+            if (!window.confirm('Zablokować tego użytkownika? Zablokowane osoby nie wyślą Ci prywatnej wiadomości.')) return
+
+            const { error } = await supabase
+                .from('user_blocks')
+                .insert([{ blocking_user_id: myId, blocked_user_id: userId }])
+
+            if (error) {
+                console.error(error)
+                toast.error('Nie udało się zablokować użytkownika.')
+                return
+            }
+
+            if (activeChatUser?.type === 'private' && activeChatUser.id === userId) {
+                setActiveChatUser(null)
+                setMessages([])
+                setView('list')
+            }
+
+            toast.success('Użytkownik został zablokowany.')
+        }
+
+        await loadCommunicationState(myId)
+        setSearchResults(prev => prev.filter(user => !isBlockedRelationship(user.id) && user.id !== userId))
     }
 
     async function fetchMessages(partnerId, isGroup = false) {
@@ -223,7 +312,8 @@ export default function TEBtalk() {
 
         if (error) {
             console.error("Błąd wysyłania:", error)
-            toast.error("Nie udało się wysłać wiadomości.")
+            const isBlockedOrRestricted = error.code === '42501' || /row-level security|permission denied/i.test(error.message || '')
+            toast.error(isBlockedOrRestricted ? 'Ta osoba nie przyjmuje od Ciebie wiadomości lub istnieje blokada.' : 'Nie udało się wysłać wiadomości.')
             setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m))
         } else if (data) {
             // Zastąp optimistic msg realnym — uwzględnia przypadek, gdy Realtime
@@ -251,7 +341,8 @@ export default function TEBtalk() {
         const { error } = await supabase.from(tableName).insert([payload])
         if (error) {
             console.error("Błąd wysyłania zdjęcia:", error)
-            toast.error("Błąd wysyłania zdjęcia.")
+            const isBlockedOrRestricted = error.code === '42501' || /row-level security|permission denied/i.test(error.message || '')
+            toast.error(isBlockedOrRestricted ? 'Nie możesz wysłać zdjęcia do tego użytkownika.' : 'Błąd wysyłania zdjęcia.')
         }
     }
 
@@ -334,6 +425,11 @@ export default function TEBtalk() {
     }
 
     async function sendFriendRequest(friendId) {
+        if (isBlockedRelationship(friendId)) {
+            toast.error('Relacja jest zablokowana. Najpierw odblokuj użytkownika.')
+            return
+        }
+
         const { error } = await supabase
             .from('friends')
             .insert([{ user_id: myId, friend_id: friendId, status: 'pending' }])
@@ -345,6 +441,17 @@ export default function TEBtalk() {
     }
 
     const openChat = (target) => {
+        if (target.type === 'private') {
+            if (isBlockedRelationship(target.id)) {
+                toast.info('Nie możesz otworzyć rozmowy, ponieważ relacja jest zablokowana.')
+                return
+            }
+            if (target.dm_friends_only && !isAcceptedFriend(target.id)) {
+                toast.info('Ten użytkownik przyjmuje prywatne wiadomości tylko od znajomych.')
+                return
+            }
+        }
+
         setActiveChatUser(target)
         setView('chat')
     }
@@ -375,6 +482,15 @@ export default function TEBtalk() {
                             {activeChatUser.type === 'group' ? `Grupa (${groupMembers.length} osób)` : (activeChatUser.role === 'student' ? 'Uczeń' : activeChatUser.role)}
                         </div>
                     </div>
+                    {activeChatUser.type === 'private' && (
+                        <button
+                            onClick={() => toggleBlock(activeChatUser.id)}
+                            className={`p-2 transition active:scale-90 ${myBlockedIds.includes(activeChatUser.id) ? 'text-red-500 hover:text-red-400' : 'text-gray-500 hover:text-red-500'}`}
+                            title={myBlockedIds.includes(activeChatUser.id) ? 'Odblokuj użytkownika' : 'Zablokuj użytkownika'}
+                        >
+                            <UserX size={18} />
+                        </button>
+                    )}
                     {activeChatUser.type === 'group' && (
                         <button onClick={() => setIsGroupSettingsOpen(true)} className="p-2 text-gray-500 hover:text-white transition active:scale-90">
                             <Settings size={20} />
@@ -652,16 +768,25 @@ export default function TEBtalk() {
                                         <div className="text-[10px] text-gray-500 uppercase">{user.role}</div>
                                     </div>
                                     <div className="flex gap-2">
+                                        <button
+                                            onClick={() => toggleBlock(user.id)}
+                                            className={`p-2 rounded-lg transition active:scale-90 ${myBlockedIds.includes(user.id) ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-300 hover:text-red-500'}`}
+                                            title={myBlockedIds.includes(user.id) ? 'Odblokuj użytkownika' : 'Zablokuj użytkownika'}
+                                        >
+                                            <UserX size={18} />
+                                        </button>
                                         <button 
                                             onClick={() => sendFriendRequest(user.id)}
-                                            className="p-2 bg-primary/20 text-primary rounded-lg hover:bg-primary hover:text-white transition active:scale-90"
+                                            disabled={isBlockedRelationship(user.id)}
+                                            className="p-2 bg-primary/20 text-primary rounded-lg hover:bg-primary hover:text-white transition active:scale-90 disabled:opacity-40"
                                             title="Dodaj do znajomych"
                                         >
                                             <Plus size={18} />
                                         </button>
                                         <button 
                                             onClick={() => openChat({ ...user, type: 'private' })}
-                                            className="p-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-white hover:text-black transition active:scale-90"
+                                            disabled={isBlockedRelationship(user.id) || (user.dm_friends_only && !isAcceptedFriend(user.id))}
+                                            className="p-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-white hover:text-black transition active:scale-90 disabled:opacity-40"
                                         >
                                             <MessageCircle size={18} />
                                         </button>

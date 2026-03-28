@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff, X, Shield } from 'lucide-react'
+import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff, X, Shield, MessageCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase, signOut } from '../../services/supabase'
 import MediaUploader from '../../components/common/MediaUploader'
@@ -21,7 +21,7 @@ export default function Profile() {
         if (session) {
             const { data } = await supabase
                 .from('profiles')
-                .select('id, full_name, avatar_url, roles, role, is_private, teb_gabki, is_banned, banned_until, created_at, updated_at')
+                .select('id, full_name, avatar_url, roles, role, is_private, dm_friends_only, teb_gabki, is_banned, banned_until, created_at, updated_at')
                 .eq('id', session.user.id)
                 .single()
             if (data) {
@@ -104,6 +104,16 @@ export default function Profile() {
         if (!error) setProfile(prev => ({ ...prev, is_private: newPrivacy }))
     }
 
+    async function toggleDmPrivacy() {
+        const newValue = !profile.dm_friends_only
+        const { error } = await supabase
+            .from('profiles')
+            .update({ dm_friends_only: newValue })
+            .eq('id', profile.id)
+
+        if (!error) setProfile(prev => ({ ...prev, dm_friends_only: newValue }))
+    }
+
     if (!profile) return <div className="text-center mt-10 text-gray-400">Ładowanie Profilu...</div>
 
     return (
@@ -159,6 +169,7 @@ export default function Profile() {
                         </span>
                     ))}
                     {profile.is_private && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-400">PRYWATNY</span>}
+                    {profile.dm_friends_only && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-400">DM: ZNAJOMI</span>}
                 </div>
             </div>
 
@@ -195,6 +206,24 @@ export default function Profile() {
                         )
                     })}
                 </div>
+            </div>
+
+            <div className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                        <MessageCircle size={18} />
+                    </div>
+                    <div>
+                        <div className="text-sm font-bold text-white leading-none">Wiadomości prywatne</div>
+                        <div className="text-[10px] text-gray-500 uppercase mt-1">{profile.dm_friends_only ? 'Tylko zaakceptowani znajomi' : 'Każdy zalogowany użytkownik'}</div>
+                    </div>
+                </div>
+                <button
+                    onClick={toggleDmPrivacy}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold transition ${profile.dm_friends_only ? 'bg-primary/20 text-primary hover:bg-primary/30' : 'bg-gray-800 text-gray-300 hover:text-white'}`}
+                >
+                    {profile.dm_friends_only ? 'Znajomi' : 'Wszyscy'}
+                </button>
             </div>
 
             <Link to="/privacy" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between hover:bg-gray-800 transition mb-6 group">
