@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react'
-import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2 } from 'lucide-react'
+import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import { CleanupService } from '../../services/cleanupService'
 
 export default function Admin() {
-    const [view, setView] = useState('users') // 'users', 'reports', 'groups', 'system'
+    const [view, setView] = useState('users') // 'users', 'reports', 'groups', 'appeals', 'audit', 'system'
     const [users, setUsers] = useState([])
     const [reports, setReports] = useState([])
     const [pendingGroups, setPendingGroups] = useState([])
+    const [appeals, setAppeals] = useState([])
+    const [auditEntries, setAuditEntries] = useState([])
 
     const [loading, setLoading] = useState(true)
     const [cleanupLoading, setCleanupLoading] = useState(false)
@@ -56,12 +58,13 @@ export default function Admin() {
 
         const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
         const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
+        const canOpenAudit = canManageUsers || canManageContent
 
         if (canManageUsers || canManageContent) {
             if (view === 'users' && canManageUsers) {
                 const { data } = await supabase
                     .from('profiles')
-                    .select('id, full_name, roles, role, is_banned, banned_until, created_at')
+                    .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
                     .order('created_at', { ascending: false })
                 if (data) setUsers(data)
             }
@@ -78,6 +81,20 @@ export default function Admin() {
                     .eq('is_approved', false)
                     .order('created_at', { ascending: false })
                 if (data) setPendingGroups(data)
+            }
+            if (view === 'appeals' && canManageUsers) {
+                const { data } = await supabase.from('punishment_appeals')
+                    .select('id, status, punishment_type, message, resolution_note, created_at, appellant:profiles!appellant_user_id(full_name), audit:moderation_audit_log!audit_log_id(action_type, reason, metadata, created_at)')
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false })
+                if (data) setAppeals(data)
+            }
+            if (view === 'audit' && canOpenAudit) {
+                const { data } = await supabase.from('moderation_audit_log')
+                    .select('id, action_type, reason, metadata, created_at, actor:profiles!actor_user_id(full_name), target:profiles!target_user_id(full_name)')
+                    .order('created_at', { ascending: false })
+                    .limit(100)
+                if (data) setAuditEntries(data)
             }
         }
         setLoading(false)
@@ -111,11 +128,18 @@ export default function Admin() {
             return
         }
 
+        let banReason = null
+        if (!isBanned) {
+            banReason = window.prompt('Podaj powód kary. Użytkownik zobaczy ten powód przy apelacji.')?.trim()
+            if (!banReason) return
+        }
+
         const banUntil = isBanned ? null : new Date(Date.now() + parseInt(banDuration) * 60000).toISOString()
 
         await supabase.from('profiles').update({
             is_banned: !isBanned,
-            banned_until: banUntil
+            banned_until: banUntil,
+            ban_reason: isBanned ? null : banReason
         }).eq('id', userId)
 
         checkAccessAndFetch()
@@ -133,6 +157,29 @@ export default function Admin() {
         } else {
             await supabase.from('groups').delete().eq('id', groupId)
         }
+        checkAccessAndFetch()
+    }
+
+    async function resolveAppeal(appealId, status) {
+        const resolutionNote = window.prompt(
+            status === 'approved'
+                ? 'Dodaj krótkie uzasadnienie cofnięcia kary.'
+                : 'Dodaj krótkie uzasadnienie odrzucenia apelacji.'
+        )
+
+        if (resolutionNote === null) return
+
+        const { error } = await supabase.rpc('resolve_punishment_appeal', {
+            p_appeal_id: appealId,
+            p_new_status: status,
+            p_resolution_note: resolutionNote
+        })
+
+        if (error) {
+            alert(`Nie udało się rozpatrzyć apelacji: ${error.message}`)
+            return
+        }
+
         checkAccessAndFetch()
     }
 
@@ -162,7 +209,7 @@ export default function Admin() {
             </div>
 
             {/* Pasek Zakładek RBAC */}
-            <div className="flex bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800">
+            <div className="grid grid-cols-3 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1">
                 <button
                     onClick={() => setView('reports')}
                     className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'reports' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
@@ -182,6 +229,19 @@ export default function Admin() {
                     className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'groups' ? 'bg-red-500 text-white shadow-lg' : myRole === 'moderator_content' ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
                 >
                     <Hash size={14} /> Grupy
+                </button>
+                <button
+                    onClick={() => setView('appeals')}
+                    disabled={myRole === 'moderator_content'}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'appeals' ? 'bg-red-500 text-white shadow-lg' : myRole === 'moderator_content' ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                >
+                    <Scale size={14} /> Apelacje
+                </button>
+                <button
+                    onClick={() => setView('audit')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'audit' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                >
+                    <ScrollText size={14} /> Audit
                 </button>
                 <button
                     onClick={() => setView('system')}
@@ -285,6 +345,9 @@ export default function Admin() {
                                         {u.is_banned && u.banned_until && (
                                             <div className="text-[10px] text-red-400 font-bold mt-1">Ban do: {new Date(u.banned_until).toLocaleString()}</div>
                                         )}
+                                        {u.ban_reason && (
+                                            <div className="text-[10px] text-gray-400 mt-1 max-w-[220px] leading-relaxed">Powód: {u.ban_reason}</div>
+                                        )}
                                     </div>
                                     <div className="flex flex-wrap gap-1 max-w-[150px] justify-end">
                                         {userRoles.map(r => (
@@ -334,6 +397,82 @@ export default function Admin() {
                         )
                     })}
                     </div>
+                </div>
+            )}
+
+            {view === 'appeals' && (
+                <div className="flex flex-col gap-3 fade-in">
+                    {appeals.length === 0 ? (
+                        <div className="text-center text-gray-500 mt-6 p-8 border border-gray-800 border-dashed rounded-2xl">
+                            <Scale size={40} className="mx-auto mb-3 opacity-20" />
+                            Brak aktywnych apelacji do rozpatrzenia.
+                        </div>
+                    ) : (
+                        appeals.map(appeal => (
+                            <div key={appeal.id} className="bg-surface border border-gray-800 p-4 rounded-xl flex flex-col gap-3">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <div className="text-sm font-bold text-white">{appeal.appellant?.full_name || 'Nieznany użytkownik'}</div>
+                                        <div className="text-[10px] text-gray-500 uppercase mt-1">{appeal.punishment_type} • {new Date(appeal.created_at).toLocaleString()}</div>
+                                    </div>
+                                    <div className="text-[10px] font-bold uppercase text-yellow-400">{appeal.status}</div>
+                                </div>
+
+                                {appeal.audit && (
+                                    <div className="bg-background border border-gray-800 rounded-xl p-3 text-xs text-gray-300">
+                                        <div className="text-[10px] uppercase text-gray-500 mb-1">Pierwotna kara</div>
+                                        <div>{appeal.audit.reason || 'Brak uzasadnienia.'}</div>
+                                    </div>
+                                )}
+
+                                <div className="bg-background border border-gray-800 rounded-xl p-3 text-sm text-white whitespace-pre-wrap">
+                                    {appeal.message}
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <button onClick={() => resolveAppeal(appeal.id, 'approved')} className="flex-1 bg-green-500 text-white py-2 rounded-lg text-[10px] font-bold transition flex justify-center items-center gap-1 active:scale-95 shadow-lg shadow-green-500/20">
+                                        <CheckCircle size={14} /> Uznaj apelację
+                                    </button>
+                                    <button onClick={() => resolveAppeal(appeal.id, 'rejected')} className="flex-1 bg-surface border border-red-500/40 text-red-400 py-2 rounded-lg text-[10px] font-bold transition flex justify-center items-center gap-1 hover:bg-red-500/10">
+                                        <XCircle size={14} /> Odrzuć apelację
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
+
+            {view === 'audit' && (
+                <div className="flex flex-col gap-3 fade-in">
+                    {auditEntries.length === 0 ? (
+                        <div className="text-center text-gray-500 mt-6 p-8 border border-gray-800 border-dashed rounded-2xl">
+                            <ScrollText size={40} className="mx-auto mb-3 opacity-20" />
+                            Brak wpisów audit logu.
+                        </div>
+                    ) : (
+                        auditEntries.map(entry => (
+                            <div key={entry.id} className="bg-surface border border-gray-800 rounded-xl p-4">
+                                <div className="flex items-start justify-between gap-4 mb-2">
+                                    <div>
+                                        <div className="text-sm font-bold text-white uppercase">{entry.action_type.replaceAll('_', ' ')}</div>
+                                        <div className="text-[10px] text-gray-500 uppercase mt-1">
+                                            {entry.actor?.full_name || 'System'} → {entry.target?.full_name || 'Obiekt systemowy'}
+                                        </div>
+                                    </div>
+                                    <div className="text-[10px] text-gray-500">{new Date(entry.created_at).toLocaleString()}</div>
+                                </div>
+
+                                {entry.reason && (
+                                    <div className="text-sm text-gray-300 mb-2">{entry.reason}</div>
+                                )}
+
+                                {entry.metadata && Object.keys(entry.metadata).length > 0 && (
+                                    <pre className="text-[10px] text-gray-400 bg-background border border-gray-800 rounded-xl p-3 overflow-x-auto whitespace-pre-wrap">{JSON.stringify(entry.metadata, null, 2)}</pre>
+                                )}
+                            </div>
+                        ))
+                    )}
                 </div>
             )}
 
