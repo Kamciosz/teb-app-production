@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+import { getSessionFromCookies } from '../lib/serverAuth.js';
 
 // GET /api/imagekit-auth
 // Returns authentication parameters for browser direct upload to ImageKit.
@@ -19,17 +20,27 @@ export default async function handler(req, res) {
   // Require a valid Supabase session JWT — unauthenticated callers cannot upload
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) {
     return res.status(500).json({ error: 'Server misconfiguration: missing Supabase config' });
   }
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
+  let user = null;
+
+  if (token) {
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    if (!authError) {
+      user = authData?.user || null;
+    }
+  }
+
+  if (!user) {
+    const { session } = await getSessionFromCookies(req, res);
+    user = session?.user || null;
+  }
+
+  if (!user) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
