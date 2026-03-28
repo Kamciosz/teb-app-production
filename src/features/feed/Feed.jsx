@@ -247,6 +247,10 @@ export default function Feed() {
         return !!myId && (comment.author_id === myId || canModerateContent)
     }
 
+    function canManagePost(post) {
+        return !!myId && !!post && (post.author_id === myId || canModerateContent)
+    }
+
     function handleStartEditComment(comment) {
         if (!canManageComment(comment)) return
         setEditingCommentId(comment.id)
@@ -304,6 +308,33 @@ export default function Feed() {
         }
 
         setCommentActionBusyId(null)
+    }
+
+    async function handleDeletePost(postId) {
+        const post = posts.find(p => p.id === postId) || (selectedPost?.id === postId ? selectedPost : null)
+        if (!canManagePost(post)) {
+            alert('Nie masz uprawnień do usunięcia tego artykułu.')
+            return
+        }
+
+        if (!window.confirm('Usunąć ten artykuł? Ta operacja jest nieodwracalna.')) return
+
+        const { error } = await supabase
+            .from('feed_posts')
+            .delete()
+            .eq('id', postId)
+
+        if (error) {
+            console.error('Failed to delete post', error)
+            alert('Nie udało się usunąć artykułu: ' + error.message)
+            return
+        }
+
+        setPosts(prev => prev.filter(p => p.id !== postId))
+        if (selectedPost?.id === postId) {
+            setSelectedPost(null)
+            setComments([])
+        }
     }
 
     const openPost = (post) => {
@@ -568,10 +599,20 @@ export default function Feed() {
                                         </div>
 
                                         <div className="flex gap-3 items-center">
+                                            <ReportButton entityType="feed_post" entityId={post.id} subtle />
                                             <button onClick={() => openPost(post)} className="text-gray-500 hover:text-white transition flex items-center gap-1">
                                                 <MessageCircle size={16} />
                                                 <span className="text-xs font-bold">{post.comment_count || 0}</span>
                                             </button>
+                                            {canManagePost(post) && (
+                                                <button
+                                                    onClick={() => handleDeletePost(post.id)}
+                                                    className="text-gray-500 hover:text-red-500 transition"
+                                                    title="Usuń artykuł"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                             <div className="flex gap-3 items-center bg-background rounded-full px-3 py-1">
                                                 <button onClick={() => handleVote(post.id, 'up')} className="text-gray-400 hover:text-green-500 transition flex items-center gap-1 active:scale-125"><ArrowUp size={16} /></button>
                                                 <span className={`font-bold text-sm ${((post.upvotes || 0) - (post.downvotes || 0)) > 0 ? 'text-green-500' : ((post.upvotes || 0) - (post.downvotes || 0)) < 0 ? 'text-red-500' : 'text-white'}`}>
@@ -604,14 +645,25 @@ export default function Feed() {
                                 <div className="text-white font-bold">{selectedPost.profiles?.full_name}</div>
                                 <div className="text-gray-500 text-xs">{new Date(selectedPost.created_at).toLocaleString()}</div>
                             </div>
-                            {(selectedPost.author_id === myId || canModerateContent) && (
-                                <button
-                                    onClick={() => openEditPostModal(selectedPost)}
-                                    className="ml-auto inline-flex items-center gap-2 bg-primary/20 text-primary hover:bg-primary/30 px-3 py-2 rounded-lg text-xs font-bold"
-                                >
-                                    <Pencil size={14} /> Edytuj artykuł
-                                </button>
-                            )}
+                            <div className="ml-auto flex items-center gap-2">
+                                <ReportButton entityType="feed_post" entityId={selectedPost.id} subtle />
+                                {canManagePost(selectedPost) && (
+                                    <>
+                                        <button
+                                            onClick={() => openEditPostModal(selectedPost)}
+                                            className="inline-flex items-center gap-2 bg-primary/20 text-primary hover:bg-primary/30 px-3 py-2 rounded-lg text-xs font-bold"
+                                        >
+                                            <Pencil size={14} /> Edytuj artykuł
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeletePost(selectedPost.id)}
+                                            className="inline-flex items-center gap-2 bg-red-500/20 text-red-500 hover:bg-red-500/30 px-3 py-2 rounded-lg text-xs font-bold"
+                                        >
+                                            <Trash2 size={14} /> Usuń artykuł
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
                         <div
                                 className="text-gray-300 text-lg leading-relaxed prose prose-invert max-w-none 
