@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft, MessageCircle } from 'lucide-react'
+import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft, MessageCircle, ZoomIn } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
@@ -12,6 +12,7 @@ export default function ReWear() {
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedItem, setSelectedItem] = useState(null)
     const [myUserId, setMyUserId] = useState(null)
+    const [lightbox, setLightbox] = useState(null) // { photos: [], index: number }
 
     const navigate = useNavigate()
 
@@ -286,15 +287,25 @@ export default function ReWear() {
                                 {(() => {
                                     const allPhotos = meta.photos?.length > 0 ? meta.photos : (selectedItem.image_url ? [selectedItem.image_url] : [])
                                     return allPhotos.length > 0 ? (
-                                        <div className="relative">
+                                        <div className="relative group">
                                             <div className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none">
                                                 {allPhotos.map((url, i) => (
-                                                    <img
+                                                    <div
                                                         key={i}
-                                                        src={ImageKitService.getOptimizedUrl(url)}
-                                                        alt={selectedItem.title}
-                                                        className="snap-center shrink-0 w-full max-h-[40vh] sm:h-56 object-contain bg-[#1a1a1a]"
-                                                    />
+                                                        className="snap-center shrink-0 w-full relative cursor-zoom-in"
+                                                        onClick={() => setLightbox({ photos: allPhotos, index: i })}
+                                                    >
+                                                        <img
+                                                            src={ImageKitService.getOptimizedUrl(url)}
+                                                            alt={selectedItem.title}
+                                                            className="w-full max-h-[40vh] sm:h-56 object-contain bg-[#1a1a1a]"
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition pointer-events-none">
+                                                            <div className="bg-black/50 rounded-full p-2">
+                                                                <ZoomIn size={20} className="text-white" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 ))}
                                             </div>
                                             {allPhotos.length > 1 && (
@@ -534,6 +545,67 @@ export default function ReWear() {
                             </button>
                         </form>
                     </div>
+                </div>
+            )}
+
+            {/* Lightbox — fullscreen podgląd zdjęć */}
+            {lightbox && (
+                <div
+                    className="fixed inset-0 bg-black z-[100] flex flex-col"
+                    onClick={() => setLightbox(null)}
+                >
+                    {/* Pasek górny */}
+                    <div className="flex justify-between items-center px-4 py-3 shrink-0" onClick={e => e.stopPropagation()}>
+                        <span className="text-white/60 text-sm font-bold">
+                            {lightbox.index + 1} / {lightbox.photos.length}
+                        </span>
+                        <button
+                            className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition"
+                            onClick={() => setLightbox(null)}
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* Zdjęcie */}
+                    <div className="flex-1 flex items-center justify-center overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <img
+                            src={lightbox.photos[lightbox.index]}
+                            alt=""
+                            className="max-w-full max-h-full object-contain select-none"
+                            draggable={false}
+                        />
+                    </div>
+
+                    {/* Nawigacja strzałki (gdy > 1 zdjęcie) */}
+                    {lightbox.photos.length > 1 && (
+                        <div className="flex justify-between items-center px-4 py-4 shrink-0" onClick={e => e.stopPropagation()}>
+                            <button
+                                className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition disabled:opacity-30"
+                                disabled={lightbox.index === 0}
+                                onClick={() => setLightbox(lb => ({ ...lb, index: lb.index - 1 }))}
+                            >
+                                <ArrowLeft size={20} />
+                            </button>
+                            {/* Kropki */}
+                            <div className="flex gap-2">
+                                {lightbox.photos.map((_, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setLightbox(lb => ({ ...lb, index: i }))}
+                                        className={`w-2 h-2 rounded-full transition ${i === lightbox.index ? 'bg-white scale-125' : 'bg-white/40'}`}
+                                    />
+                                ))}
+                            </div>
+                            <button
+                                className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition disabled:opacity-30"
+                                disabled={lightbox.index === lightbox.photos.length - 1}
+                                onClick={() => setLightbox(lb => ({ ...lb, index: lb.index + 1 }))}
+                            >
+                                <ArrowLeft size={20} className="rotate-180" />
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
