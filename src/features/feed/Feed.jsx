@@ -587,33 +587,26 @@ export default function Feed() {
                                         {getPreviewText(post.content)}
                                     </p>
 
-                                    <div className="flex justify-between items-center pt-4 border-t border-gray-800">
-                                        <div className="flex items-center gap-3">
+                                    <div className="flex flex-col gap-4 pt-4 border-t border-gray-800 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="flex min-w-0 items-center gap-3">
                                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isAdmin ? 'bg-red-500/20 text-red-500 outline outline-1 outline-red-500/50' : 'bg-gray-800 text-gray-400'}`}>
                                                 {post.profiles?.full_name ? post.profiles.full_name.charAt(0).toUpperCase() : 'U'}
                                             </div>
-                                            <div className="text-sm">
-                                                <strong className="text-gray-200 block">{post.profiles?.full_name || 'Uczeń'}</strong>
+                                            <div className="min-w-0 text-sm">
+                                                <strong className="block truncate text-gray-200">{post.profiles?.full_name || 'Uczeń'}</strong>
                                                 <span className="text-xs text-gray-500">{isAdmin ? 'Redakcja' : 'Autor'}</span>
                                             </div>
                                         </div>
 
-                                        <div className="flex gap-3 items-center">
-                                            <ReportButton entityType="feed_post" entityId={post.id} subtle />
-                                            <button onClick={() => openPost(post)} className="text-gray-500 hover:text-white transition flex items-center gap-1">
-                                                <MessageCircle size={16} />
-                                                <span className="text-xs font-bold">{post.comment_count || 0}</span>
-                                            </button>
-                                            {canManagePost(post) && (
-                                                <button
-                                                    onClick={() => handleDeletePost(post.id)}
-                                                    className="text-gray-500 hover:text-red-500 transition"
-                                                    title="Usuń artykuł"
-                                                >
-                                                    <Trash2 size={16} />
+                                        <div className="flex items-center justify-between gap-3 sm:justify-end">
+                                            <div className="flex items-center gap-3">
+                                                <ReportButton entityType="feed_post" entityId={post.id} subtle />
+                                                <button onClick={() => openPost(post)} className="text-gray-500 hover:text-white transition flex items-center gap-1">
+                                                    <MessageCircle size={16} />
+                                                    <span className="text-xs font-bold">{post.comment_count || 0}</span>
                                                 </button>
-                                            )}
-                                            <div className="flex gap-3 items-center bg-background rounded-full px-3 py-1">
+                                            </div>
+                                            <div className="flex shrink-0 gap-3 items-center bg-background rounded-full px-3 py-1">
                                                 <button onClick={() => handleVote(post.id, 'up')} className="text-gray-400 hover:text-green-500 transition flex items-center gap-1 active:scale-125"><ArrowUp size={16} /></button>
                                                 <span className={`font-bold text-sm ${((post.upvotes || 0) - (post.downvotes || 0)) > 0 ? 'text-green-500' : ((post.upvotes || 0) - (post.downvotes || 0)) < 0 ? 'text-red-500' : 'text-white'}`}>
                                                     {(post.upvotes || 0) - (post.downvotes || 0)}
@@ -639,13 +632,13 @@ export default function Feed() {
                     <div className="w-full max-w-3xl mx-auto pb-20">
                         <span className="text-primary font-bold text-sm uppercase tracking-widest block mb-2">{selectedPost.category}</span>
                         <h1 className="text-3xl md:text-5xl font-extrabold text-white mb-6 leading-tight">{selectedPost.title}</h1>
-                        <div className="flex items-center gap-4 mb-10 pb-6 border-b border-gray-800">
+                        <div className="flex flex-wrap items-center gap-4 mb-10 pb-6 border-b border-gray-800">
                             <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold">{selectedPost.profiles?.full_name?.charAt(0)}</div>
                             <div>
                                 <div className="text-white font-bold">{selectedPost.profiles?.full_name}</div>
                                 <div className="text-gray-500 text-xs">{new Date(selectedPost.created_at).toLocaleString()}</div>
                             </div>
-                            <div className="ml-auto flex items-center gap-2">
+                            <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto sm:justify-end">
                                 <ReportButton entityType="feed_post" entityId={selectedPost.id} subtle />
                                 {canManagePost(selectedPost) && (
                                     <>
