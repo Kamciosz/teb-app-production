@@ -9,7 +9,7 @@ import { Upload, Loader2, FileWarning } from 'lucide-react';
  * @param {string} module - 'profiles' | 'rewear' | 'tebtalk' | 'articles'
  * @param {Function} onUploadSuccess - zwraca URL do zapisu w DB
  */
-const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
+const MediaUploader = ({ module = 'general', onUploadSuccess, onFileReady, children }) => {
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
     const fileInputRef = useRef(null);
@@ -61,13 +61,16 @@ const MediaUploader = ({ module = 'general', onUploadSuccess, children }) => {
 
             const compressedFile = await imageCompression(file, options);
 
-            // 3. Wysyłka do CDN
+            if (onFileReady) {
+                // Tryb odroczony — tylko kompresja, bez wysyłki na serwer
+                const preview = URL.createObjectURL(compressedFile);
+                onFileReady(compressedFile, preview);
+            } else {
+                // Tryb natychmiastowy — od razu wyślij do CDN
                 const fileName = `${module}_${Date.now()}.webp`;
-                let url = null;
-                // Upload to ImageKit via signed server auth
-                url = await ImageKitService.upload(compressedFile, fileName, module);
-
-            if (onUploadSuccess) onUploadSuccess(url);
+                const url = await ImageKitService.upload(compressedFile, fileName, module);
+                if (onUploadSuccess) onUploadSuccess(url);
+            }
         } catch (err) {
             console.error("Upload error:", err);
             // Show contextual toasts for known server-side statuses

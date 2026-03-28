@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft, MessageCircle, ZoomIn } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
@@ -28,12 +29,20 @@ export default function ReWear() {
     const [newItemCondition, setNewItemCondition] = useState('Bardzo dobry')
     const [newItemSize, setNewItemSize] = useState('M')
     const [newItemSubject, setNewItemSubject] = useState('Matematyka')
-    const [newItemPhotos, setNewItemPhotos] = useState([]) // max 3 URL-e
+    const [newItemFiles, setNewItemFiles] = useState([]) // [{file, preview}], max 3
     const MAX_PHOTOS = 3
     const [uploading, setUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState('')
 
-    const addPhoto = (url) => setNewItemPhotos(prev => prev.length < 3 ? [...prev, url] : prev)
-    const removePhoto = (idx) => setNewItemPhotos(prev => prev.filter((_, i) => i !== idx))
+    const addFileEntry = (file, preview) =>
+        setNewItemFiles(prev => prev.length < MAX_PHOTOS ? [...prev, { file, preview }] : prev)
+    const removeFileEntry = (idx) =>
+        setNewItemFiles(prev => {
+            if (prev[idx]) URL.revokeObjectURL(prev[idx].preview)
+            return prev.filter((_, i) => i !== idx)
+        })
+    const clearFiles = () =>
+        setNewItemFiles(prev => { prev.forEach(e => URL.revokeObjectURL(e.preview)); return [] })
 
     // Filtrowanie
     const [activeFilter, setActiveFilter] = useState('Wszystko')
@@ -91,21 +100,11 @@ export default function ReWear() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        // Formowanie pełnego opisu zawierającego też dodatkowe dane (stan, kategoria) do JSON by zachować stary ład filtrów
-        const extraDesc = JSON.stringify({
-            category: newItemCategory,
-            condition: newItemCondition,
-            size: newItemCategory === 'Ubrania' ? newItemSize : null,
-            subject: newItemCategory === 'Korepetycje' ? newItemSubject : null,
-            photos: newItemPhotos
-        })
-
-        // Definicja item_type z walidacją roli nadanej przez administratora
+        // Walidacja roli
         let dbItemType = 'item'
         if (newItemCategory === 'Korepetycje') {
             if (!canTutor) {
                 alert('Ogłoszenia Korepetycji mogą wystawiać tylko użytkownicy z rolą Korepetytora.\nSkontaktuj się z administratorem, aby uzyskać tę rolę.')
-                setUploading(false)
                 return
             }
             dbItemType = 'tutoring'
@@ -113,7 +112,6 @@ export default function ReWear() {
         if (newItemCategory === 'Usługi') {
             if (!canService) {
                 alert('Ogłoszenia Usług mogą wystawiać tylko użytkownicy z rolą Freelancera.\nSkontaktuj się z administratorem, aby uzyskać tę rolę.')
-                setUploading(false)
                 return
             }
             dbItemType = 'service'
@@ -121,36 +119,61 @@ export default function ReWear() {
 
         setUploading(true)
 
-        const { error } = await supabase.from('rewear_posts').insert([
-            {
+        try {
+            // Wysyłka zdjęć dopiero przy kliknięciu „Dodaj ogłoszenie"
+            const uploadedUrls = []
+            for (let i = 0; i < newItemFiles.length; i++) {
+                setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${newItemFiles.length}...`)
+                const url = await ImageKitService.upload(
+                    newItemFiles[i].file,
+                    `rewear_${Date.now()}_${i}.webp`,
+                    'rewear'
+                )
+                uploadedUrls.push(url)
+            }
+
+            setUploadProgress('Publikowanie ogłoszenia...')
+
+            const extraDesc = JSON.stringify({
+                category: newItemCategory,
+                condition: newItemCondition,
+                size: newItemCategory === 'Ubrania' ? newItemSize : null,
+                subject: newItemCategory === 'Korepetycje' ? newItemSubject : null,
+                photos: uploadedUrls
+            })
+
+            const { error } = await supabase.from('rewear_posts').insert([{
                 seller_id: session.user.id,
                 title: newItemTitle,
-                description: newItemDesc + " |META:" + extraDesc,
+                description: newItemDesc + ' |META:' + extraDesc,
                 price_teb_gabki: newItemCurrency === 'TG' ? parseFloat(newItemPrice) : 0,
                 price_pln: newItemCurrency === 'PLN' ? parseFloat(newItemPrice) : 0,
                 item_type: dbItemType,
-                image_url: newItemPhotos[0] || null,
+                image_url: uploadedUrls[0] || null,
                 status: 'active'
-            }
-        ])
+            }])
 
-        setUploading(false)
-
-        if (error) {
-            console.error(error)
-            alert("Błąd publikacji: " + error.message)
-        } else {
-            // Nagroda 10 TG za wystawienie
-            const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', session.user.id).single()
-            if (profile) {
-                await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki + 10 }).eq('id', session.user.id)
+            if (error) {
+                console.error(error)
+                alert('Błąd publikacji: ' + error.message)
+            } else {
+                const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', session.user.id).single()
+                if (profile) {
+                    await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki + 10 }).eq('id', session.user.id)
+                }
+                setIsModalOpen(false)
+                setNewItemTitle('')
+                setNewItemPrice('')
+                setNewItemDesc('')
+                clearFiles()
+                fetchItems()
             }
-            setIsModalOpen(false)
-            setNewItemTitle('')
-            setNewItemPrice('')
-            setNewItemDesc('')
-            setNewItemPhotos([])
-            fetchItems()
+        } catch (err) {
+            console.error('Submit error:', err)
+            alert('Błąd podczas wysyłania: ' + (err?.message || 'Spróbuj ponownie.'))
+        } finally {
+            setUploading(false)
+            setUploadProgress('')
         }
     }
 
@@ -389,7 +412,7 @@ export default function ReWear() {
                     <div className="bg-surface border border-gray-700 w-full h-full sm:h-auto sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden">
                         <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-2xl sm:rounded-t-2xl">
                             <h3 className="text-lg font-bold text-white">Wystaw Przedmiot</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white transition bg-background p-1 rounded-full">
+                            <button onClick={() => { setIsModalOpen(false); clearFiles() }} className="text-gray-400 hover:text-white transition bg-background p-1 rounded-full">
                                 <X size={20} />
                             </button>
                         </div>
@@ -399,18 +422,18 @@ export default function ReWear() {
                             <div>
                                 <div className="flex justify-between items-center mb-2">
                                     <label className="text-xs text-gray-400 font-bold">Zdjęcia</label>
-                                    <span className={`text-xs font-bold ${newItemPhotos.length === MAX_PHOTOS ? 'text-green-400' : 'text-gray-500'}`}>
-                                        {newItemPhotos.length}/{MAX_PHOTOS}
+                                    <span className={`text-xs font-bold ${newItemFiles.length === MAX_PHOTOS ? 'text-green-400' : 'text-gray-500'}`}>
+                                        {newItemFiles.length}/{MAX_PHOTOS}
                                     </span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {/* Wypełnione sloty */}
-                                    {newItemPhotos.map((url, i) => (
+                                    {newItemFiles.map((entry, i) => (
                                         <div key={i} className={`relative aspect-square rounded-xl overflow-hidden border-2 ${i === 0 ? 'border-primary' : 'border-gray-700'}`}>
-                                            <img src={url} alt="" className="w-full h-full object-cover" />
+                                            <img src={entry.preview} alt="" className="w-full h-full object-cover" />
                                             <button
                                                 type="button"
-                                                onClick={() => removePhoto(i)}
+                                                onClick={() => removeFileEntry(i)}
                                                 className="absolute top-1 right-1 w-6 h-6 bg-black/80 rounded-full flex items-center justify-center text-white border border-gray-600 hover:bg-red-900/80 transition"
                                             >
                                                 <X size={11} />
@@ -423,8 +446,8 @@ export default function ReWear() {
                                         </div>
                                     ))}
                                     {/* Slot "Dodaj" — widoczny gdy < MAX */}
-                                    {newItemPhotos.length < MAX_PHOTOS && (
-                                        <MediaUploader module="rewear" onUploadSuccess={addPhoto}>
+                                    {newItemFiles.length < MAX_PHOTOS && (
+                                        <MediaUploader module="rewear" onFileReady={addFileEntry}>
                                             <div className="aspect-square flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-700 bg-background text-gray-500 cursor-pointer hover:border-primary hover:text-primary transition" style={{ minHeight: '90px' }}>
                                                 <Camera size={22} />
                                                 <span className="text-[10px] mt-1 font-bold">Dodaj</span>
@@ -432,7 +455,7 @@ export default function ReWear() {
                                         </MediaUploader>
                                     )}
                                     {/* Puste placeholdery dla wizualnej spójności siatki */}
-                                    {Array.from({ length: Math.max(0, MAX_PHOTOS - newItemPhotos.length - 1) }).map((_, i) => (
+                                    {Array.from({ length: Math.max(0, MAX_PHOTOS - newItemFiles.length - 1) }).map((_, i) => (
                                         <div key={`ph-${i}`} className="aspect-square rounded-xl border border-dashed border-gray-800 bg-background/30" style={{ minHeight: '90px' }} />
                                     ))}
                                 </div>
@@ -541,15 +564,15 @@ export default function ReWear() {
                             </div>
 
                             <button type="submit" disabled={uploading} className={`bg-primary text-white font-bold py-3 rounded-xl mt-4 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)] w-full ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                {uploading ? 'Wysyłanie na serwer...' : 'Dodać Ogłoszenie'}
+                                {uploading ? (uploadProgress || 'Wysyłanie...') : 'Dodać Ogłoszenie'}
                             </button>
                         </form>
                     </div>
                 </div>
             )}
 
-            {/* Lightbox — fullscreen podgląd zdjęć */}
-            {lightbox && (
+            {/* Lightbox — fullscreen podgląd zdjęć (portal escapes all stacking contexts) */}
+            {lightbox && createPortal(
                 <div
                     className="fixed inset-0 bg-black z-[100] flex flex-col"
                     onClick={() => setLightbox(null)}
@@ -606,7 +629,8 @@ export default function ReWear() {
                             </button>
                         </div>
                     )}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     )
