@@ -130,21 +130,37 @@ function App() {
     }, [])
 
     async function fetchRole(uid) {
-        const { data } = await supabase.from('profiles').select('roles, teb_gabki').eq('id', uid).single()
-        if (data) {
-            setUserRoles(data.roles || ['student'])
-            // Automatyczne TG za codzienne logowanie — weryfikacja po stronie serwera
-            const { data: award } = await supabase.rpc('award_daily_tg')
-            if (award?.awarded) {
-                console.log('Przyznano 5 TG za codzienne logowanie!')
+        try {
+            const { data, error } = await supabase.from('profiles').select('roles, teb_gabki').eq('id', uid).single()
+            if (error) {
+                console.error('Error loading profile:', error)
+                setUserRoles(['student'])
+                setLoading(false)
+                return
             }
+            if (data) {
+                setUserRoles(data.roles || ['student'])
+                // Automatyczne TG za codzienne logowanie — weryfikacja po stronie serwera
+                try {
+                    const { data: award, error: awardErr } = await supabase.rpc('award_daily_tg')
+                    if (!awardErr && award?.awarded) {
+                        console.log('Przyznano 5 TG za codzienne logowanie!')
+                    }
+                } catch (awardErr) {
+                    console.warn('Daily TG award failed:', awardErr)
+                }
 
-            // Rejestracja powiadomień Push
-            NotificationService.requestPermission().then(granted => {
-                if (granted) NotificationService.subscribeUser(uid)
-            })
+                // Rejestracja powiadomień Push
+                NotificationService.requestPermission().then(granted => {
+                    if (granted) NotificationService.subscribeUser(uid)
+                }).catch(err => console.warn('Notification permission failed:', err))
+            }
+        } catch (err) {
+            console.error('Fatal error in fetchRole:', err)
+            setUserRoles(['student'])
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     if (loading) return <div className="min-h-screen bg-[#121212] flex items-center justify-center text-primary">Autoryzacja SU...</div>

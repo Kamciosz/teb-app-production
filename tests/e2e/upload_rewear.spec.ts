@@ -33,9 +33,13 @@ test('rewear upload flow', async ({ page }, info) => {
   })
 
   const base = process.env.BASE_URL || 'http://localhost:4173'
-  const email = process.env.TEST_USER_EMAIL || 'szymon.sosnowski2@teb.edu.pl'
-  const password = process.env.TEST_USER_PASSWORD || 'kamciosz12%Pusia'
+  const email = process.env.TEST_USER_EMAIL
+  const password = process.env.TEST_USER_PASSWORD
   const imagePath = process.env.TEST_IMAGEPath || path.resolve(process.cwd(), 'tmp_uploads/test.png')
+
+  if (!email || !password) {
+    test.skip(true, 'Missing TEST_USER_EMAIL/TEST_USER_PASSWORD env vars')
+  }
 
   await page.goto(base, { waitUntil: 'networkidle' })
 

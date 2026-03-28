@@ -11,6 +11,10 @@ import imageCompression from 'browser-image-compression'
 import { WordFilter } from '../../services/wordFilter'
 
 export default function Feed() {
+    const MAX_ARTICLE_TITLE = 200
+    const MAX_ARTICLE_HTML = 12000
+    const MAX_COMMENT_LEN = 2000
+
     const [posts, setPosts] = useState([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -73,7 +77,13 @@ export default function Feed() {
         e.preventDefault()
         if (!newComment.trim() || !selectedPost || !myId) return
 
-        const cleanedComment = WordFilter.clean(newComment.trim())
+        const trimmed = newComment.trim()
+        if (trimmed.length > MAX_COMMENT_LEN) {
+            alert(`Komentarz jest za długi (max ${MAX_COMMENT_LEN} znaków).`)
+            return
+        }
+
+        const cleanedComment = WordFilter.clean(trimmed)
         
         const { data, error } = await supabase
             .from('feed_comments')
@@ -88,11 +98,6 @@ export default function Feed() {
         if (data) {
             setComments(prev => [...prev, data])
             setNewComment('')
-            // Przyznaj 1 TG za komentarz
-            const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', myId).single()
-            if (profile) {
-                await supabase.from('profiles').update({ teb_gabki: (profile.teb_gabki || 0) + 1 }).eq('id', myId)
-            }
         }
     }
 
@@ -114,14 +119,26 @@ export default function Feed() {
     async function handleAddPost(e) {
         e.preventDefault()
         if (!articleTitle || !articleHtml) return
+
+        const cleanedTitle = WordFilter.clean(articleTitle).trim()
+        const cleanedHtml = WordFilter.clean(articleHtml).trim()
+        if (cleanedTitle.length > MAX_ARTICLE_TITLE) {
+            alert(`Tytuł jest za długi (max ${MAX_ARTICLE_TITLE} znaków).`)
+            return
+        }
+        if (cleanedHtml.length > MAX_ARTICLE_HTML) {
+            alert(`Treść artykułu jest za długa (max ${MAX_ARTICLE_HTML} znaków).`)
+            return
+        }
+
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
         const { error } = await supabase.from('feed_posts').insert([
             {
                 author_id: session.user.id,
-                title: WordFilter.clean(articleTitle),
-                content: WordFilter.clean(articleHtml),
+                title: cleanedTitle,
+                content: cleanedHtml,
                 category: articleCategory
             }
         ])
@@ -130,11 +147,6 @@ export default function Feed() {
             console.error(error)
             alert("Błąd publikacji: " + error.message)
         } else {
-            // Nagroda 15 TG za artykuł
-            const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', session.user.id).single()
-            if (profile) {
-                await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki + 15 }).eq('id', session.user.id)
-            }
             setIsModalOpen(false)
             setArticleTitle('')
             setArticleHtml('')
@@ -376,7 +388,8 @@ export default function Feed() {
                                         type="text"
                                         placeholder="Napisz co o tym sądzisz..."
                                         value={newComment}
-                                        onChange={e => setNewComment(e.target.value)}
+                                        onChange={e => setNewComment(e.target.value.slice(0, MAX_COMMENT_LEN))}
+                                        maxLength={MAX_COMMENT_LEN}
                                         className="flex-1 bg-surface border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-primary text-sm"
                                     />
                                     <button
@@ -438,7 +451,8 @@ export default function Feed() {
                                     <input
                                         type="text" required placeholder="Nagłówek..."
                                         className="w-full p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-primary font-bold"
-                                        value={articleTitle} onChange={e => setArticleTitle(e.target.value)}
+                                        value={articleTitle} onChange={e => setArticleTitle(e.target.value.slice(0, MAX_ARTICLE_TITLE))}
+                                        maxLength={MAX_ARTICLE_TITLE}
                                     />
                                 </div>
                                 <div className="col-span-1">

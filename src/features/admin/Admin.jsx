@@ -59,7 +59,10 @@ export default function Admin() {
 
         if (canManageUsers || canManageContent) {
             if (view === 'users' && canManageUsers) {
-                const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, roles, role, is_banned, banned_until, created_at')
+                    .order('created_at', { ascending: false })
                 if (data) setUsers(data)
             }
             if (view === 'reports' && (canManageUsers || canManageContent)) {
@@ -278,7 +281,7 @@ export default function Admin() {
                                             {u.full_name}
                                             {u.is_banned && <span className="text-[10px] ml-2 px-1 bg-red-500 text-white rounded">ZBANOWANY</span>}
                                         </div>
-                                        <div className="text-[10px] text-gray-500 font-mono mt-0.5">{u.email}</div>
+                                        <div className="text-[10px] text-gray-500 font-mono mt-0.5">ID: {u.id?.slice(0, 8)}...</div>
                                         {u.is_banned && u.banned_until && (
                                             <div className="text-[10px] text-red-400 font-bold mt-1">Ban do: {new Date(u.banned_until).toLocaleString()}</div>
                                         )}
@@ -363,12 +366,19 @@ export default function Admin() {
                                                     <ShieldAlert size={10} /> Kontekst Rozmowy (±5 wiadomości):
                                                 </div>
                                                 <div className="flex flex-col gap-1.5">
-                                                    {JSON.parse(r.context).map((ctx, i) => (
-                                                        <div key={i} className={`text-[10px] leading-tight ${ctx.t.includes(r.reported_entity_id) ? 'bg-red-500/10 p-1 rounded' : ''}`}>
-                                                            <span className="font-bold text-gray-300">{ctx.u}: </span>
-                                                            <span className="text-gray-400">{ctx.t}</span>
-                                                        </div>
-                                                    ))}
+                                                    {(() => {
+                                                        try {
+                                                            const context = JSON.parse(r.context);
+                                                            return context.map((ctx, i) => (
+                                                                <div key={i} className={`text-[10px] leading-tight ${ctx.t?.includes(r.reported_entity_id) ? 'bg-red-500/10 p-1 rounded' : ''}`}>
+                                                                    <span className="font-bold text-gray-300">{ctx.u || 'Unknown'}: </span>
+                                                                    <span className="text-gray-400">{ctx.t || 'No content'}</span>
+                                                                </div>
+                                                            ));
+                                                        } catch (e) {
+                                                            return <div className="text-[10px] text-gray-500 italic">Brak dostępnego kontekstu</div>;
+                                                        }
+                                                    })()}
                                                 </div>
                                             </div>
                                         )}

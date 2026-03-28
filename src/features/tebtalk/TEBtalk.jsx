@@ -9,6 +9,9 @@ import { WordFilter } from '../../services/wordFilter'
 import { useToast } from '../../context/ToastContext'
 
 export default function TEBtalk() {
+    const MAX_CHAT_MESSAGE = 2000
+    const MAX_CHAT_GROUP_NAME = 120
+
     const [view, setView] = useState('list') // 'list', 'chat', 'search', 'friends'
     const [recentChats, setRecentChats] = useState([])
     const [searchResults, setSearchResults] = useState([])
@@ -70,6 +73,7 @@ export default function TEBtalk() {
                     }
                 })
                 .subscribe()
+                .catch(err => console.warn('Failed to subscribe to messages:', err))
 
             return () => { supabase.removeChannel(channel) }
         }
@@ -185,6 +189,11 @@ export default function TEBtalk() {
         e.preventDefault()
         if (!newMessage.trim() || !activeChatUser) return
 
+        if (newMessage.trim().length > MAX_CHAT_MESSAGE) {
+            toast.error(`Wiadomość jest za długa (max ${MAX_CHAT_MESSAGE} znaków).`)
+            return
+        }
+
         const msgText = newMessage.trim()
         const isGroup = activeChatUser.type === 'group'
         const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
@@ -267,6 +276,10 @@ export default function TEBtalk() {
 
     async function createGroup() {
         if (!groupName.trim()) return
+        if (groupName.trim().length > MAX_CHAT_GROUP_NAME) {
+            toast.error(`Nazwa grupy jest za długa (max ${MAX_CHAT_GROUP_NAME} znaków).`)
+            return
+        }
         
         // 1. Stwórz grupę
         const { data: group, error: groupErr } = await supabase
@@ -443,7 +456,8 @@ export default function TEBtalk() {
                                 type="text"
                                 placeholder="Napisz wiadomość..."
                                 value={newMessage}
-                                onChange={e => setNewMessage(e.target.value)}
+                                onChange={e => setNewMessage(e.target.value.slice(0, MAX_CHAT_MESSAGE))}
+                                maxLength={MAX_CHAT_MESSAGE}
                                 className="w-full bg-transparent text-white text-[15px] outline-none placeholder-gray-500 max-h-[100px] overflow-y-auto"
                                 style={{ resize: 'none' }}
                             />
@@ -712,7 +726,8 @@ export default function TEBtalk() {
                                     type="text"
                                     placeholder="np. Giełda 4A..."
                                     value={groupName}
-                                    onChange={e => setGroupName(e.target.value)}
+                                    onChange={e => setGroupName(e.target.value.slice(0, MAX_CHAT_GROUP_NAME))}
+                                    maxLength={MAX_CHAT_GROUP_NAME}
                                     className="w-full mt-1 p-3 bg-background border border-gray-800 rounded-xl text-white outline-none focus:border-secondary transition"
                                 />
                             </div>
