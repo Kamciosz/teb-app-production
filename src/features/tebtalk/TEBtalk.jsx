@@ -120,7 +120,7 @@ export default function TEBtalk() {
     async function fetchFriends(userId, blockState = null) {
         const blocked = new Set(blockState?.blocked || myBlockedIds)
         const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
-        const { data, error } = await supabase
+        const { data } = await supabase
             .from('friends')
             .select(`
                 friend_id,
@@ -128,14 +128,38 @@ export default function TEBtalk() {
             `)
             .eq('user_id', userId)
             .eq('status', 'accepted')
-        
+
         if (data) {
             setFriends(
                 data
                     .map(f => f.profiles)
                     .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
             )
+            return
         }
+
+        const { data: fallbackFriends } = await supabase
+            .from('friends')
+            .select('friend_id')
+            .eq('user_id', userId)
+            .eq('status', 'accepted')
+
+        const friendIds = (fallbackFriends || []).map(friend => friend.friend_id).filter(Boolean)
+        if (friendIds.length === 0) {
+            setFriends([])
+            return
+        }
+
+        const { data: fallbackProfiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, role')
+            .in('id', friendIds)
+
+        setFriends(
+            (fallbackProfiles || [])
+                .map(friend => ({ ...friend, dm_friends_only: false }))
+                .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
+        )
     }
 
     async function fetchGroupMembers(groupId) {
@@ -166,7 +190,9 @@ export default function TEBtalk() {
 
         let chats = []
         if (userIds.size > 0) {
-            const { data: users } = await supabase.from('profiles').select('id, full_name, role, avatar_url, dm_friends_only').in('id', Array.from(userIds))
+            const primaryUsers = await supabase.from('profiles').select('id, full_name, role, avatar_url, dm_friends_only').in('id', Array.from(userIds))
+            const users = primaryUsers.data || (await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))).data?.map(user => ({ ...user, dm_friends_only: false }))
+
             if (users) {
                 chats = users
                     .filter(u => !blocked.has(u.id) && !blockedBy.has(u.id))
@@ -207,7 +233,22 @@ export default function TEBtalk() {
             .eq('is_private', false)
             .neq('id', myId)
             .limit(10)
-        if (data) setSearchResults(data.filter(user => !isBlockedRelationship(user.id)))
+
+        if (data) {
+            setSearchResults(data.filter(user => !isBlockedRelationship(user.id)))
+            return
+        }
+
+        const { data: fallbackData } = await supabase.from('profiles')
+            .select('id, full_name, role, avatar_url, is_private')
+            .ilike('full_name', `%${e.target.value}%`)
+            .eq('is_private', false)
+            .neq('id', myId)
+            .limit(10)
+
+        if (fallbackData) {
+            setSearchResults(fallbackData.map(user => ({ ...user, dm_friends_only: false })).filter(user => !isBlockedRelationship(user.id)))
+        }
     }
 
     async function toggleBlock(userId) {

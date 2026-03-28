@@ -17,6 +17,7 @@ export default function Profile() {
     const [moderationEvents, setModerationEvents] = useState([])
     const [appealMessage, setAppealMessage] = useState('')
     const [appealLoading, setAppealLoading] = useState(false)
+    const [loadError, setLoadError] = useState('')
 
     useEffect(() => {
         loadProfile()
@@ -24,39 +25,71 @@ export default function Profile() {
 
     async function loadProfile() {
         const { data: { session } } = await supabase.auth.getSession()
-        if (session) {
-            const { data } = await supabase
+        if (!session) return
+
+        const primaryQuery = await supabase
+            .from('profiles')
+            .select('id, full_name, avatar_url, roles, role, is_private, dm_friends_only, teb_gabki, is_banned, banned_until, ban_reason, created_at, updated_at')
+            .eq('id', session.user.id)
+            .single()
+
+        let data = primaryQuery.data
+
+        if (!data) {
+            const fallbackQuery = await supabase
                 .from('profiles')
-                .select('id, full_name, avatar_url, roles, role, is_private, dm_friends_only, teb_gabki, is_banned, banned_until, ban_reason, created_at, updated_at')
+                .select('id, full_name, avatar_url, roles, role, is_private, teb_gabki, is_banned, banned_until, created_at, updated_at')
                 .eq('id', session.user.id)
                 .single()
-            if (data) {
-                setProfile({ ...data, email: session.user.email })
-                setNewName(data.full_name)
-                fetchBadges(session.user.id)
-                fetchAppeals(session.user.id)
-                fetchModerationEvents(session.user.id)
+
+            if (fallbackQuery.error || !fallbackQuery.data) {
+                setLoadError(primaryQuery.error?.message || fallbackQuery.error?.message || 'Nie udało się pobrać profilu.')
+                return
+            }
+
+            data = {
+                ...fallbackQuery.data,
+                dm_friends_only: false,
+                ban_reason: null
             }
         }
+
+        setLoadError('')
+        setProfile({ ...data, email: session.user.email })
+        setNewName(data.full_name)
+
+        fetchBadges(session.user.id)
+        fetchAppeals(session.user.id)
+        fetchModerationEvents(session.user.id)
     }
 
     async function fetchAppeals(uid) {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('punishment_appeals')
             .select('id, status, punishment_type, message, resolution_note, created_at, resolved_at, audit_log_id')
             .eq('appellant_user_id', uid)
             .order('created_at', { ascending: false })
 
+        if (error) {
+            setAppeals([])
+            return
+        }
+
         if (data) setAppeals(data)
     }
 
     async function fetchModerationEvents(uid) {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('moderation_audit_log')
             .select('id, action_type, reason, metadata, created_at, is_visible_to_target')
             .eq('target_user_id', uid)
             .order('created_at', { ascending: false })
             .limit(10)
+
+        if (error) {
+            setModerationEvents([])
+            return
+        }
 
         if (data) setModerationEvents(data)
     }
@@ -176,7 +209,7 @@ export default function Profile() {
         await fetchModerationEvents(profile.id)
     }
 
-    if (!profile) return <div className="text-center mt-10 text-gray-400">Ładowanie Profilu...</div>
+    if (!profile) return <div className="text-center mt-10 text-gray-400">{loadError || 'Ładowanie Profilu...'}</div>
 
     const pendingAppeal = appeals.find(appeal => appeal.status === 'pending')
     const activeBanEvent = moderationEvents.find(event => event.action_type === 'ban')
