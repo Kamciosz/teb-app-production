@@ -27,8 +27,12 @@ export default function ReWear() {
     const [newItemCondition, setNewItemCondition] = useState('Bardzo dobry')
     const [newItemSize, setNewItemSize] = useState('M')
     const [newItemSubject, setNewItemSubject] = useState('Matematyka')
-    const [newItemPhotoUrl, setNewItemPhotoUrl] = useState(null)
+    const [newItemPhotos, setNewItemPhotos] = useState([]) // max 3 URL-e
+    const MAX_PHOTOS = 3
     const [uploading, setUploading] = useState(false)
+
+    const addPhoto = (url) => setNewItemPhotos(prev => prev.length < 3 ? [...prev, url] : prev)
+    const removePhoto = (idx) => setNewItemPhotos(prev => prev.filter((_, i) => i !== idx))
 
     // Filtrowanie
     const [activeFilter, setActiveFilter] = useState('Wszystko')
@@ -91,7 +95,8 @@ export default function ReWear() {
             category: newItemCategory,
             condition: newItemCondition,
             size: newItemCategory === 'Ubrania' ? newItemSize : null,
-            subject: newItemCategory === 'Korepetycje' ? newItemSubject : null
+            subject: newItemCategory === 'Korepetycje' ? newItemSubject : null,
+            photos: newItemPhotos
         })
 
         // Definicja item_type z walidacją roli nadanej przez administratora
@@ -123,7 +128,7 @@ export default function ReWear() {
                 price_teb_gabki: newItemCurrency === 'TG' ? parseFloat(newItemPrice) : 0,
                 price_pln: newItemCurrency === 'PLN' ? parseFloat(newItemPrice) : 0,
                 item_type: dbItemType,
-                image_url: newItemPhotoUrl,
+                image_url: newItemPhotos[0] || null,
                 status: 'active'
             }
         ])
@@ -143,7 +148,7 @@ export default function ReWear() {
             setNewItemTitle('')
             setNewItemPrice('')
             setNewItemDesc('')
-            setNewItemPhotoUrl(null)
+            setNewItemPhotos([])
             fetchItems()
         }
     }
@@ -278,13 +283,34 @@ export default function ReWear() {
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+2rem)]">
-                                {selectedItem.image_url ? (
-                                    <img src={ImageKitService.getOptimizedUrl(selectedItem.image_url)} alt={selectedItem.title} className="w-full h-auto max-h-[40vh] sm:h-56 object-contain" />
-                                ) : (
-                                    <div className="w-full max-h-[30vh] h-40 bg-[#1a1a1a] flex items-center justify-center">
-                                        <Camera className="text-gray-700" size={40} />
-                                    </div>
-                                )}
+                                {(() => {
+                                    const allPhotos = meta.photos?.length > 0 ? meta.photos : (selectedItem.image_url ? [selectedItem.image_url] : [])
+                                    return allPhotos.length > 0 ? (
+                                        <div className="relative">
+                                            <div className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none">
+                                                {allPhotos.map((url, i) => (
+                                                    <img
+                                                        key={i}
+                                                        src={ImageKitService.getOptimizedUrl(url)}
+                                                        alt={selectedItem.title}
+                                                        className="snap-center shrink-0 w-full max-h-[40vh] sm:h-56 object-contain bg-[#1a1a1a]"
+                                                    />
+                                                ))}
+                                            </div>
+                                            {allPhotos.length > 1 && (
+                                                <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5 pointer-events-none">
+                                                    {allPhotos.map((_, i) => (
+                                                        <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/60" />
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="w-full h-40 bg-[#1a1a1a] flex items-center justify-center">
+                                            <Camera className="text-gray-700" size={40} />
+                                        </div>
+                                    )
+                                })()}
                                 <div className="p-5 flex flex-col gap-3">
                                     <div className="flex items-start justify-between gap-2">
                                         <h3 className="text-xl font-bold text-white leading-tight">{selectedItem.title}</h3>
@@ -359,46 +385,47 @@ export default function ReWear() {
 
                         <form onSubmit={handleAddItem} className="p-6 flex flex-col gap-4 overflow-y-auto flex-1 pb-[calc(env(safe-area-inset-bottom)+2rem)]">
 
-                            {newItemPhotoUrl ? (
-                                <div className="relative rounded-xl overflow-hidden border-2 border-green-700 bg-background">
-                                    <img
-                                        src={newItemPhotoUrl}
-                                        alt="Podgląd zdjęcia"
-                                        className="w-full h-48 object-cover"
-                                    />
-                                    {/* Badge z licznikiem */}
-                                    <div className="absolute bottom-2 left-2 bg-black/70 backdrop-blur text-green-400 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 border border-green-800">
-                                        <span>✓</span> 1 zdjęcie dodane
-                                    </div>
-                                    {/* Przycisk usunięcia */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setNewItemPhotoUrl(null)}
-                                        className="absolute top-2 right-2 bg-black/70 backdrop-blur text-white p-1.5 rounded-full hover:bg-red-900/80 transition border border-gray-700"
-                                        title="Usuń zdjęcie"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                    {/* Przycisk zmiany zdjęcia */}
-                                    <div className="absolute top-2 left-2">
-                                        <MediaUploader
-                                            module="rewear"
-                                            onUploadSuccess={(url) => setNewItemPhotoUrl(url)}
-                                        >
-                                            <div className="bg-black/70 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full border border-gray-600 hover:border-primary transition">
-                                                Zmień
+                            <div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs text-gray-400 font-bold">Zdjęcia</label>
+                                    <span className={`text-xs font-bold ${newItemPhotos.length === MAX_PHOTOS ? 'text-green-400' : 'text-gray-500'}`}>
+                                        {newItemPhotos.length}/{MAX_PHOTOS}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {/* Wypełnione sloty */}
+                                    {newItemPhotos.map((url, i) => (
+                                        <div key={i} className={`relative aspect-square rounded-xl overflow-hidden border-2 ${i === 0 ? 'border-primary' : 'border-gray-700'}`}>
+                                            <img src={url} alt="" className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removePhoto(i)}
+                                                className="absolute top-1 right-1 w-6 h-6 bg-black/80 rounded-full flex items-center justify-center text-white border border-gray-600 hover:bg-red-900/80 transition"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                            {i === 0 && (
+                                                <div className="absolute bottom-1 left-1 right-1 text-center text-[9px] bg-primary/90 px-1 py-0.5 rounded text-white font-bold">
+                                                    Główne
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {/* Slot "Dodaj" — widoczny gdy < MAX */}
+                                    {newItemPhotos.length < MAX_PHOTOS && (
+                                        <MediaUploader module="rewear" onUploadSuccess={addPhoto}>
+                                            <div className="aspect-square flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-700 bg-background text-gray-500 cursor-pointer hover:border-primary hover:text-primary transition" style={{ minHeight: '90px' }}>
+                                                <Camera size={22} />
+                                                <span className="text-[10px] mt-1 font-bold">Dodaj</span>
                                             </div>
                                         </MediaUploader>
-                                    </div>
+                                    )}
+                                    {/* Puste placeholdery dla wizualnej spójności siatki */}
+                                    {Array.from({ length: Math.max(0, MAX_PHOTOS - newItemPhotos.length - 1) }).map((_, i) => (
+                                        <div key={`ph-${i}`} className="aspect-square rounded-xl border border-dashed border-gray-800 bg-background/30" style={{ minHeight: '90px' }} />
+                                    ))}
                                 </div>
-                            ) : (
-                                <div className="bg-background border-2 border-dashed border-gray-700 rounded-xl relative overflow-hidden min-h-[120px]">
-                                    <MediaUploader
-                                        module="rewear"
-                                        onUploadSuccess={(url) => setNewItemPhotoUrl(url)}
-                                    />
-                                </div>
-                            )}
+                            </div>
 
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł ogłoszenia</label>
