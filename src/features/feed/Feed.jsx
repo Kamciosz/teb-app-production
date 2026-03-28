@@ -348,7 +348,8 @@ export default function Feed() {
                                 dangerouslySetInnerHTML={{ __html: (() => {
                                     const sanitized = DOMPurify.sanitize(selectedPost.content, {
                                         ADD_TAGS: ['iframe'],
-                                        ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling']
+                                        ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'src'],
+                                        FORBID_ATTR: ['srcdoc', 'data', 'onload', 'onerror']
                                     });
                                     const withIframes = sanitized
                                         .replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"')

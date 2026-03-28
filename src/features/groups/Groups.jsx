@@ -249,12 +249,12 @@ export default function Groups() {
                                                 <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.is_deleted ? 'bg-gray-800/30 text-gray-600 italic border border-gray-800' : isMe ? 'bg-secondary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
                                                     {msg.is_deleted ? (
                                                         'Wiadomość usunięta'
-                                                    ) : msg.content.startsWith('http') ? (
+                                                    ) : msg.content.startsWith('https://') ? (
                                                         <img
                                                             src={ImageKitService.getOptimizedUrl(msg.content, 400)}
                                                             alt="Przesłane zdjęcie"
                                                             className="rounded-lg cursor-pointer hover:opacity-90 transition"
-                                                            onClick={() => window.open(msg.content, '_blank')}
+                                                            onClick={() => window.open(msg.content, '_blank', 'noopener,noreferrer')}
                                                             loading="lazy"
                                                         />
                                                     ) : (

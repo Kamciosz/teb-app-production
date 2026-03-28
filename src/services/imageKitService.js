@@ -1,4 +1,5 @@
 import imageCompression from 'browser-image-compression';
+import { supabase } from './supabase';
 
 const IMAGEKIT_ENDPOINT = import.meta.env.IMAGEKIT_URL_ENDPOINT || import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || '';
 
@@ -9,9 +10,13 @@ export const ImageKitService = {
         // Plik jest już skompresowany przez MediaUploader — brak podwójnej kompresji
         const toUpload = file;
 
-        // Get authentication parameters from server
+        // Get authentication parameters from server (requires valid session)
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token || '';
         const folderQuery = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-        const authRes = await fetch(`/api/imagekit-auth${folderQuery}`);
+        const authRes = await fetch(`/api/imagekit-auth${folderQuery}`, {
+            headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}
+        });
         if (!authRes.ok) {
             const text = await authRes.text().catch(() => '');
             const err = new Error('Failed to get ImageKit auth: ' + (text || authRes.status));
