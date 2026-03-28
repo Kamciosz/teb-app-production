@@ -35,7 +35,11 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                 
                 try {
                     // Pobierz wiadomość, którą zgłoszono, aby znać jej datę/grupę
-                    const { data: mainMsg, error: msgErr } = await supabase.from(tableName).select('*').eq('id', entityId).single()
+                    const { data: mainMsg, error: msgErr } = await supabase
+                        .from(tableName)
+                        .select('id, group_id, conversation_id, created_at')
+                        .eq('id', entityId)
+                        .single()
                     
                     if (msgErr) {
                         console.warn('Could not fetch message context:', msgErr)
@@ -43,7 +47,7 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                         // Pobierz 5 przed i 5 po (łącznie 11 wiadomości)
                         const { data: context, error: contextErr } = await supabase
                             .from(tableName)
-                            .select('content, sender_id, created_at, profiles(full_name)')
+                            .select('id, sender_id, created_at')
                             .eq(entityType === 'group_message' ? 'group_id' : 'conversation_id', mainMsg.group_id || mainMsg.conversation_id)
                             .order('created_at', { ascending: true })
                         
@@ -56,11 +60,12 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                                 const end = Math.min(context.length, idx + 6)
                                 const slicedContext = context.slice(start, end)
                                 
-                                reportData.context = JSON.stringify(slicedContext.map(m => ({
-                                    u: m.profiles?.full_name || 'Unknown',
-                                    t: m.content,
-                                    d: m.created_at
-                                })))
+                                reportData.context = {
+                                    anchor_message_id: mainMsg.id,
+                                    thread_scope: entityType,
+                                    related_message_ids: slicedContext.map(m => m.id),
+                                    generated_at: new Date().toISOString()
+                                }
                             }
                         }
                     }
@@ -73,7 +78,13 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
             const { error } = await supabase.from('reports').insert([reportData])
 
             if (error) {
-                alert('Błąd przy tworzeniu zgłoszenia: ' + error.message)
+                if (error.code === 'P0001') {
+                    alert(error.message)
+                } else if (error.code === '23505') {
+                    alert('To zgłoszenie zostało już niedawno wysłane. Spróbuj później.')
+                } else {
+                    alert('Błąd przy tworzeniu zgłoszenia: ' + error.message)
+                }
             } else {
                 setSuccess(true)
                 setTimeout(() => {
