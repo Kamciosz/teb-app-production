@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { ArrowUp, ArrowDown, X, Image as ImageIcon, Video, FileText, Maximize2, MessageCircle, Send } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReactQuill from 'react-quill'
@@ -221,7 +221,7 @@ export default function Feed() {
         };
     };
 
-    const modules = {
+    const modules = useMemo(() => ({
         toolbar: {
             container: [
                 [{ 'header': [1, 2, false] }],
@@ -234,7 +234,8 @@ export default function Feed() {
                 image: imageHandler
             }
         }
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), []);
 
     return (
         <div className="pb-10">

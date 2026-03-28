@@ -82,10 +82,14 @@ export default function Librus() {
     const [loginError, setLoginError] = useState('');
     const [activeTab, setActiveTab] = useState('oceny');
     const [isLoading, setIsLoading] = useState(false);
-    const [isRefreshing, setIsRefreshing] = useState(false); // Nowy stan dla odświeżania w tle
-    const [isAutoLogging, setIsAutoLogging] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [simText, setSimText] = useState('');
     const [savedLogin, setSavedLogin] = useState('');
+    const [showDisclaimer, setShowDisclaimer] = useState(false);
+    const [pendingCreds, setPendingCreds] = useState(null);
+
+    // Credentials stored ONLY in memory — cleared on page close/refresh
+    const credsRef = useRef(null);
 
     const [grades, setGrades] = useState([]);
     const [timetable, setTimetable] = useState({});
