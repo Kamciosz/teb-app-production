@@ -1,52 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { CheckCircle2, Lock, Loader2, BookOpen, Calendar, PieChart, Clock, LogOut, AlertCircle, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 
-// ─── AES-256-GCM helpers ───────────────────────────────────────────────────
-async function generateKey() {
-    return window.crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-}
-async function exportKey(key) {
-    const raw = await window.crypto.subtle.exportKey('raw', key);
-    return btoa(String.fromCharCode(...new Uint8Array(raw)));
-}
-async function importKey(b64) {
-    const raw = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    return window.crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-}
-async function encryptText(text, key) {
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const enc = new TextEncoder();
-    const ct = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
-    return {
-        iv: btoa(String.fromCharCode(...iv)),
-        ct: btoa(String.fromCharCode(...new Uint8Array(ct)))
-    };
-}
-async function decryptText({ iv: ivB64, ct: ctB64 }, key) {
-    const iv = Uint8Array.from(atob(ivB64), c => c.charCodeAt(0));
-    const ct = Uint8Array.from(atob(ctB64), c => c.charCodeAt(0));
-    const pt = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-    return new TextDecoder().decode(pt);
-}
-async function saveCredentials(login, pass) {
-    const key = await generateKey();
-    const keyB64 = await exportKey(key);
-    const encrypted = await encryptText(pass, key);
-    localStorage.setItem('librus_creds', JSON.stringify({ login, keyB64, ...encrypted }));
-}
-async function loadCredentials() {
-    const raw = localStorage.getItem('librus_creds');
-    if (!raw) return null;
-    try {
-        const { login, keyB64, iv, ct } = JSON.parse(raw);
-        const key = await importKey(keyB64);
-        const pass = await decryptText({ iv, ct }, key);
-        return { login, pass };
-    } catch { return null; }
-}
-function clearCredentials() {
-    localStorage.removeItem('librus_creds');
-}
+// Credentials are kept ONLY in memory (React ref) — never written to localStorage
+// because storing them in localStorage exposes them to XSS attacks.
 
 // ─── Date helpers ──────────────────────────────────────────────────────────
 function getWeekDays(offsetWeeks = 0) {
@@ -146,31 +102,9 @@ export default function Librus() {
     // Oceny – accordion
     const [openSubject, setOpenSubject] = useState(null);
 
-    // ── Auto-login przy starcie ─────────────────────────────────────────
+    // ── One-time cleanup: remove old localStorage credentials (security migration) ──
     useEffect(() => {
-        (async () => {
-            const creds = await loadCredentials();
-            if (!creds) return;
-            setIsAutoLogging(true);
-            setSimText('Synchronizacja danych...');
-            try {
-                const weekStartIso = toISO(getWeekDays(0)[0]);
-                const data = await fetchLibrusData(creds.login, creds.pass, weekStartIso);
-                applyData(data, creds.login);
-
-                // Odświeżanie w tle kolejnych tygodni
-                const nextWeekIso = toISO(getWeekDays(1)[0]);
-                fetchLibrusData(creds.login, creds.pass, nextWeekIso, true)
-                    .then(res => {
-                        if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
-                    })
-                    .catch(() => { });
-            } catch (err) {
-                console.error('Auto-login failed:', err);
-            } finally {
-                setIsAutoLogging(false);
-            }
-        })();
+        localStorage.removeItem('librus_creds');
     }, []);
 
     // Automatyczne odświeżanie co 10 minut jeśli zalogowany
@@ -181,7 +115,7 @@ export default function Librus() {
     }, [isLoggedIn]);
 
     async function handleRefreshBackground() {
-        const creds = await loadCredentials();
+        const creds = credsRef.current;
         if (!creds || isRefreshing || isLoading) return;
         
         setIsRefreshing(true);
@@ -232,43 +166,44 @@ export default function Librus() {
     const handleLogin = async (e) => {
         e.preventDefault();
         if (!loginInput || !passInput) return;
+        // Show disclaimer first — user must accept before credentials leave the browser
+        setPendingCreds({ login: loginInput.trim(), pass: passInput });
+        setShowDisclaimer(true);
+    };
+
+    const handleDisclaimerAccept = async () => {
+        setShowDisclaimer(false);
+        const { login: cleanLogin, pass } = pendingCreds;
+        setPendingCreds(null);
         setIsLoading(true);
         setSimText('Łączę z Synergią...');
         setLoginError('');
 
-        // Auto-fix: Librus login often works better without 'u' if proxy expects numeric
-        // But we keep it as user typed, just trimming spaces
-        const cleanLogin = loginInput.trim(); 
-
         try {
             setTimeout(() => setSimText('Autoryzacja (może potrwać 30s)...'), 800);
-            
-            // 1. Fetch main data (Grades + Attendance)
-            // We send weekStart to get timetable too, but if it fails, we might need retry logic
             const weekStartIso = toISO(getWeekDays(0)[0]);
-            
-            // Retry logic for unstable proxy
+
             let data = null;
             let attempt = 0;
             const maxAttempts = 2;
 
-            while(attempt < maxAttempts && !data) {
+            while (attempt < maxAttempts && !data) {
                 try {
                     attempt++;
-                    if(attempt > 1) setSimText(`Próba ${attempt}/${maxAttempts}...`);
-                    data = await fetchLibrusData(cleanLogin, passInput, weekStartIso);
+                    if (attempt > 1) setSimText(`Próba ${attempt}/${maxAttempts}...`);
+                    data = await fetchLibrusData(cleanLogin, pass, weekStartIso);
                 } catch (err) {
                     if (attempt === maxAttempts) throw err;
-                    await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+                    await new Promise(r => setTimeout(r, 2000));
                 }
             }
 
-            await saveCredentials(cleanLogin, passInput);
+            // Store credentials only in memory (ref) — never persisted to localStorage
+            credsRef.current = { login: cleanLogin, pass };
             applyData(data, cleanLogin);
 
-            // Oprócz powyższego dociągamy na przyszłość jeszcze jeden tydzień planów (nieblokująco) 
             const nextWeekIso = toISO(getWeekDays(1)[0]);
-            fetchLibrusData(cleanLogin, passInput, nextWeekIso, true)
+            fetchLibrusData(cleanLogin, pass, nextWeekIso, true)
                 .then(res => {
                     if (res?.timetable) setTimetable(prev => ({ ...prev, ...res.timetable }));
                 })
@@ -282,14 +217,14 @@ export default function Librus() {
     };
 
     const handleLogout = () => {
-        clearCredentials();
+        credsRef.current = null;
         setIsLoggedIn(false);
         setGrades([]); setTimetable({}); setSavedLogin('');
         setAttendance({ percent: 100, grouped: {}, records: [], total: 0 });
     };
 
     const handleRefresh = async () => {
-        const creds = await loadCredentials();
+        const creds = credsRef.current;
         if (!creds) return;
         setSimText('Odświeżam...');
         setIsLoading(true);
@@ -321,7 +256,7 @@ export default function Librus() {
     // ── Zmiana tygodnia (fetch lazy) ──────────────────────────────────
     const handleWeekChange = async (newOffset) => {
         setWeekOffset(newOffset);
-        const creds = await loadCredentials();
+        const creds = credsRef.current;
         if (!creds) return;
 
         // Obliczamy datę poniedziałku docelowego tygodnia
@@ -370,23 +305,46 @@ export default function Librus() {
 
     // ═══════════════ EKRANY ════════════════════════════════════════════
 
-    // Ładowanie przy auto-logowaniu
-    if (isAutoLogging) return (
-        <div className="flex flex-col items-center justify-center py-32 gap-4">
-            <Loader2 className="animate-spin text-[#e91e63]" size={40} />
-            <p className="text-[#e91e63] font-bold text-sm animate-pulse">{simText}</p>
-        </div>
-    );
-
     // Ekran logowania
     if (!isLoggedIn) return (
         <div className="pb-10 pt-4 flex flex-col items-center">
+            {/* Disclaimer modal */}
+            {showDisclaimer && (
+                <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+                    <div className="bg-surface border border-gray-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+                        <div className="flex items-center gap-2 mb-3">
+                            <AlertCircle className="text-yellow-400 shrink-0" size={22} />
+                            <h3 className="text-white font-bold text-lg">Informacja o prywatności</h3>
+                        </div>
+                        <p className="text-gray-300 text-sm leading-relaxed mb-4">
+                            Twoje dane logowania do Librusa (login i hasło) zostaną przesłane do serwera
+                            pośredniczącego <span className="text-yellow-400 font-mono text-xs">railway.app</span> w celu
+                            pobrania ocen, planu lekcji i frekwencji. Serwer ten <strong>nie jest zarządzany przez TEB</strong>.
+                        </p>
+                        <p className="text-gray-400 text-xs mb-5">
+                            Dane nie są zapisywane na stałe — znikną po zamknięciu zakładki. Nie używaj tego
+                            loginu/hasła do innych serwisów.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => { setShowDisclaimer(false); setPendingCreds(null); }}
+                                className="flex-1 py-3 rounded-xl border border-gray-600 text-gray-300 text-sm font-semibold hover:bg-gray-800 transition"
+                            >Anuluj</button>
+                            <button
+                                onClick={handleDisclaimerAccept}
+                                className="flex-1 py-3 rounded-xl bg-[#e91e63] text-white text-sm font-bold shadow-md hover:bg-[#d81b60] transition"
+                            >Rozumiem, kontynuuj</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="text-center mb-8">
                 <div className="bg-[#e91e63]/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border border-[#e91e63]/50 shadow-[0_0_20px_rgba(233,30,99,0.3)]">
                     <Lock className="text-[#e91e63]" size={36} />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-2">Librus Synergia</h2>
-                <p className="text-gray-400 text-sm px-4">Zaloguj się kontem szkolnym. Dane logowania zostaną bezpiecznie zaszyfrowane.</p>
+                <p className="text-gray-400 text-sm px-4">Zaloguj się kontem szkolnym. Dane logowania przechowywane tylko w pamięci przeglądarki.</p>
             </div>
 
             <form onSubmit={handleLogin} className="w-full max-w-sm bg-surface p-6 rounded-2xl border border-gray-800 shadow-xl relative overflow-hidden">
@@ -411,7 +369,7 @@ export default function Librus() {
                     className="w-full bg-[#e91e63] text-white font-bold py-4 rounded-xl shadow-[0_4px_15px_rgba(233,30,99,0.4)] transition hover:bg-[#d81b60] active:scale-95 disabled:opacity-50">
                     Zaloguj & Pobierz Dane
                 </button>
-                <p className="mt-4 text-[10px] text-center text-gray-600 uppercase font-bold tracking-wider">🔒 Hasło szyfrowane AES-256 lokalnie</p>
+                <p className="mt-4 text-[10px] text-center text-gray-600 uppercase font-bold tracking-wider">🔒 Hasło tylko w pamięci — nie zapisywane lokalnie</p>
             </form>
         </div>
     );

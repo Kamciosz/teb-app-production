@@ -42,30 +42,23 @@ export default function Profile() {
     ]
 
     async function buyBadge(badgeId, price) {
-        if (profile.teb_gabki < price) {
-            alert("Nie masz wystarczającej liczby TebGąbek!")
+        const { data: result, error } = await supabase.rpc('buy_badge', {
+            p_badge_id: badgeId,
+            p_price: price
+        })
+        if (error || !result?.success) {
+            const msg = result?.error || error?.message || 'Błąd zakupu'
+            if (msg === 'insufficient teb_gabki') alert('Nie masz wystarczającej liczby TebGąbek!')
+            else if (msg === 'badge already owned') alert('Już posiadasz tę odznakę!')
+            else alert('Błąd zakupu: ' + msg)
             return
         }
-        if (profile.badges?.includes(badgeId)) {
-            alert("Już posiadasz tę odznakę!")
-            return
-        }
-
-        const { error: badgeErr } = await supabase.from('user_badges').insert([{ user_id: profile.id, badge_type: badgeId }])
-        if (badgeErr) {
-            alert("Błąd zakupu: " + badgeErr.message)
-            return
-        }
-
-        const { error: tgErr } = await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki - price }).eq('id', profile.id)
-        if (!tgErr) {
-            alert("Zakupiono odznakę!")
-            setProfile(prev => ({ 
-                ...prev, 
-                teb_gabki: prev.teb_gabki - price,
-                badges: [...(prev.badges || []), badgeId]
-            }))
-        }
+        alert('Zakupiono odznakę!')
+        setProfile(prev => ({
+            ...prev,
+            teb_gabki: result.new_balance,
+            badges: [...(prev.badges || []), badgeId]
+        }))
     }
 
     async function updateAvatar(url) {

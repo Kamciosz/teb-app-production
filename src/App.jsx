@@ -101,7 +101,7 @@ function App() {
             if (session) fetchRole(session.user.id)
             else {
                 // In local dev/testing, allow a mocked session so we can test flows without real auth.
-                if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_LOCAL_MOCK === '1') {
+                if (import.meta.env.DEV) {
                     const fake = { user: { id: 'local-test-user', email: 'local@test' } }
                     setSession(fake)
                     setUserRoles(['student'])
@@ -113,7 +113,7 @@ function App() {
         }).catch(err => {
             console.error("Auth session error:", err)
             // Fallback to dev mocked session when running locally
-            if (import.meta.env.DEV || import.meta.env.VITE_ALLOW_LOCAL_MOCK === '1') {
+            if (import.meta.env.DEV) {
                 const fake = { user: { id: 'local-test-user', email: 'local@test' } }
                 setSession(fake)
                 setUserRoles(['student'])
@@ -133,13 +133,9 @@ function App() {
         const { data } = await supabase.from('profiles').select('roles, teb_gabki').eq('id', uid).single()
         if (data) {
             setUserRoles(data.roles || ['student'])
-            // Automatyczne TG za codzienne logowanie
-            const lastLogin = localStorage.getItem('last_login_tg')
-            const today = new Date().toLocaleDateString()
-            if (lastLogin !== today) {
-                const newTG = (data.teb_gabki || 0) + 5
-                await supabase.from('profiles').update({ teb_gabki: newTG }).eq('id', uid)
-                localStorage.setItem('last_login_tg', today)
+            // Automatyczne TG za codzienne logowanie — weryfikacja po stronie serwera
+            const { data: award } = await supabase.rpc('award_daily_tg')
+            if (award?.awarded) {
                 console.log('Przyznano 5 TG za codzienne logowanie!')
             }
 

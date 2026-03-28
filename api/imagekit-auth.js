@@ -1,9 +1,10 @@
 import { createHmac, randomBytes } from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 // GET /api/imagekit-auth
 // Returns authentication parameters for browser direct upload to ImageKit.
 // Generates params manually using Node.js built-in crypto — no external package needed.
-// Hardening: folder allowlist, per-IP rate limiting (in-memory).
+// Hardening: folder allowlist, per-IP rate limiting (in-memory), requires Supabase JWT.
 const ALLOWED_FOLDERS = new Set(['profiles', 'rewear', 'tebtalk', 'articles', 'general']);
 const RATE_LIMIT_WINDOW_MS = 10 * 1000; // 10s
 const RATE_LIMIT_MAX = 5;
@@ -13,6 +14,23 @@ const rateLimit = new Map();
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Require a valid Supabase session JWT — unauthenticated callers cannot upload
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return res.status(500).json({ error: 'Server misconfiguration: missing Supabase config' });
+  }
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const publicKey = process.env.IMAGEKIT_PUBLIC_KEY;
