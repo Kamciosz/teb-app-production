@@ -1787,7 +1787,7 @@ class J {
     this.cacheWillUpdate = async ({ response: t }) => this._cacheableResponse.isResponseCacheable(t) ? t : null, this._cacheableResponse = new qe(e);
   }
 }
-Ee([{"revision":"1872c500de691dce40960bb85481de07","url":"registerSW.js"},{"revision":"b6ef57d151b9c225e6d45a7106d734bd","url":"index.html"},{"revision":null,"url":"assets/index-NhUwWEi_.css"},{"revision":null,"url":"assets/index-CFXctVP_.js"},{"revision":"ef310db18d760e6b54776bf915d303ed","url":"logo.svg"},{"revision":"cdaaab60807b80bd732abe9965738aa0","url":"pwa-192x192.png"},{"revision":"8429f75a21fd903396f26636c2f47d23","url":"pwa-512x512.png"},{"revision":"5906a2275716081a246f1ac0039a845e","url":"manifest.webmanifest"}]);
+Ee([{"revision":"1872c500de691dce40960bb85481de07","url":"registerSW.js"},{"revision":"9a90ef0d98058d1b180389948c9b1f6c","url":"index.html"},{"revision":null,"url":"assets/index-NhUwWEi_.css"},{"revision":null,"url":"assets/index-DS4gPROh.js"},{"revision":"ef310db18d760e6b54776bf915d303ed","url":"logo.svg"},{"revision":"cdaaab60807b80bd732abe9965738aa0","url":"pwa-192x192.png"},{"revision":"8429f75a21fd903396f26636c2f47d23","url":"pwa-512x512.png"},{"revision":"5906a2275716081a246f1ac0039a845e","url":"manifest.webmanifest"}]);
 Ce();
 E(
   /^https:\/\/fonts\.googleapis\.com\/.*/i,
