@@ -1,4 +1,4 @@
-# TEB-APP PWA 🚀 *(Status: Beta-3.0)*
+# TEB-APP PWA 🚀 *(Status: release-0.1)*
 Witaj w głównym repozytorium **TEB-App**, tworzonym przez zarząd SU z ramienia Kółka Tech-TEB dla wszystkich uczniów Technikum "TEB Edukacja" w Warszawie.
 
 ---

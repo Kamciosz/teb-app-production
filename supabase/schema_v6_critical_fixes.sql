@@ -1,5 +1,5 @@
 -- ============================================================
--- KRYTYCZNE NAPRAWY BAZY DANYCH (BETA-3.2 → v6)
+-- KRYTYCZNE NAPRAWY BAZY DANYCH (release-0.1 → v6)
 -- Zastosuj ten skrypt w konsoli SQL Supabase.
 -- Naprawia: is_banned NULL, brakujące kolumny, polityki RLS
 -- ============================================================

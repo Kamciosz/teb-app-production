@@ -356,7 +356,7 @@ export default function Admin() {
                                         <div className="text-[10px] text-gray-500 mb-2">Zgłaszający: {r.reporter?.full_name || 'Nieznany'} • {new Date(r.created_at).toLocaleString()}</div>
                                         <div className="text-[9px] text-gray-600 font-mono bg-background p-2 rounded mb-2">ID TREŚCI: {r.reported_entity_id}</div>
                                         
-                                        {/* Wyświetlanie Kontekstu (Beta-3.2+) */}
+                                        {/* Wyświetlanie Kontekstu (release-0.1) */}
                                         {r.context && (
                                             <div className="mt-3 bg-black/40 border border-gray-800 rounded-lg p-3">
                                                 <div className="text-[9px] text-gray-500 uppercase font-black mb-2 flex items-center gap-1">

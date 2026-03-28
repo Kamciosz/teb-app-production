@@ -1,4 +1,4 @@
--- ROZSZERZENIE BAZY DANYCH DLA TEB-APP (BETA-3.2 - Social & Multi-Rank) --
+-- ROZSZERZENIE BAZY DANYCH DLA TEB-APP (release-0.1 - Social & Multi-Rank) --
 
 -- 1. ZNAJOMI
 CREATE TABLE IF NOT EXISTS friends (

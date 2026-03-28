@@ -34,7 +34,7 @@ export const CleanupService = {
 
             if (groupChatErr) console.error("Błąd czyszczenia czatu grupowego:", groupChatErr)
 
-            // 2b. Usuwanie starych wiadomości grupowych (Prywatnych - Beta-3.2)
+            // 2b. Usuwanie starych wiadomości grupowych (Prywatnych - release-0.1)
             const { count: privateGroupChatCount, error: privateGroupChatErr } = await supabase
                 .from('chat_group_messages')
                 .delete({ count: 'exact' })

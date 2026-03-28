@@ -4,7 +4,7 @@
 - generic [ref=e3]:
   - generic [ref=e4]:
     - heading "TEB-APP" [level=1] [ref=e5]
-    - generic [ref=e6]: Beta-3.1
+    - generic [ref=e6]: release-0.1
   - paragraph [ref=e7]:
     - text: Aplikacja jest bezpieczna. Zamknięty obieg autoryzacji pozwala na rejestrację WYŁĄCZNIE dla domen
     - strong [ref=e8]: "@teb.edu.pl"

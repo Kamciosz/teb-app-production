@@ -1,4 +1,4 @@
--- NAPRAWA BŁĘDÓW KRYTYCZNYCH (BETA-3.2 FIXES) --
+-- NAPRAWA BŁĘDÓW KRYTYCZNYCH (release-0.1 FIXES) --
 
 -- 1. Brakujące kolumny w Re-Wear
 ALTER TABLE rewear_posts ADD COLUMN IF NOT EXISTS price_pln NUMERIC DEFAULT 0;

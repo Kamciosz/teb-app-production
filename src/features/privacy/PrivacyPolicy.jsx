@@ -97,7 +97,7 @@ export default function PrivacyPolicy() {
                 </section>
 
                 <div className="text-center py-4">
-                    <p className="text-[10px] text-gray-600 uppercase font-bold tracking-widest">Wersja regulaminu: Beta-3.2 (Marzec 2026)</p>
+                    <p className="text-[10px] text-gray-600 uppercase font-bold tracking-widest">Wersja regulaminu: release-0.1 (Marzec 2026)</p>
                 </div>
             </div>
         </div>
