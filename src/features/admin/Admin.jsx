@@ -17,6 +17,7 @@ export default function Admin() {
     const [myRoles, setMyRoles] = useState([])
     const [myId, setMyId] = useState(null)
     const [banDuration, setBanDuration] = useState('1440') // 1 day in minutes
+    const [pageError, setPageError] = useState('')
 
     const ROLES = ['student', 'teacher', 'admin', 'editor', 'moderator_content', 'moderator_users', 'su_member']
 
@@ -41,63 +42,87 @@ export default function Admin() {
     }
 
     async function checkAccessAndFetch() {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
-        setMyId(session.user.id)
+        setLoading(true)
+        setPageError('')
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('role, roles')
-            .eq('id', session.user.id)
-            .single()
+        try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (!session) {
+                setLoading(false)
+                return
+            }
+            setMyId(session.user.id)
 
-        // Obsługa wsteczna: jesli roles jest puste, uzywamy starego role
-        const roles = profile?.roles || (profile?.role ? [profile.role] : ['student'])
-        setMyRoles(roles)
-        const myRole = roles[0] || 'student'
+            const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('role, roles')
+                .eq('id', session.user.id)
+                .single()
 
-        const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
-        const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
-        const canOpenAudit = canManageUsers || canManageContent
+            if (profileError) {
+                setPageError(profileError.message)
+            }
 
-        if (canManageUsers || canManageContent) {
-            if (view === 'users' && canManageUsers) {
-                const { data } = await supabase
-                    .from('profiles')
-                    .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
-                    .order('created_at', { ascending: false })
-                if (data) setUsers(data)
+            const roles = profile?.roles || (profile?.role ? [profile.role] : ['student'])
+            setMyRoles(roles)
+            const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
+            const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
+            const canOpenAudit = canManageUsers || canManageContent
+
+            if (canManageUsers || canManageContent) {
+                if (view === 'users' && canManageUsers) {
+                    const primaryUsers = await supabase
+                        .from('profiles')
+                        .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
+                        .order('created_at', { ascending: false })
+
+                    if (primaryUsers.data) {
+                        setUsers(primaryUsers.data)
+                    } else {
+                        const fallbackUsers = await supabase
+                            .from('profiles')
+                            .select('id, full_name, roles, role, is_banned, banned_until, created_at')
+                            .order('created_at', { ascending: false })
+
+                        if (fallbackUsers.data) {
+                            setUsers(fallbackUsers.data.map(user => ({ ...user, ban_reason: null })))
+                        }
+                    }
+                }
+                if (view === 'reports' && (canManageUsers || canManageContent)) {
+                    const { data } = await supabase.from('reports')
+                        .select('*, reporter:profiles!reporter_id(full_name)')
+                        .eq('status', 'pending')
+                        .order('created_at', { ascending: false })
+                    if (data) setReports(data)
+                }
+                if (view === 'groups' && canManageUsers) {
+                    const { data } = await supabase.from('groups')
+                        .select('*, creator:profiles!creator_id(full_name)')
+                        .eq('is_approved', false)
+                        .order('created_at', { ascending: false })
+                    if (data) setPendingGroups(data)
+                }
+                if (view === 'appeals' && canManageUsers) {
+                    const { data } = await supabase.from('punishment_appeals')
+                        .select('id, status, punishment_type, message, resolution_note, created_at, appellant:profiles!appellant_user_id(full_name), audit:moderation_audit_log!audit_log_id(action_type, reason, metadata, created_at)')
+                        .eq('status', 'pending')
+                        .order('created_at', { ascending: false })
+
+                    setAppeals(data || [])
+                }
+                if (view === 'audit' && canOpenAudit) {
+                    const { data } = await supabase.from('moderation_audit_log')
+                        .select('id, action_type, reason, metadata, created_at, actor:profiles!actor_user_id(full_name), target:profiles!target_user_id(full_name)')
+                        .order('created_at', { ascending: false })
+                        .limit(100)
+
+                    setAuditEntries(data || [])
+                }
             }
-            if (view === 'reports' && (canManageUsers || canManageContent)) {
-                const { data } = await supabase.from('reports')
-                    .select('*, reporter:profiles!reporter_id(full_name)')
-                    .eq('status', 'pending')
-                    .order('created_at', { ascending: false })
-                if (data) setReports(data)
-            }
-            if (view === 'groups' && canManageUsers) {
-                const { data } = await supabase.from('groups')
-                    .select('*, creator:profiles!creator_id(full_name)')
-                    .eq('is_approved', false)
-                    .order('created_at', { ascending: false })
-                if (data) setPendingGroups(data)
-            }
-            if (view === 'appeals' && canManageUsers) {
-                const { data } = await supabase.from('punishment_appeals')
-                    .select('id, status, punishment_type, message, resolution_note, created_at, appellant:profiles!appellant_user_id(full_name), audit:moderation_audit_log!audit_log_id(action_type, reason, metadata, created_at)')
-                    .eq('status', 'pending')
-                    .order('created_at', { ascending: false })
-                if (data) setAppeals(data)
-            }
-            if (view === 'audit' && canOpenAudit) {
-                const { data } = await supabase.from('moderation_audit_log')
-                    .select('id, action_type, reason, metadata, created_at, actor:profiles!actor_user_id(full_name), target:profiles!target_user_id(full_name)')
-                    .order('created_at', { ascending: false })
-                    .limit(100)
-                if (data) setAuditEntries(data)
-            }
+        } finally {
+            setLoading(false)
         }
-        setLoading(false)
     }
 
     async function toggleRank(userId, currentRoles, rank) {
@@ -207,6 +232,12 @@ export default function Admin() {
                     <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Moja Rola: <span className="text-white">{myRole}</span></span>
                 </div>
             </div>
+
+            {pageError && (
+                <div className="mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+                    Część danych administracyjnych nie załadowała się w pełni: {pageError}
+                </div>
+            )}
 
             {/* Pasek Zakładek RBAC */}
             <div className="grid grid-cols-3 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1">
