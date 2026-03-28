@@ -15,15 +15,43 @@ const DIST = path.join(ROOT, 'dist');
 const PUBLIC = path.join(ROOT, 'public');
 const UPLOADS = path.join(PUBLIC, 'uploads');
 
+const allowedOrigins = new Set([
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`
+]);
+
 if (!fs.existsSync(UPLOADS)) fs.mkdirSync(UPLOADS, { recursive: true });
 
-function sendJSON(res, obj, status = 200) {
+function getCorsOrigin(req) {
+  const origin = req.headers.origin;
+  const sameHost = req.headers.host ? `http://${req.headers.host}` : null;
+  if (origin && allowedOrigins.has(origin)) return origin;
+  if (!origin && sameHost) return sameHost;
+  return null;
+}
+
+function securityHeaders(req) {
+  const corsOrigin = getCorsOrigin(req);
+  const headers = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin'
+  };
+  if (corsOrigin) {
+    headers['Access-Control-Allow-Origin'] = corsOrigin;
+    headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
+    headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, OPTIONS';
+    headers.Vary = 'Origin';
+  }
+  return headers;
+}
+
+function sendJSON(req, res, obj, status = 200) {
   const s = JSON.stringify(obj);
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(s),
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': '*'
+    ...securityHeaders(req)
   });
   res.end(s);
 }
@@ -34,7 +62,7 @@ function serveFile(req, res, filePath) {
       // fallback to index.html
       const index = path.join(DIST, 'index.html');
       if (fs.existsSync(index)) {
-        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.writeHead(200, { 'Content-Type': 'text/html', ...securityHeaders(req) });
         fs.createReadStream(index).pipe(res);
       } else {
         res.writeHead(404);
@@ -48,7 +76,7 @@ function serveFile(req, res, filePath) {
       '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.json': 'application/json'
     }[ext] || 'application/octet-stream';
 
-    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache', ...securityHeaders(req) });
     fs.createReadStream(filePath).pipe(res);
   });
 }
@@ -56,6 +84,12 @@ function serveFile(req, res, filePath) {
 const server = http.createServer(async (req, res) => {
   try {
     const u = new URL(req.url, `http://${req.headers.host}`);
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, securityHeaders(req));
+      res.end();
+      return;
+    }
+
     // API: presign
     if (u.pathname === '/api/generate-upload' && req.method === 'POST') {
       let body = '';
@@ -70,7 +104,7 @@ const server = http.createServer(async (req, res) => {
       const publicUrl = `${host}/uploads/${encodeURIComponent(key)}`;
 
       // Return structure compatible with real presigner
-      return sendJSON(res, { uploadUrl, publicUrl, key, expiresIn: 60 });
+      return sendJSON(req, res, { uploadUrl, publicUrl, key, expiresIn: 60 });
     }
 
     // Local upload receiver (PUT)
@@ -80,7 +114,7 @@ const server = http.createServer(async (req, res) => {
       const writeStream = fs.createWriteStream(outPath);
       req.pipe(writeStream);
       req.on('end', () => {
-        res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+        res.writeHead(200, { 'Content-Type': 'text/plain', ...securityHeaders(req) });
         res.end('OK');
       });
       req.on('error', (e) => { console.error('Upload stream error', e); res.writeHead(500); res.end('upload error'); });
@@ -103,7 +137,7 @@ const server = http.createServer(async (req, res) => {
     // Fallback to index.html
     const index = path.join(DIST, 'index.html');
     if (fs.existsSync(index)) {
-      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.writeHead(200, { 'Content-Type': 'text/html', ...securityHeaders(req) });
       fs.createReadStream(index).pipe(res);
       return;
     }
