@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react'
-import { ArrowUp, ArrowDown, X, Image as ImageIcon, Video, FileText, Maximize2, MessageCircle, Send } from 'lucide-react'
+import { ArrowUp, ArrowDown, X, FileText, Maximize2, MessageCircle, Send, Pencil, Trash2 } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
@@ -22,11 +22,15 @@ export default function Feed() {
     const [myRoles, setMyRoles] = useState(['student'])
     const [myId, setMyId] = useState(null)
     const quillRef = useRef(null)
+    const [editingPostId, setEditingPostId] = useState(null)
 
     // Komentarze
     const [comments, setComments] = useState([])
     const [newComment, setNewComment] = useState('')
     const [commentsLoading, setCommentsLoading] = useState(false)
+    const [editingCommentId, setEditingCommentId] = useState(null)
+    const [editingCommentText, setEditingCommentText] = useState('')
+    const [commentActionBusyId, setCommentActionBusyId] = useState(null)
 
     // Nowe stany formularza "Onet"
     const [articleTitle, setArticleTitle] = useState('')
@@ -38,7 +42,134 @@ export default function Feed() {
         fetchPosts()
     }, [])
 
+    const canModerateContent = useMemo(
+        () => myRoles.some(r => ['moderator_content', 'admin'].includes(r)),
+        [myRoles]
+    )
+
+    const canPublish = useMemo(
+        () => myRoles.some(r => ['admin', 'editor', 'redaktor', 'moderator_content'].includes(r)),
+        [myRoles]
+    )
+
     const toast = useToast();
+
+    function createYouTubeEmbed(videoId) {
+        return `<iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
+    }
+
+    function extractYouTubeVideoId(rawUrl) {
+        if (!rawUrl) return null
+        try {
+            const withProtocol = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`
+            const url = new URL(withProtocol)
+            const host = url.hostname.toLowerCase().replace(/^www\./, '')
+
+            if (host === 'youtu.be') {
+                const id = url.pathname.replace('/', '').split('/')[0]
+                return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null
+            }
+
+            if (host === 'youtube.com' || host === 'm.youtube.com') {
+                if (url.pathname === '/watch') {
+                    const id = url.searchParams.get('v')
+                    return /^[a-zA-Z0-9_-]{11}$/.test(id || '') ? id : null
+                }
+                if (url.pathname.startsWith('/shorts/')) {
+                    const id = url.pathname.split('/')[2]
+                    return /^[a-zA-Z0-9_-]{11}$/.test(id || '') ? id : null
+                }
+                if (url.pathname.startsWith('/embed/')) {
+                    const id = url.pathname.split('/')[2]
+                    return /^[a-zA-Z0-9_-]{11}$/.test(id || '') ? id : null
+                }
+            }
+
+            return null
+        } catch {
+            return null
+        }
+    }
+
+    function convertYouTubeLinksToEmbeds(html) {
+        if (!html) return ''
+
+        const withAnchorsConverted = html.replace(/<a[^>]*href="([^"]+)"[^>]*>.*?<\/a>/gi, (match, href) => {
+            const id = extractYouTubeVideoId(href)
+            return id ? createYouTubeEmbed(id) : match
+        })
+
+        return withAnchorsConverted.replace(/(^|[\s>])(https?:\/\/[^\s<]+)/gi, (match, prefix, url) => {
+            const id = extractYouTubeVideoId(url)
+            if (!id) return match
+            return `${prefix}${createYouTubeEmbed(id)}`
+        })
+    }
+
+    function isAllowedYouTubeEmbedSrc(src) {
+        if (!src) return false
+        try {
+            const url = new URL(src, window.location.origin)
+            const host = url.hostname.toLowerCase()
+            const isYouTubeHost = [
+                'youtube.com',
+                'www.youtube.com',
+                'm.youtube.com',
+                'youtube-nocookie.com',
+                'www.youtube-nocookie.com'
+            ].includes(host)
+
+            return isYouTubeHost && url.pathname.startsWith('/embed/')
+        } catch {
+            return false
+        }
+    }
+
+    function sanitizeFeedHtml(html) {
+        const sanitized = DOMPurify.sanitize(html || '', {
+            ADD_TAGS: ['iframe'],
+            ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'src', 'class'],
+            FORBID_ATTR: ['srcdoc', 'data', 'onload', 'onerror', 'onclick', 'onmouseover', 'style']
+        })
+
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(`<div>${sanitized}</div>`, 'text/html')
+        const wrapper = doc.body.firstElementChild
+        if (!wrapper) return ''
+
+        wrapper.querySelectorAll('iframe').forEach((frame) => {
+            const src = frame.getAttribute('src') || ''
+            if (!isAllowedYouTubeEmbedSrc(src)) {
+                frame.remove()
+                return
+            }
+
+            frame.setAttribute('allowfullscreen', 'true')
+            frame.setAttribute('frameborder', '0')
+            frame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share')
+        })
+
+        return wrapper.innerHTML
+    }
+
+    function renderFullArticleHtml(rawHtml) {
+        const sanitized = sanitizeFeedHtml(rawHtml)
+        const withIframes = sanitized
+            .replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"')
+            .replace(/<\/iframe>/g, '</iframe></div>')
+
+        try {
+            return withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img src="${ImageKitService.getOptimizedUrl(src)}"`)
+        } catch {
+            return withIframes
+        }
+    }
+
+    function getPreviewText(rawHtml) {
+        const plain = DOMPurify.sanitize(rawHtml || '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim()
+        if (plain.length <= 200) return plain
+        return `${plain.slice(0, 200)}...`
+    }
 
     async function checkUser() {
         const { data: { session } } = await supabase.auth.getSession()
@@ -68,7 +199,12 @@ export default function Feed() {
             .select('*, profiles(full_name, role)')
             .eq('post_id', postId)
             .order('created_at', { ascending: true })
-        
+
+        if (error) {
+            console.error('Failed to load comments', error)
+            alert('Nie udało się pobrać komentarzy.')
+        }
+
         if (data) setComments(data)
         setCommentsLoading(false)
     }
@@ -95,10 +231,79 @@ export default function Feed() {
             .select('*, profiles(full_name, role)')
             .single()
 
+        if (error) {
+            console.error('Failed to add comment', error)
+            alert('Nie udało się dodać komentarza: ' + error.message)
+            return
+        }
+
         if (data) {
             setComments(prev => [...prev, data])
             setNewComment('')
         }
+    }
+
+    function canManageComment(comment) {
+        return !!myId && (comment.author_id === myId || canModerateContent)
+    }
+
+    function handleStartEditComment(comment) {
+        if (!canManageComment(comment)) return
+        setEditingCommentId(comment.id)
+        setEditingCommentText(comment.content || '')
+    }
+
+    function handleCancelEditComment() {
+        setEditingCommentId(null)
+        setEditingCommentText('')
+    }
+
+    async function handleSaveComment(commentId) {
+        if (!editingCommentText.trim()) return
+
+        const trimmed = editingCommentText.trim()
+        if (trimmed.length > MAX_COMMENT_LEN) {
+            alert(`Komentarz jest za długi (max ${MAX_COMMENT_LEN} znaków).`)
+            return
+        }
+
+        setCommentActionBusyId(commentId)
+        const cleanedComment = WordFilter.clean(trimmed)
+        const { data, error } = await supabase
+            .from('feed_comments')
+            .update({ content: cleanedComment })
+            .eq('id', commentId)
+            .select('*, profiles(full_name, role)')
+            .single()
+
+        if (error) {
+            console.error('Failed to update comment', error)
+            alert('Nie udało się edytować komentarza: ' + error.message)
+        } else if (data) {
+            setComments(prev => prev.map(c => c.id === commentId ? data : c))
+            handleCancelEditComment()
+        }
+
+        setCommentActionBusyId(null)
+    }
+
+    async function handleDeleteComment(commentId) {
+        if (!window.confirm('Usunąć ten komentarz?')) return
+
+        setCommentActionBusyId(commentId)
+        const { error } = await supabase
+            .from('feed_comments')
+            .delete()
+            .eq('id', commentId)
+
+        if (error) {
+            console.error('Failed to delete comment', error)
+            alert('Nie udało się usunąć komentarza: ' + error.message)
+        } else {
+            setComments(prev => prev.filter(c => c.id !== commentId))
+        }
+
+        setCommentActionBusyId(null)
     }
 
     const openPost = (post) => {
@@ -106,22 +311,55 @@ export default function Feed() {
         fetchComments(post.id)
     }
 
-    async function fetchPosts() {
+    function resetArticleForm() {
+        setEditingPostId(null)
+        setArticleTitle('')
+        setArticleCategory('News')
+        setArticleHtml('')
+    }
+
+    function openCreateModal() {
+        resetArticleForm()
+        setIsModalOpen(true)
+    }
+
+    function openEditPostModal(post) {
+        if (!post || !(post.author_id === myId || canModerateContent)) return
+        setEditingPostId(post.id)
+        setArticleTitle(post.title || '')
+        setArticleCategory(post.category || 'News')
+        setArticleHtml(post.content || '')
+        setSelectedPost(null)
+        setIsModalOpen(true)
+    }
+
+    async function fetchPosts(options = {}) {
+        const { silent = false } = options
+        if (!silent) setLoading(true)
         const { data, error } = await supabase
             .from('feed_posts')
             .select('*, profiles(full_name, role)')
             .order('created_at', { ascending: false })
 
+        if (error) {
+            console.error('Failed to load posts', error)
+            alert('Nie udało się pobrać artykułów.')
+        }
+
         if (data) setPosts(data)
         setLoading(false)
+        return data || []
     }
 
-    async function handleAddPost(e) {
+    async function handleSavePost(e) {
         e.preventDefault()
         if (!articleTitle || !articleHtml) return
 
         const cleanedTitle = WordFilter.clean(articleTitle).trim()
-        const cleanedHtml = WordFilter.clean(articleHtml).trim()
+
+        const htmlWithEmbeds = convertYouTubeLinksToEmbeds(articleHtml)
+        const cleanedHtml = WordFilter.clean(htmlWithEmbeds).trim()
+
         if (cleanedTitle.length > MAX_ARTICLE_TITLE) {
             alert(`Tytuł jest za długi (max ${MAX_ARTICLE_TITLE} znaków).`)
             return
@@ -134,23 +372,42 @@ export default function Feed() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
-        const { error } = await supabase.from('feed_posts').insert([
-            {
-                author_id: session.user.id,
-                title: cleanedTitle,
-                content: cleanedHtml,
-                category: articleCategory
-            }
-        ])
+        let error = null
+        if (editingPostId) {
+            const result = await supabase
+                .from('feed_posts')
+                .update({
+                    title: cleanedTitle,
+                    content: cleanedHtml,
+                    category: articleCategory
+                })
+                .eq('id', editingPostId)
+            error = result.error
+        } else {
+            const result = await supabase.from('feed_posts').insert([
+                {
+                    author_id: session.user.id,
+                    title: cleanedTitle,
+                    content: cleanedHtml,
+                    category: articleCategory
+                }
+            ])
+            error = result.error
+        }
 
         if (error) {
             console.error(error)
             alert("Błąd publikacji: " + error.message)
         } else {
             setIsModalOpen(false)
-            setArticleTitle('')
-            setArticleHtml('')
-            fetchPosts()
+            const editedId = editingPostId
+            resetArticleForm()
+            const refreshed = await fetchPosts({ silent: true })
+            if (selectedPost) {
+                const selectedId = editedId || selectedPost.id
+                const updated = refreshed.find(p => p.id === selectedId)
+                if (updated) setSelectedPost(updated)
+            }
         }
     }
 
@@ -174,7 +431,7 @@ export default function Feed() {
                 .delete()
                 .eq('post_id', postId)
                 .eq('user_id', session.user.id)
-            if (!error) fetchPosts()
+            if (!error) fetchPosts({ silent: true })
         } else {
             const { error } = await supabase
                 .from('feed_votes')
@@ -188,7 +445,7 @@ export default function Feed() {
                 console.error("Błąd głosowania:", error)
                 alert("Nie udało się oddać głosu: " + error.message)
             } else {
-                fetchPosts()
+                fetchPosts({ silent: true })
             }
         }
     }
@@ -239,7 +496,7 @@ export default function Feed() {
                 [{ 'header': [1, 2, false] }],
                 ['bold', 'italic', 'underline', 'strike'],
                 [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                ['link', 'image'],
+                ['link', 'image', 'video'],
                 ['clean']
             ],
             handlers: {
@@ -256,14 +513,11 @@ export default function Feed() {
                     <h2 className="text-2xl font-bold text-white tracking-tight">Wiadomości TEB</h2>
                     <div className="text-xs text-primary font-bold">Oficjalny Portal Szkolny</div>
                 </div>
-                {(() => {
-                    const canPublish = myRoles.some(r => ['admin', 'editor', 'redaktor', 'moderator_content'].includes(r))
-                    return canPublish && (
-                        <button onClick={() => setIsModalOpen(true)} className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition active:scale-95 flex items-center gap-2">
-                            <FileText size={18} /> Redaguj
-                        </button>
-                    )
-                })()}
+                {canPublish && (
+                    <button onClick={openCreateModal} className="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] transition active:scale-95 flex items-center gap-2">
+                        <FileText size={18} /> Redaguj
+                    </button>
+                )}
             </div>
 
             {loading ? (
@@ -298,11 +552,9 @@ export default function Feed() {
                                 <div className="p-5">
                                     <h3 onClick={() => openPost(post)} className="text-xl font-bold text-white mb-2 leading-tight cursor-pointer hover:text-primary transition">{post.title}</h3>
 
-                                    <div
-                                        className="text-gray-400 text-sm mb-6 line-clamp-3 leading-relaxed cursor-pointer"
-                                        onClick={() => openPost(post)}
-                                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content.split(' ').slice(0, 30).join(' ') + '...') }}
-                                    />
+                                    <p className="text-gray-400 text-sm mb-6 line-clamp-3 leading-relaxed cursor-pointer" onClick={() => openPost(post)}>
+                                        {getPreviewText(post.content)}
+                                    </p>
 
                                     <div className="flex justify-between items-center pt-4 border-t border-gray-800">
                                         <div className="flex items-center gap-3">
@@ -352,27 +604,21 @@ export default function Feed() {
                                 <div className="text-white font-bold">{selectedPost.profiles?.full_name}</div>
                                 <div className="text-gray-500 text-xs">{new Date(selectedPost.created_at).toLocaleString()}</div>
                             </div>
+                            {(selectedPost.author_id === myId || canModerateContent) && (
+                                <button
+                                    onClick={() => openEditPostModal(selectedPost)}
+                                    className="ml-auto inline-flex items-center gap-2 bg-primary/20 text-primary hover:bg-primary/30 px-3 py-2 rounded-lg text-xs font-bold"
+                                >
+                                    <Pencil size={14} /> Edytuj artykuł
+                                </button>
+                            )}
                         </div>
                         <div
                                 className="text-gray-300 text-lg leading-relaxed prose prose-invert max-w-none 
                                          prose-img:rounded-3xl prose-img:shadow-2xl prose-img:w-full prose-img:mt-10 mb-10
                                          prose-a:text-primary prose-a:font-bold
                                          prose-p:mb-4 prose-li:mb-2"
-                                dangerouslySetInnerHTML={{ __html: (() => {
-                                    const sanitized = DOMPurify.sanitize(selectedPost.content, {
-                                        ADD_TAGS: ['iframe'],
-                                        ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'src'],
-                                        FORBID_ATTR: ['srcdoc', 'data', 'onload', 'onerror']
-                                    });
-                                    const withIframes = sanitized
-                                        .replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"')
-                                        .replace(/<\/iframe>/g, '</iframe></div>');
-                                    try {
-                                        return withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img src="${ImageKitService.getOptimizedUrl(src)}"`);
-                                    } catch (e) {
-                                        return withIframes;
-                                    }
-                                })() }}
+                                dangerouslySetInnerHTML={{ __html: renderFullArticleHtml(selectedPost.content) }}
                             />
 
                         {/* Sekcja Komentarzy */}
@@ -421,9 +667,61 @@ export default function Feed() {
                                                         <span className="text-[8px] bg-red-500/20 text-red-500 px-1 rounded font-bold uppercase">ADMIN</span>
                                                     )}
                                                 </div>
-                                                <span className="text-[10px] text-gray-600">{new Date(comment.created_at).toLocaleDateString()}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-gray-600">{new Date(comment.created_at).toLocaleDateString()}</span>
+                                                    <ReportButton entityType="feed_comment" entityId={comment.id} subtle />
+                                                    {canManageComment(comment) && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleStartEditComment(comment)}
+                                                                disabled={commentActionBusyId === comment.id}
+                                                                className="text-gray-500 hover:text-primary transition disabled:opacity-50"
+                                                                title="Edytuj komentarz"
+                                                            >
+                                                                <Pencil size={14} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteComment(comment.id)}
+                                                                disabled={commentActionBusyId === comment.id}
+                                                                className="text-gray-500 hover:text-red-500 transition disabled:opacity-50"
+                                                                title="Usuń komentarz"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <p className="text-sm text-gray-400 leading-relaxed">{comment.content}</p>
+
+                                            {editingCommentId === comment.id ? (
+                                                <div className="space-y-2">
+                                                    <textarea
+                                                        value={editingCommentText}
+                                                        onChange={(e) => setEditingCommentText(e.target.value.slice(0, MAX_COMMENT_LEN))}
+                                                        maxLength={MAX_COMMENT_LEN}
+                                                        className="w-full min-h-[88px] bg-background border border-gray-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-primary"
+                                                    />
+                                                    <div className="flex justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleCancelEditComment}
+                                                            className="px-3 py-1.5 text-xs font-bold rounded-lg text-gray-400 hover:text-white"
+                                                        >
+                                                            Anuluj
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={commentActionBusyId === comment.id || !editingCommentText.trim()}
+                                                            onClick={() => handleSaveComment(comment.id)}
+                                                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-white disabled:opacity-50"
+                                                        >
+                                                            Zapisz
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-400 leading-relaxed">{comment.content}</p>
+                                            )}
                                         </div>
                                     ))
                                 )}
@@ -433,18 +731,18 @@ export default function Feed() {
                 </div>
             )}
 
-            {/* Modal dodawania Artykułu */}
+            {/* Modal dodawania/edycji Artykułu */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
                     <div className="bg-surface border border-gray-700 w-full max-w-2xl rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh]">
                         <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-2xl">
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="text-primary" /> Redaktor</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white transition p-1 bg-gray-800 rounded-full">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="text-primary" /> {editingPostId ? 'Edycja artykułu' : 'Redaktor'}</h3>
+                            <button onClick={() => { setIsModalOpen(false); resetArticleForm() }} className="text-gray-400 hover:text-white transition p-1 bg-gray-800 rounded-full">
                                 <X size={20} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleAddPost} className="p-6 flex flex-col gap-5 overflow-y-auto">
+                        <form onSubmit={handleSavePost} className="p-6 flex flex-col gap-5 overflow-y-auto">
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="col-span-2">
                                     <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł*</label>
@@ -469,14 +767,14 @@ export default function Feed() {
                                 </div>
                             </div>
                             <div>
-                                <label className="text-xs text-gray-400 font-bold mb-1 block">Treść (Użyj ikony zdjęcia dla CDN)*</label>
+                                <label className="text-xs text-gray-400 font-bold mb-1 block">Treść (obsługa YouTube auto-embed + CDN zdjęć)*</label>
                                 <div className="bg-white rounded-xl overflow-hidden text-black border-2 border-transparent focus-within:border-primary transition p-0">
                                     <ReactQuill ref={quillRef} theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-64" placeholder="Opisz temat..." />
                                 </div>
                             </div>
                             <div className="mt-8 pt-4 border-t border-gray-800 flex justify-end gap-3">
-                                <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 rounded-xl text-gray-400 hover:text-white font-bold transition">Anuluj</button>
-                                <button type="submit" className="bg-primary text-white font-bold px-8 py-2.5 rounded-xl transition active:scale-95 shadow-lg">Publikuj</button>
+                                <button type="button" onClick={() => { setIsModalOpen(false); resetArticleForm() }} className="px-5 py-2.5 rounded-xl text-gray-400 hover:text-white font-bold transition">Anuluj</button>
+                                <button type="submit" className="bg-primary text-white font-bold px-8 py-2.5 rounded-xl transition active:scale-95 shadow-lg">{editingPostId ? 'Zapisz zmiany' : 'Publikuj'}</button>
                             </div>
                         </form>
                     </div>
