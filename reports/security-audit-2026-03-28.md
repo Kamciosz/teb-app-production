@@ -949,3 +949,55 @@ Dodano też `useMemo` do importu React.
 | P11 | ✅ Done | Wdrożono server-side filtr wulgaryzmów (`20260328_server_side_word_filter.sql`) z triggerami dla: `feed_posts`, `feed_comments`, `rewear_posts`, `group_messages`, `chat_group_messages`, `direct_messages`. |
 | P12 | ✅ Done | Dodano guardrails długości w DB (`20260328_content_length_guardrails.sql`) oraz limity UI (`maxLength` + walidacje) w `Feed.jsx`, `ReWear.jsx`, `Groups.jsx`, `TEBtalk.jsx`. |
 | P16 | ❌ Pending | Ograniczyć widoczność `email` w polityce `profiles_select_authenticated` — np. widok bez kolumny `email` dla innych użytkowników |
+
+---
+
+## 17. Braki, Które Serwis Powinien Zawierać (Roadmapa)
+
+Poniżej zestaw braków funkcjonalnych i bezpieczeństwa, które są typowe dla bezpiecznego serwisu społecznościowego dla uczniów.
+
+### MUST (priorytet krytyczny)
+
+1. **Blokowanie użytkowników (`user_blocks`)**
+  - Brak mechanizmu odcięcia się od nękania/spamu.
+  - Wymagane: tabela blokad + RLS + odfiltrowanie treści z Feed/DM/czatów.
+
+2. **Kontrola kto może pisać DM**
+  - Brak opcji typu „tylko znajomi” lub „nikt”.
+  - Wymagane: ustawienie prywatności profilu + enforcement w RLS dla `direct_messages`.
+
+3. **System apelacji kar (ban/mute appeal)**
+  - Użytkownik powinien mieć bezpieczną ścieżkę odwoławczą.
+  - Wymagane: tabela `appeals`, status workflow, panel moderatora.
+
+### SHOULD (wysoki priorytet)
+
+1. **Audit log moderacji**
+  - Brak pełnej rozliczalności decyzji moderacyjnych.
+  - Wymagane: kto/co/kiedy/dlaczego + źródło akcji.
+
+2. **Soft-delete + historia edycji**
+  - Usunięcia i edycje bez historii utrudniają analizę incydentów.
+  - Wymagane: `is_deleted`, `deleted_at`, `deleted_by`, `edited_at`.
+
+3. **Content warnings (treści wrażliwe)**
+  - Brak narzędzia ochrony młodszych użytkowników przed trudnymi treściami.
+  - Wymagane: flaga treści + opcje ukrywania.
+
+### NICE (średni/niski priorytet)
+
+1. **Threaded comments (wątki odpowiedzi)**
+  - Lepszy kontekst dyskusji i prostsza moderacja.
+
+2. **Powiadomienia o wzmiankach**
+  - Szybsza reakcja użytkownika i moderatora na nadużycia.
+
+3. **Reakcje rozszerzone (emoji)**
+  - Lepszy sygnał społecznościowy niż tylko up/down vote.
+
+### Rekomendowana kolejność wdrożenia
+
+1. Sprint 1: `user_blocks` + restrykcje DM.
+2. Sprint 2: apelacje + audit log moderacji.
+3. Sprint 3: soft-delete/historia edycji + content warnings.
+4. Sprint 4: threaded comments + mention notifications + reakcje emoji.
