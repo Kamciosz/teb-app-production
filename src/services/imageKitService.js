@@ -24,7 +24,17 @@ export const ImageKitService = {
             err.body = text;
             throw err;
         }
-        const auth = await authRes.json();
+        let auth;
+        try {
+            auth = await authRes.json();
+        } catch (jsonErr) {
+            const err = new Error('Failed to parse ImageKit auth response: ' + jsonErr.message);
+            err.status = 500;
+            throw err;
+        }
+        if (!auth || !auth.publicKey) {
+            throw new Error('ImageKit auth response missing required fields');
+        }
 
         const form = new FormData();
         form.append('file', toUpload);
@@ -43,9 +53,19 @@ export const ImageKitService = {
             err.body = text;
             throw err;
         }
-        const body = await res.json();
+        let body;
+        try {
+            body = await res.json();
+        } catch (jsonErr) {
+            const err = new Error('Failed to parse ImageKit upload response: ' + jsonErr.message);
+            err.status = 500;
+            throw err;
+        }
+        if (!body.url && (!body.filePath || !auth.urlEndpoint)) {
+            throw new Error('ImageKit upload response missing file URL');
+        }
         // Prefer full url returned by ImageKit
-        return body.url || (body.filePath && auth.urlEndpoint ? `${auth.urlEndpoint.replace(/\/+$/, '')}${body.filePath}` : null);
+        return body.url || `${auth.urlEndpoint.replace(/\/+$/, '')}${body.filePath}`;
     },
 
     getOptimizedUrl: (path) => {

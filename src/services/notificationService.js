@@ -49,17 +49,22 @@ export const NotificationService = {
                 }
             }
 
-            // Zapisz subskrypcję w Supabase
-            const { error } = await supabase
-                .from('push_subscriptions')
-                .upsert({
-                    user_id: userId,
-                    subscription_json: subscription.toJSON()
-                }, { onConflict: 'user_id' });
+            // Zapisz subskrypcję w Supabase (tylko jeśli subskrypcja istnieje)
+            if (subscription) {
+                const { error } = await supabase
+                    .from('push_subscriptions')
+                    .upsert({
+                        user_id: userId,
+                        subscription_json: subscription.toJSON()
+                    }, { onConflict: 'user_id' });
 
-            if (error) throw error;
-            console.log('Subskrypcja Push zarejestrowana pomyślnie.');
-            return true;
+                if (error) throw error;
+                console.log('Subskrypcja Push zarejestrowana pomyślnie.');
+                return true;
+            } else {
+                console.warn('No subscription to save (invalid VAPID key or existing subscription check failed).');
+                return false;
+            }
         } catch (error) {
             console.error('Błąd subskrypcji Push:', error);
             return false;

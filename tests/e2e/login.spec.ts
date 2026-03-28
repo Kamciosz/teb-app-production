@@ -21,7 +21,7 @@ test.describe('Auth flows', () => {
     await expect(emailField).toBeVisible({ timeout: 5000 });
     await emailField.fill(email);
 
-    const passField = page.locator('input[type="password"], input[name="password"], input[placeholder*="has42o"]');
+    const passField = page.locator('input[type="password"], input[name="password"]');
     await expect(passField).toBeVisible();
     await passField.fill(password);
 

@@ -6,6 +6,10 @@ import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
 
 export default function Groups() {
+    const MAX_GROUP_NAME = 120
+    const MAX_GROUP_DESC = 1000
+    const MAX_GROUP_MESSAGE = 2000
+
     const [view, setView] = useState('list') // 'list', 'new', 'chat'
     const [groups, setGroups] = useState([])
     const [userGroups, setUserGroups] = useState([]) // ID grup do których należę
@@ -46,6 +50,7 @@ export default function Groups() {
                                     setMessages(current => [...current, { ...msg, profiles: data }])
                                     scrollToBottom()
                                 })
+                                .catch(err => console.warn('Failed to fetch message sender info:', err))
                             return prev
                         }
                         return prev
@@ -81,6 +86,14 @@ export default function Groups() {
     async function handleCreateGroup(e) {
         e.preventDefault()
         if (!newGroupName) return
+        if (newGroupName.trim().length > MAX_GROUP_NAME) {
+            alert(`Nazwa grupy jest za długa (max ${MAX_GROUP_NAME} znaków).`)
+            return
+        }
+        if (newGroupDesc.trim().length > MAX_GROUP_DESC) {
+            alert(`Opis grupy jest za długi (max ${MAX_GROUP_DESC} znaków).`)
+            return
+        }
 
         const { error } = await supabase.from('groups').insert([{
             name: newGroupName,
@@ -131,6 +144,11 @@ export default function Groups() {
     async function sendMessage(e) {
         e.preventDefault()
         if (!newMessage.trim() || !activeGroup || activeGroup.is_locked) return
+
+        if (newMessage.trim().length > MAX_GROUP_MESSAGE) {
+            alert(`Wiadomość jest za długa (max ${MAX_GROUP_MESSAGE} znaków).`)
+            return
+        }
 
         const msgText = newMessage.trim()
         const tempId = Math.random().toString(36).substring(7)
@@ -280,7 +298,8 @@ export default function Groups() {
                                 <MediaUploader module="tebtalk" onUploadSuccess={sendImage} />
                                 <input
                                     type="text" placeholder="Napisz do wszystkich..."
-                                    value={newMessage} onChange={e => setNewMessage(e.target.value)}
+                                    value={newMessage} onChange={e => setNewMessage(e.target.value.slice(0, MAX_GROUP_MESSAGE))}
+                                    maxLength={MAX_GROUP_MESSAGE}
                                     className="flex-1 bg-background border border-gray-700 rounded-full px-4 text-white outline-none focus:border-secondary text-sm"
                                 />
                                 <button type="submit" disabled={!newMessage.trim()} className="bg-secondary hover:bg-opacity-80 disabled:opacity-50 text-white w-10 h-10 rounded-full flex items-center justify-center transition">
@@ -316,12 +335,14 @@ export default function Groups() {
                     <form onSubmit={handleCreateGroup} className="flex flex-col gap-4">
                         <input
                             type="text" required placeholder="Nazwa kółka, np. Informatycy Kl. 2"
-                            value={newGroupName} onChange={e => setNewGroupName(e.target.value)}
+                            value={newGroupName} onChange={e => setNewGroupName(e.target.value.slice(0, MAX_GROUP_NAME))}
+                            maxLength={MAX_GROUP_NAME}
                             className="p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-secondary"
                         />
                         <textarea
                             required rows={3} placeholder="Opisz cel tego pokoju..."
-                            value={newGroupDesc} onChange={e => setNewGroupDesc(e.target.value)}
+                            value={newGroupDesc} onChange={e => setNewGroupDesc(e.target.value.slice(0, MAX_GROUP_DESC))}
+                            maxLength={MAX_GROUP_DESC}
                             className="p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-secondary resize-none text-sm"
                         />
                         <button type="submit" className="bg-secondary text-white font-bold py-3 rounded-xl mt-2">

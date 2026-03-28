@@ -13,59 +13,80 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
         if (!reason || !entityType || !entityId) return
         setLoading(true)
 
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
+        try {
+            const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
+            if (sessionErr || !session) {
+                alert('Nie jesteś zalogowany')
+                setLoading(false)
+                return
+            }
 
-        let reportData = {
-            reporter_id: session.user.id,
-            reported_entity_type: entityType,
-            reported_entity_id: entityId,
-            reason: reason,
-            status: 'pending'
-        }
+            let reportData = {
+                reporter_id: session.user.id,
+                reported_entity_type: entityType,
+                reported_entity_id: entityId,
+                reason: reason,
+                status: 'pending'
+            }
 
-        // Pobieranie kontekstu dla wiadomości (Context Report)
-        if (entityType === 'group_message' || entityType === 'direct_message') {
-            const tableName = entityType === 'group_message' ? 'group_messages' : 'direct_messages'
-            
-            // Pobierz wiadomość, którą zgłoszono, aby znać jej datę/grupę
-            const { data: mainMsg } = await supabase.from(tableName).select('*').eq('id', entityId).single()
-            
-            if (mainMsg) {
-                // Pobierz 5 przed i 5 po (łącznie 11 wiadomości)
-                const { data: context } = await supabase
-                    .from(tableName)
-                    .select('content, sender_id, created_at, profiles(full_name)')
-                    .eq(entityType === 'group_message' ? 'group_id' : 'conversation_id', mainMsg.group_id || mainMsg.conversation_id)
-                    .order('created_at', { ascending: true })
+            // Pobieranie kontekstu dla wiadomości (Context Report)
+            if (entityType === 'group_message' || entityType === 'direct_message') {
+                const tableName = entityType === 'group_message' ? 'group_messages' : 'direct_messages'
                 
-                if (context) {
-                    const idx = context.findIndex(m => m.created_at === mainMsg.created_at)
-                    const start = Math.max(0, idx - 5)
-                    const end = Math.min(context.length, idx + 6)
-                    const slicedContext = context.slice(start, end)
+                try {
+                    // Pobierz wiadomość, którą zgłoszono, aby znać jej datę/grupę
+                    const { data: mainMsg, error: msgErr } = await supabase.from(tableName).select('*').eq('id', entityId).single()
                     
-                    reportData.context = JSON.stringify(slicedContext.map(m => ({
-                        u: m.profiles?.full_name,
-                        t: m.content,
-                        d: m.created_at
-                    })))
+                    if (msgErr) {
+                        console.warn('Could not fetch message context:', msgErr)
+                    } else if (mainMsg) {
+                        // Pobierz 5 przed i 5 po (łącznie 11 wiadomości)
+                        const { data: context, error: contextErr } = await supabase
+                            .from(tableName)
+                            .select('content, sender_id, created_at, profiles(full_name)')
+                            .eq(entityType === 'group_message' ? 'group_id' : 'conversation_id', mainMsg.group_id || mainMsg.conversation_id)
+                            .order('created_at', { ascending: true })
+                        
+                        if (contextErr) {
+                            console.warn('Could not fetch context messages:', contextErr)
+                        } else if (context && context.length > 0) {
+                            const idx = context.findIndex(m => m.created_at === mainMsg.created_at)
+                            if (idx !== -1) {
+                                const start = Math.max(0, idx - 5)
+                                const end = Math.min(context.length, idx + 6)
+                                const slicedContext = context.slice(start, end)
+                                
+                                reportData.context = JSON.stringify(slicedContext.map(m => ({
+                                    u: m.profiles?.full_name || 'Unknown',
+                                    t: m.content,
+                                    d: m.created_at
+                                })))
+                            }
+                        }
+                    }
+                } catch (contextError) {
+                    console.error('Error fetching context:', contextError)
+                    // Continue without context
                 }
             }
-        }
 
-        const { error } = await supabase.from('reports').insert([reportData])
+            const { error } = await supabase.from('reports').insert([reportData])
 
-        setLoading(false)
-        if (!error) {
-            setSuccess(true)
-            setTimeout(() => {
-                setIsOpen(false)
-                setSuccess(false)
-                setReason('')
-            }, 2000)
-        } else {
-            alert("Wystąpił błąd przy tworzeniu Zgłoszenia: " + error.message)
+            if (error) {
+                alert('Błąd przy tworzeniu zgłoszenia: ' + error.message)
+            } else {
+                setSuccess(true)
+                setTimeout(() => {
+                    setIsOpen(false)
+                    setSuccess(false)
+                    setReason('')
+                }, 2000)
+            }
+        } catch (err) {
+            console.error('Report submission failed:', err)
+            alert('Krytyczny błąd przy wysyłaniu zgłoszenia')
+        } finally {
+            setLoading(false)
         }
     }
 

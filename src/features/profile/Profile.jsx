@@ -19,7 +19,11 @@ export default function Profile() {
     async function loadProfile() {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
-            const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+            const { data } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url, roles, role, is_private, teb_gabki, is_banned, banned_until, created_at, updated_at')
+                .eq('id', session.user.id)
+                .single()
             if (data) {
                 setProfile({ ...data, email: session.user.email })
                 setNewName(data.full_name)

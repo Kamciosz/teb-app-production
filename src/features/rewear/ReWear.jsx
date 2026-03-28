@@ -8,6 +8,9 @@ import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
 
 export default function ReWear() {
+    const MAX_REWEAR_TITLE = 200
+    const MAX_REWEAR_DESC = 2000
+
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(true)
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -97,6 +100,15 @@ export default function ReWear() {
         e.preventDefault()
         if (!newItemTitle || !newItemPrice || !newItemDesc) return
 
+        if (newItemTitle.trim().length > MAX_REWEAR_TITLE) {
+            alert(`Tytuł jest za długi (max ${MAX_REWEAR_TITLE} znaków).`)
+            return
+        }
+        if (newItemDesc.trim().length > MAX_REWEAR_DESC) {
+            alert(`Opis jest za długi (max ${MAX_REWEAR_DESC} znaków).`)
+            return
+        }
+
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
 
@@ -157,10 +169,6 @@ export default function ReWear() {
                 console.error(error)
                 alert('Błąd publikacji: ' + error.message)
             } else {
-                const { data: profile } = await supabase.from('profiles').select('teb_gabki').eq('id', session.user.id).single()
-                if (profile) {
-                    await supabase.from('profiles').update({ teb_gabki: profile.teb_gabki + 10 }).eq('id', session.user.id)
-                }
                 setIsModalOpen(false)
                 setNewItemTitle('')
                 setNewItemPrice('')
@@ -471,7 +479,8 @@ export default function ReWear() {
                                 <input
                                     type="text" placeholder="np. Bluza Szkolna, stan bdb!" required
                                     className="p-3 w-full border border-gray-700 bg-background rounded-xl text-white outline-none focus:border-primary font-bold"
-                                    value={newItemTitle} onChange={e => setNewItemTitle(e.target.value)}
+                                    value={newItemTitle} onChange={e => setNewItemTitle(e.target.value.slice(0, MAX_REWEAR_TITLE))}
+                                    maxLength={MAX_REWEAR_TITLE}
                                 />
                             </div>
 
@@ -480,7 +489,8 @@ export default function ReWear() {
                                 <textarea
                                     required rows={3} placeholder="Opisz dokładnie swój przedmiot..."
                                     className="p-3 w-full border border-gray-700 bg-background rounded-xl text-white outline-none focus:border-primary resize-none text-sm"
-                                    value={newItemDesc} onChange={e => setNewItemDesc(e.target.value)}
+                                    value={newItemDesc} onChange={e => setNewItemDesc(e.target.value.slice(0, MAX_REWEAR_DESC))}
+                                    maxLength={MAX_REWEAR_DESC}
                                 />
                             </div>
 
