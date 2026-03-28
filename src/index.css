@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+/* Wygaszenie scrollbara w PWA */
+::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+html,
+body {
+    overscroll-behavior-y: none;
+    background-color: #121212;
+}
+
+#root {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Animacje */
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Dostosowanie Quill.js - Edytora tekstu Onet */
+.ql-editor {
+    min-height: 12rem;
+    font-size: 1rem;
+    color: #121212;
+}
+
+.ql-toolbar {
+    background: #f8fafc;
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+}
+
+.ql-container {
+    border-bottom-left-radius: 0.75rem;
+    border-bottom-right-radius: 0.75rem;
+}
