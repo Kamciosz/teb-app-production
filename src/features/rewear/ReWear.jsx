@@ -430,7 +430,12 @@ export default function ReWear() {
                                     {/* Wypełnione sloty */}
                                     {newItemFiles.map((entry, i) => (
                                         <div key={i} className={`relative aspect-square rounded-xl overflow-hidden border-2 ${i === 0 ? 'border-primary' : 'border-gray-700'}`}>
-                                            <img src={entry.preview} alt="" className="w-full h-full object-cover" />
+                                            <img
+                                                src={entry.preview}
+                                                alt=""
+                                                className="w-full h-full object-cover cursor-zoom-in"
+                                                onClick={() => setLightbox({ photos: newItemFiles.map(e => e.preview), index: i })}
+                                            />
                                             <button
                                                 type="button"
                                                 onClick={() => removeFileEntry(i)}
