@@ -17,3 +17,5 @@ test-results/*
 
 # Playwright/dev cache
 .playwright-mcp/
+.vercel
+.env*.local

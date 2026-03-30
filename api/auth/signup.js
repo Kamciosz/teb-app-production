@@ -12,6 +12,52 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_NAME_LENGTH = 80;
 const ALLOWED_EMAIL_DOMAIN = '@teb.edu.pl';
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS_PER_IP = 20;
+const MAX_ATTEMPTS_PER_EMAIL = 5;
+
+const signupRateStore = globalThis.__tebSignupRateStore || new Map();
+if (!globalThis.__tebSignupRateStore) {
+  globalThis.__tebSignupRateStore = signupRateStore;
+}
+
+function getClientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (Array.isArray(xff) && xff.length > 0) {
+    return String(xff[0]).split(',')[0].trim();
+  }
+  if (typeof xff === 'string' && xff) {
+    return xff.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function pruneRateStore(now) {
+  for (const [key, state] of signupRateStore.entries()) {
+    if (!state || state.resetAt <= now) {
+      signupRateStore.delete(key);
+    }
+  }
+}
+
+function registerAttemptAndCheck(key, limit, now) {
+  const existing = signupRateStore.get(key);
+  if (!existing || existing.resetAt <= now) {
+    const state = { count: 1, resetAt: now + RATE_WINDOW_MS };
+    signupRateStore.set(key, state);
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+
+  existing.count += 1;
+  signupRateStore.set(key, existing);
+
+  if (existing.count > limit) {
+    const retryAfterSeconds = Math.max(Math.ceil((existing.resetAt - now) / 1000), 1);
+    return { blocked: true, retryAfterSeconds };
+  }
+
+  return { blocked: false, retryAfterSeconds: 0 };
+}
 
 function shouldBypassEmailConfirmation() {
   const bypassEnabled = process.env.AUTH_BYPASS_CONFIRMATION_ON_LIMIT;
@@ -103,6 +149,23 @@ export default async function handler(req, res) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : '';
+  const now = Date.now();
+
+  pruneRateStore(now);
+  const clientIp = getClientIp(req);
+  const ipRateState = registerAttemptAndCheck(`ip:${clientIp}`, MAX_ATTEMPTS_PER_IP, now);
+  if (ipRateState.blocked) {
+    res.setHeader('Retry-After', String(ipRateState.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many signup attempts. Please try again later.' });
+  }
+
+  if (email) {
+    const emailRateState = registerAttemptAndCheck(`email:${email}`, MAX_ATTEMPTS_PER_EMAIL, now);
+    if (emailRateState.blocked) {
+      res.setHeader('Retry-After', String(emailRateState.retryAfterSeconds));
+      return res.status(429).json({ error: 'Too many signup attempts. Please try again later.' });
+    }
+  }
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -162,7 +225,11 @@ export default async function handler(req, res) {
           if (adminError) {
             const adminMessage = String(adminError.message || '').toLowerCase();
             if (adminMessage.includes('already') || adminMessage.includes('registered')) {
-              return res.status(409).json({ error: 'Ten e-mail jest juz zarejestrowany.' });
+              return res.status(200).json({
+                user: null,
+                session: null,
+                note: 'If this account already exists, please sign in or reset your password.'
+              });
             }
             console.error(`[SIGNUP BYPASS ERROR] email=${maskEmail(email)}, error=${adminError.message}`, adminError);
             return res.status(503).json({ error: 'Nie udalo sie utworzyc konta w trybie awaryjnym.' });
@@ -193,9 +260,13 @@ export default async function handler(req, res) {
         return res.status(503).json({ error: 'Rejestracja chwilowo niedostępna: problem z wysyłką maila potwierdzającego. Spróbuj ponownie za chwilę.' });
       }
       if (String(error.message || '').toLowerCase().includes('already registered')) {
-        return res.status(409).json({ error: 'Ten e-mail jest już zarejestrowany.' });
+        return res.status(200).json({
+          user: null,
+          session: null,
+          note: 'If this account already exists, please sign in or reset your password.'
+        });
       }
-      return res.status(400).json({ error: error.message || 'Błąd rejestracji' });
+      return res.status(400).json({ error: 'Signup failed. Please verify your data and try again.' });
     }
 
     console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, user_id=${data?.user?.id}`);
