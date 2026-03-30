@@ -31,6 +31,8 @@ function App() {
     const [isRegister, setIsRegister] = useState(false)
     const [authError, setAuthError] = useState('')
     const [authMessage, setAuthMessage] = useState('')
+    const [isLoading, setIsLoading] = useState(false)
+    const [retryCount, setRetryCount] = useState(0)
 
     const extractNameFromEmail = (mail) => {
         const parts = mail.split('@')[0].split('.');
@@ -44,6 +46,8 @@ function App() {
         e.preventDefault()
         setAuthError('')
         setAuthMessage('')
+        setIsLoading(true)
+        
         let finalEmail = email.trim().toLowerCase()
 
         // Auto-fix dla loginu Librusa (jeśli sam numer, dodaj domenę)
@@ -52,18 +56,28 @@ function App() {
         }
 
         if (!finalEmail.endsWith('@teb.edu.pl')) {
-            setAuthError('Dostęp zablokowany. Użyj szkolnego e-maila w domenie @teb.edu.pl')
+            setAuthError('❌ Dostęp zablokowany. Użyj szkolnego e-maila (@teb.edu.pl)')
+            setIsLoading(false)
             return
         }
+
+        if (!finalEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+            setAuthError('❌ Niepoprawny format e-maila.')
+            setIsLoading(false)
+            return
+        }
+
         try {
             if (isRegister) {
-                if (password.length < 8) {
-                    setAuthError('Hasło musi mieć co najmniej 8 znaków.')
+                if (!password || password.length < 8) {
+                    setAuthError(`❌ Hasło musi mieć co najmniej 8 znaków. Wpisano: ${password.length}`)
+                    setIsLoading(false)
                     return
                 }
 
                 if (password !== confirmPassword) {
-                    setAuthError('Błąd weryfikacji: Podane hasła nie są identyczne.')
+                    setAuthError('❌ Podane hasła nie są identyczne.')
+                    setIsLoading(false)
                     return
                 }
 
@@ -72,16 +86,61 @@ function App() {
                     finalName = extractNameFromEmail(finalEmail)
                 }
 
-                await signUpWithEmail(finalEmail, password, finalName)
-                setAuthMessage('Konto zostało utworzone! Możesz się teraz zalogować.')
-                setIsRegister(false)
-                setPassword('')
-                setConfirmPassword('')
+                // Timeout safety
+                const signupTimeout = setTimeout(() => {
+                    setAuthError('⏱️ Serwer nie responduje. Spróbuj za chwilę lub odśwież stronę.')
+                    setIsLoading(false)
+                }, 15000)
+
+                try {
+                    await signUpWithEmail(finalEmail, password, finalName)
+                    clearTimeout(signupTimeout)
+                    setAuthMessage('✅ Konto zostało utworzone! Sprawdź e-mail aby potwierdzić rejestrację.')
+                    setIsRegister(false)
+                    setEmail('')
+                    setPassword('')
+                    setConfirmPassword('')
+                    setFullName('')
+                    setRetryCount(0)
+                } catch (e) {
+                    clearTimeout(signupTimeout)
+                    throw e
+                }
             } else {
-                await signInWithEmail(finalEmail, password)
+                // Login
+                const loginTimeout = setTimeout(() => {
+                    setAuthError('⏱️ Serwer nie responduje. Spróbuj za chwilę.')
+                    setIsLoading(false)
+                }, 15000)
+
+                try {
+                    await signInWithEmail(finalEmail, password)
+                    clearTimeout(loginTimeout)
+                } catch (e) {
+                    clearTimeout(loginTimeout)
+                    throw e
+                }
             }
         } catch (error) {
-            setAuthError(error?.message || 'Wystąpił błąd połączenia. Spróbuj ponownie za chwilę.')
+            const errorMsg = error?.message || 'Nieznany błąd. Spróbuj ponownie.'
+            
+            // Lepsze error messages
+            if (errorMsg.includes('confirmation email') || errorMsg.includes('mail')) {
+                setAuthError('📧 Problem z wysyłką e-maila potwierdzającego. Spróbuj za minutę.')
+            } else if (errorMsg.includes('already registered') || errorMsg.includes('user already')) {
+                setAuthError('⚠️ Ten e-mail jest już zarejestrowany. Zaloguj się zamiast rejestrować.')
+            } else if (errorMsg.includes('Invalid login')) {
+                setAuthError('❌ Zły e-mail lub hasło.')
+            } else if (errorMsg.includes('timeout') || errorMsg.includes('Abort')) {
+                setAuthError(`⏱️ Timeout (próba ${retryCount + 1}/3). Spróbuj ponownie.`)
+                if (retryCount < 2) {
+                    setRetryCount(retryCount + 1)
+                }
+            } else {
+                setAuthError(`❌ ${errorMsg}`)
+            }
+        } finally {
+            setIsLoading(false)
         }
     }
 
@@ -196,34 +255,71 @@ function App() {
                                         type="text" placeholder="Imię i Nazwisko (Opcjonalnie)"
                                         className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                                         value={fullName} onChange={e => setFullName(e.target.value)}
+                                        disabled={isLoading}
                                     />
                                 )}
                                 <input
                                     type="email" placeholder="Twój szkolny E-mail (@teb.edu.pl)" required
-                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50"
                                     value={email} onChange={e => setEmail(e.target.value)}
+                                    disabled={isLoading}
                                 />
                                 <input
                                     type="password" placeholder="Hasło" required
-                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
+                                    minLength={isRegister ? 8 : undefined}
+                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50"
                                     value={password} onChange={e => setPassword(e.target.value)}
+                                    disabled={isLoading}
                                 />
                                 {isRegister && (
-                                    <input
-                                        type="password" placeholder="Potwierdź hasło (Min. 8 znaków)" required minLength={8}
-                                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
-                                        value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                                    />
+                                    <>
+                                        <input
+                                            type="password" placeholder="Potwierdź hasło (Min. 8 znaków)" required minLength={8}
+                                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50"
+                                            value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                                            disabled={isLoading}
+                                        />
+                                        <div className="text-xs text-gray-500 px-2">
+                                            Hasło: {password.length} / 8 znaków
+                                        </div>
+                                    </>
                                 )}
 
-                                {authError && <div className="text-red-500 text-xs text-center font-bold px-2">{authError}</div>}
-                                {authMessage && <div className="text-green-400 text-xs text-center font-bold px-2">{authMessage}</div>}
+                                {authError && (
+                                    <div className="text-red-500 text-xs text-center font-bold px-2 py-2 bg-red-950/30 rounded">
+                                        {authError}
+                                    </div>
+                                )}
+                                {authMessage && (
+                                    <div className="text-green-400 text-xs text-center font-bold px-2 py-2 bg-green-950/30 rounded">
+                                        {authMessage}
+                                    </div>
+                                )}
 
-                                <button type="submit" className="mt-2 bg-primary text-white px-6 py-3 rounded-xl font-bold w-full shadow-[0_0_15px_rgba(59,130,246,0.3)] transition transform hover:scale-105">
-                                    {isRegister ? 'Załóż Konto (Weryfikacja)' : 'Zaloguj się'}
+                                <button 
+                                    type="submit" 
+                                    disabled={isLoading}
+                                    className={`mt-2 px-6 py-3 rounded-xl font-bold w-full transition transform ${
+                                        isLoading 
+                                            ? 'bg-gray-600 text-white cursor-not-allowed' 
+                                            : 'bg-primary text-white shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:scale-105'
+                                    }`}
+                                >
+                                    {isLoading ? '⏳ Proszę czekać...' : (isRegister ? 'Załóż Konto' : 'Zaloguj się')}
                                 </button>
+
+                                {retryCount > 0 && authError && authError.includes('Timeout') && (
+                                    <button 
+                                        type="button" 
+                                        onClick={handleAuth}
+                                        className="text-xs bg-yellow-900/50 text-yellow-300 border border-yellow-700 px-3 py-2 rounded font-semibold hover:bg-yellow-900/70 transition"
+                                    >
+                                        🔄 Spróbuj ponownie ({retryCount}/3)
+                                    </button>
+                                )}
+
                                 {!isRegister && (
-                                    <button type="button" onClick={handleResetPassword} className="text-xs text-primary underline text-right w-full mt-1 pr-2">
+                                    <button type="button" onClick={handleResetPassword} disabled={isLoading} className="text-xs text-primary underline text-right w-full mt-1 pr-2 disabled:opacity-50">
                                         Nie pamiętasz hasła?
                                     </button>
                                 )}

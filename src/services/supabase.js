@@ -248,16 +248,6 @@ try {
 
 export const supabase = supabaseInstance
 
-// Logowanie Tradycyjne
-export async function signInWithEmail(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-    })
-    if (error) throw error
-    return data
-}
-
 // Rejestracja Tradycyjna
 export async function signUpWithEmail(email, password, fullName) {
     try {
@@ -270,11 +260,45 @@ export async function signUpWithEmail(email, password, fullName) {
                 }
             }
         })
-        if (error) throw error
+        if (error) {
+            // Lepsze error messages
+            if (error.message?.includes('already registered')) {
+                throw new Error('Ten e-mail jest już zarejestrowany.')
+            }
+            if (error.message?.includes('confirmation email')) {
+                throw new Error('Problem z wysyłką e-maila potwierdzającego. Spróbuj za minutę.')
+            }
+            throw new Error(error.message || 'Błąd rejestracji. Spróbuj ponownie.')
+        }
         return data
     } catch (error) {
         if (error?.name === 'AbortError') {
-            throw new Error('Przekroczono czas oczekiwania na odpowiedź serwera. Sprawdź połączenie i spróbuj ponownie.')
+            throw new Error('⏱️ Timeout: Serwer nie responduje. Sprawdź połączenie i spróbuj ponownie.')
+        }
+        throw error
+    }
+}
+
+// Tradycyjne logowanie
+export async function signInWithEmail(email, password) {
+    try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password
+        })
+        if (error) {
+            if (error.message?.includes('Invalid login')) {
+                throw new Error('Zły e-mail lub hasło.')
+            }
+            if (error.message?.includes('Email not confirmed')) {
+                throw new Error('Potwierdź swoją rejestrację poprzez link w e-mailu.')
+            }
+            throw new Error(error.message || 'Błąd logowania. Spróbuj ponownie.')
+        }
+        return data
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error('⏱️ Timeout: Serwer nie responduje. Spróbuj ponownie.')
         }
         throw error
     }

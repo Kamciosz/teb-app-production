@@ -1,4 +1,4 @@
-import Resend from 'resend';
+import { Resend } from 'resend';
 import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed } from '../lib/serverAuth.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
