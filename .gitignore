@@ -2,3 +2,18 @@ node_modules
 .env
 .env.local
 .env.*.local
+dist
+.DS_Store
+*.log
+.vscode/.history
+
+# Temp/uploaded files (except .gitkeep)
+reports/*
+!reports/.gitkeep
+tmp_uploads/*
+!tmp_uploads/.gitkeep
+test-results/*
+!test-results/.gitkeep
+
+# Playwright/dev cache
+.playwright-mcp/
