@@ -38,7 +38,11 @@ function normalizeSession(session) {
 async function parseJsonResponse(response) {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
-        const error = new Error(payload?.error || 'Request failed')
+        let message = payload?.error || 'Request failed'
+        if (response.status === 503 && typeof message === 'string' && message.toLowerCase().includes('mail')) {
+            message = 'Rejestracja chwilowo niedostępna: problem z wysyłką maila potwierdzającego. Spróbuj ponownie za chwilę.'
+        }
+        const error = new Error(message)
         error.status = response.status
         throw error
     }
@@ -46,11 +50,15 @@ async function parseJsonResponse(response) {
 }
 
 async function postJson(url, body) {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 12000)
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body || {})
+        body: JSON.stringify(body || {}),
+        signal: controller.signal
     })
+    clearTimeout(timeout)
     return parseJsonResponse(response)
 }
 
@@ -252,17 +260,24 @@ export async function signInWithEmail(email, password) {
 
 // Rejestracja Tradycyjna
 export async function signUpWithEmail(email, password, fullName) {
-    const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-            data: {
-                full_name: fullName
+    try {
+        const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    full_name: fullName
+                }
             }
+        })
+        if (error) throw error
+        return data
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error('Przekroczono czas oczekiwania na odpowiedź serwera. Sprawdź połączenie i spróbuj ponownie.')
         }
-    })
-    if (error) throw error
-    return data
+        throw error
+    }
 }
 
 // Globalny wylogowywacz

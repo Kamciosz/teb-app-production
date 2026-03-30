@@ -55,6 +55,11 @@ function App() {
         }
         try {
             if (isRegister) {
+                if (password.length < 8) {
+                    setAuthError('Hasło musi mieć co najmniej 8 znaków.')
+                    return
+                }
+
                 if (password !== confirmPassword) {
                     setAuthError('Błąd weryfikacji: Podane hasła nie są identyczne.')
                     return
@@ -74,7 +79,7 @@ function App() {
                 await signInWithEmail(finalEmail, password)
             }
         } catch (error) {
-            setAuthError(error.message)
+            setAuthError(error?.message || 'Wystąpił błąd połączenia. Spróbuj ponownie za chwilę.')
         }
     }
 
@@ -203,7 +208,7 @@ function App() {
                                 />
                                 {isRegister && (
                                     <input
-                                        type="password" placeholder="Potwierdź hasło (Min. 6 znaków)" required minLength={6}
+                                        type="password" placeholder="Potwierdź hasło (Min. 8 znaków)" required minLength={8}
                                         className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition"
                                         value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                                     />
