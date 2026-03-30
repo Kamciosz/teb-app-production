@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, User, UserX } from 'lucide-react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
@@ -36,6 +36,9 @@ export default function TEBtalk() {
     const messagesEndRef = useRef(null)
     const location = useLocation()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const routeChat = location.state?.openChatWith
+    const routeChatId = searchParams.get('chat') || routeChat?.id || null
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -47,17 +50,36 @@ export default function TEBtalk() {
     }, [])
 
     useEffect(() => {
-        const routeChat = location.state?.openChatWith
-        if (!routeChat?.id) return
+        if (!myId || !routeChatId) return
 
-        setActiveChatUser({ ...routeChat, type: 'private' })
-        setMessages([])
-        setView('chat')
+        let cancelled = false
 
-        setTimeout(() => {
-            navigate(location.pathname, { replace: true, state: null })
-        }, 0)
-    }, [location.state?.openChatWith?.id])
+        async function openRouteChat() {
+            const fallbackTarget = routeChat ? { ...routeChat, type: 'private' } : null
+
+            const { data } = await supabase
+                .from('profiles')
+                .select('id, full_name, role, avatar_url, dm_friends_only')
+                .eq('id', routeChatId)
+                .single()
+
+            if (cancelled) return
+
+            const target = data ? { ...data, type: 'private' } : fallbackTarget
+            if (!target?.id) return
+
+            setActiveChatUser(target)
+            setMessages([])
+            setView('chat')
+            navigate('/tebtalk', { replace: true, state: null })
+        }
+
+        openRouteChat()
+
+        return () => {
+            cancelled = true
+        }
+    }, [myId, navigate, routeChat, routeChatId])
 
     useEffect(() => {
         if (view === 'chat' && !activeChatUser) {
@@ -852,14 +874,20 @@ export default function TEBtalk() {
                                     </div>
                                     <div className="flex gap-2">
                                         <button
-                                            onClick={() => toggleBlock(user.id)}
+                                            onClick={(event) => {
+                                                event.stopPropagation()
+                                                toggleBlock(user.id)
+                                            }}
                                             className={`p-2 rounded-lg transition active:scale-90 ${myBlockedIds.includes(user.id) ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-300 hover:text-red-500'}`}
                                             title={myBlockedIds.includes(user.id) ? 'Odblokuj użytkownika' : 'Zablokuj użytkownika'}
                                         >
                                             <UserX size={18} />
                                         </button>
                                         <button 
-                                            onClick={() => sendFriendRequest(user.id)}
+                                            onClick={(event) => {
+                                                event.stopPropagation()
+                                                sendFriendRequest(user.id)
+                                            }}
                                             disabled={isBlockedRelationship(user.id)}
                                             className="p-2 bg-primary/20 text-primary rounded-lg hover:bg-primary hover:text-white transition active:scale-90 disabled:opacity-40"
                                             title="Dodaj do znajomych"

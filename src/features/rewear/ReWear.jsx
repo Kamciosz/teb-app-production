@@ -393,7 +393,7 @@ export default function ReWear() {
                                     </div>
                                     {!isOwner && (
                                         <button
-                                            onClick={() => navigate('/tebtalk', {
+                                            onClick={() => navigate(`/tebtalk?chat=${selectedItem.seller_id}`, {
                                                 state: {
                                                     openChatWith: {
                                                         id: selectedItem.seller_id,

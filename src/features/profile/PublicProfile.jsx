@@ -142,7 +142,7 @@ export default function PublicProfile() {
 
             {!isOwnProfile ? (
                 <button
-                    onClick={() => navigate('/tebtalk', {
+                    onClick={() => navigate(`/tebtalk?chat=${profile.id}`, {
                         state: {
                             openChatWith: {
                                 id: profile.id,
