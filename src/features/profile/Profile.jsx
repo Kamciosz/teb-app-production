@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react'
-import { User, LogOut, Settings, Award, Heart, Camera, Edit2, ShoppingBag, Eye, EyeOff, X, Shield, MessageCircle } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { User, LogOut, Edit2, ShoppingBag, Eye, EyeOff, X, Shield, MessageCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { supabase, signOut } from '../../services/supabase'
-import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
+import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
+import AvatarEditorModal from './AvatarEditorModal'
 import TebGabkiRanking from './TebGabkiRanking'
+import {
+    AVAILABLE_BADGES,
+    getProfileShowcaseItems,
+    getRoleBadgeClass,
+    getRoleLabel,
+    normalizeRoles,
+    PROFILE_BIO_LIMIT
+} from './profileMeta'
 
 export default function Profile() {
     const MIN_APPEAL_LEN = 20
@@ -12,7 +21,10 @@ export default function Profile() {
     const [profile, setProfile] = useState(null)
     const [isEditingName, setIsEditingName] = useState(false)
     const [newName, setNewName] = useState('')
+    const [bioDraft, setBioDraft] = useState('')
+    const [bioSaving, setBioSaving] = useState(false)
     const [isStoreOpen, setIsStoreOpen] = useState(false)
+    const [isAvatarEditorOpen, setIsAvatarEditorOpen] = useState(false)
     const [appeals, setAppeals] = useState([])
     const [moderationEvents, setModerationEvents] = useState([])
     const [appealMessage, setAppealMessage] = useState('')
@@ -29,7 +41,7 @@ export default function Profile() {
 
         const primaryQuery = await supabase
             .from('profiles')
-            .select('id, full_name, avatar_url, roles, role, is_private, dm_friends_only, teb_gabki, is_banned, banned_until, ban_reason, created_at, updated_at')
+            .select('id, full_name, avatar_url, roles, role, is_private, dm_friends_only, teb_gabki, bio, is_banned, banned_until, ban_reason, created_at, updated_at')
             .eq('id', session.user.id)
             .single()
 
@@ -38,7 +50,7 @@ export default function Profile() {
         if (!data) {
             const fallbackQuery = await supabase
                 .from('profiles')
-                .select('id, full_name, avatar_url, roles, role, is_private, teb_gabki, is_banned, banned_until, created_at, updated_at')
+                .select('id, full_name, avatar_url, roles, role, is_private, teb_gabki, bio, is_banned, banned_until, created_at, updated_at')
                 .eq('id', session.user.id)
                 .single()
 
@@ -56,7 +68,8 @@ export default function Profile() {
 
         setLoadError('')
         setProfile({ ...data, email: session.user.email })
-        setNewName(data.full_name)
+        setNewName(data.full_name || '')
+        setBioDraft(data.bio || '')
 
         fetchBadges(session.user.id)
         fetchAppeals(session.user.id)
@@ -96,29 +109,23 @@ export default function Profile() {
 
     async function fetchBadges(uid) {
         const { data } = await supabase.from('user_badges').select('badge_type').eq('user_id', uid)
-        if (data) setProfile(prev => ({ ...prev, badges: data.map(b => b.badge_type) }))
+        if (data) setProfile(prev => ({ ...prev, badges: data.map(badge => badge.badge_type) }))
     }
-
-    const AVAILABLE_BADGES = [
-        { id: 'pres_tech', label: 'Przewodniczący Tech', icon: '🎓', price: 500 },
-        { id: 'pres_liceum', label: 'Przewodniczący Liceum', icon: '📚', price: 500 },
-        { id: 'top_rich', label: 'Top Gąbka', icon: '💰', price: 1000 },
-        { id: 'helper', label: 'Pomocna Dłoń', icon: '🤝', price: 200 },
-        { id: 'beta_tester', label: 'Beta Tester', icon: '🧪', price: 0 }
-    ]
 
     async function buyBadge(badgeId, price) {
         const { data: result, error } = await supabase.rpc('buy_badge', {
             p_badge_id: badgeId,
             p_price: price
         })
+
         if (error || !result?.success) {
             const msg = result?.error || error?.message || 'Błąd zakupu'
             if (msg === 'insufficient teb_gabki') alert('Nie masz wystarczającej liczby TebGąbek!')
             else if (msg === 'badge already owned') alert('Już posiadasz tę odznakę!')
-            else alert('Błąd zakupu: ' + msg)
+            else alert(`Błąd zakupu: ${msg}`)
             return
         }
+
         alert('Zakupiono odznakę!')
         setProfile(prev => ({
             ...prev,
@@ -129,35 +136,63 @@ export default function Profile() {
 
     async function updateAvatar(url) {
         if (profile.teb_gabki < 50) {
-            alert("Zmiana awatara kosztuje 50 TebGąbek!")
-            return
+            throw new Error('Zmiana avatara kosztuje 50 TebGąbek!')
+        }
+
+        const safeUrl = sanitizeImageUrl(url)
+        if (!safeUrl) {
+            throw new Error('Nieprawidłowy adres avatara.')
         }
 
         const { data: { session } } = await supabase.auth.getSession()
-        if (!session) return
+        if (!session) throw new Error('Sesja wygasła. Zaloguj się ponownie.')
 
         const { error } = await supabase.from('profiles')
             .update({
-                avatar_url: url,
+                avatar_url: safeUrl,
                 teb_gabki: profile.teb_gabki - 50
             })
             .eq('id', session.user.id)
 
         if (error) {
-            alert("Błąd: " + error.message)
-        } else {
-            setProfile(prev => ({ ...prev, avatar_url: url, teb_gabki: prev.teb_gabki - 50 }))
-            setIsStoreOpen(false)
+            throw new Error(error.message)
         }
+
+        setProfile(prev => ({ ...prev, avatar_url: safeUrl, teb_gabki: prev.teb_gabki - 50 }))
+        setIsAvatarEditorOpen(false)
+        setIsStoreOpen(false)
     }
 
     async function handleNameChange() {
-        if (!newName.trim()) return
-        const { error } = await supabase.from('profiles').update({ full_name: newName }).eq('id', profile.id)
+        const safeName = sanitizePlainText(newName, { maxLength: 80 })
+        if (!safeName) return
+
+        const { error } = await supabase.from('profiles').update({ full_name: safeName }).eq('id', profile.id)
         if (!error) {
-            setProfile(prev => ({ ...prev, full_name: newName }))
+            setProfile(prev => ({ ...prev, full_name: safeName }))
+            setNewName(safeName)
             setIsEditingName(false)
         }
+    }
+
+    async function handleBioSave() {
+        const safeBio = sanitizePlainText(bioDraft, { maxLength: PROFILE_BIO_LIMIT, preserveLineBreaks: true })
+
+        setBioSaving(true)
+        const { error } = await supabase
+            .from('profiles')
+            .update({ bio: safeBio || null })
+            .eq('id', profile.id)
+
+        setBioSaving(false)
+
+        if (error) {
+            alert(`Nie udało się zapisać opisu: ${error.message}`)
+            return
+        }
+
+        setProfile(prev => ({ ...prev, bio: safeBio || null }))
+        setBioDraft(safeBio)
     }
 
     async function togglePrivacy() {
@@ -183,7 +218,7 @@ export default function Profile() {
             return
         }
 
-        const trimmed = appealMessage.trim()
+        const trimmed = sanitizePlainText(appealMessage, { maxLength: 1200, preserveLineBreaks: true })
         if (trimmed.length < MIN_APPEAL_LEN) {
             alert(`Apelacja musi mieć co najmniej ${MIN_APPEAL_LEN} znaków.`)
             return
@@ -213,6 +248,12 @@ export default function Profile() {
 
     const pendingAppeal = appeals.find(appeal => appeal.status === 'pending')
     const activeBanEvent = moderationEvents.find(event => event.action_type === 'ban')
+    const avatarUrl = sanitizeImageUrl(profile.avatar_url)
+    const roles = normalizeRoles(profile.roles, profile.role)
+    const showcaseItems = getProfileShowcaseItems(profile)
+    const savedBio = sanitizePlainText(profile.bio, { maxLength: PROFILE_BIO_LIMIT, preserveLineBreaks: true })
+    const normalizedBioDraft = sanitizePlainText(bioDraft, { maxLength: PROFILE_BIO_LIMIT, preserveLineBreaks: true })
+    const isBioDirty = normalizedBioDraft !== savedBio
 
     return (
         <div className="pb-10 pt-2">
@@ -224,16 +265,16 @@ export default function Profile() {
             <div className="bg-surface border border-gray-800 relative p-6 rounded-xl flex flex-col items-center mb-6 overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary to-secondary"></div>
                 <div className="absolute top-4 right-4">
-                    <button onClick={togglePrivacy} className="text-gray-500 hover:text-white transition">
+                    <button onClick={togglePrivacy} className="text-gray-500 hover:text-white transition" title={profile.is_private ? 'Profil ukryty' : 'Profil publiczny'}>
                         {profile.is_private ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
                 </div>
 
-                <div className="relative group">
+                <button onClick={() => setIsAvatarEditorOpen(true)} className="relative group" title="Edytuj avatar">
                     <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center mb-4 border-4 border-background shadow-lg overflow-hidden">
-                        {profile.avatar_url ? (
+                        {avatarUrl ? (
                             <img
-                                src={ImageKitService.getOptimizedUrl(profile.avatar_url, 200, 70)}
+                                src={ImageKitService.getOptimizedUrl(avatarUrl)}
                                 alt="Avatar"
                                 className="w-full h-full object-cover"
                             />
@@ -241,33 +282,50 @@ export default function Profile() {
                             <User size={40} className="text-gray-500" />
                         )}
                     </div>
-                </div>
+                    <div className="absolute inset-x-0 -bottom-1 text-[10px] font-bold uppercase text-primary opacity-0 group-hover:opacity-100 transition">
+                        Edytuj
+                    </div>
+                </button>
 
                 {isEditingName ? (
-                    <div className="flex gap-2 mb-2">
+                    <div className="flex gap-2 mb-2 w-full max-w-xs">
                         <input
                             value={newName}
-                            onChange={e => setNewName(e.target.value)}
-                            className="bg-background border border-gray-700 rounded px-2 py-1 text-sm outline-none focus:border-primary"
+                            onChange={event => setNewName(event.target.value.slice(0, 80))}
+                            className="flex-1 bg-background border border-gray-700 rounded px-3 py-2 text-sm outline-none focus:border-primary"
                         />
                         <button onClick={handleNameChange} className="text-primary font-bold text-sm">OK</button>
                     </div>
                 ) : (
-                    <h3 className="font-bold text-xl text-white flex items-center gap-2">
-                        {profile.full_name}
+                    <h3 className="font-bold text-xl text-white flex items-center gap-2 text-center">
+                        {sanitizePlainText(profile.full_name, { maxLength: 80 })}
                         <Edit2 size={14} className="text-gray-500 cursor-pointer" onClick={() => setIsEditingName(true)} />
                     </h3>
                 )}
 
-                <p className="text-sm text-gray-400 mb-2">{profile.email}</p>
-                <div className="flex gap-2">
-                    {(profile.roles || ['student']).map(role => (
-                        <span key={role} className={`text-[10px] px-3 py-1 rounded-full font-bold ${role === 'admin' ? 'bg-secondary/20 text-secondary' : 'bg-primary/20 text-primary'}`}>
-                            {role.toUpperCase()}
+                <p className="text-sm text-gray-400 mb-3">{profile.email}</p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                    {roles.map(role => (
+                        <span key={role} className={`text-[10px] px-3 py-1 rounded-full font-bold ${getRoleBadgeClass(role)}`}>
+                            {getRoleLabel(role).toUpperCase()}
                         </span>
                     ))}
-                    {profile.is_private && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-400">PRYWATNY</span>}
-                    {profile.dm_friends_only && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-400">DM: ZNAJOMI</span>}
+                    {profile.is_private && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-300 border border-gray-700">PRYWATNY</span>}
+                    {profile.dm_friends_only && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-300 border border-gray-700">DM: ZNAJOMI</span>}
+                </div>
+
+                <div className="w-full mt-5 border-t border-gray-800 pt-4 flex items-center justify-between gap-3 text-sm">
+                    <div>
+                        <div className="text-white font-bold">Widok publiczny</div>
+                        <div className="text-xs text-gray-500 mt-1">{profile.is_private ? 'Profil jest ukryty poza moderacją.' : 'Tak widzą Cię inni użytkownicy.'}</div>
+                    </div>
+                    {!profile.is_private ? (
+                        <Link to={`/profile/${profile.id}`} className="text-primary font-bold hover:text-white transition">
+                            Podgląd
+                        </Link>
+                    ) : (
+                        <span className="text-xs font-bold text-gray-500">Ukryty</span>
+                    )}
                 </div>
             </div>
 
@@ -283,7 +341,7 @@ export default function Profile() {
                         <Shield size={18} className="text-red-400" />
                     </div>
                     <div className="text-sm text-white leading-relaxed">
-                        {profile.ban_reason || activeBanEvent?.reason || 'Moderator nie dodał jeszcze uzasadnienia.'}
+                        {sanitizePlainText(profile.ban_reason || activeBanEvent?.reason || 'Moderator nie dodał jeszcze uzasadnienia.', { maxLength: 500, preserveLineBreaks: true })}
                     </div>
                 </div>
             )}
@@ -302,24 +360,52 @@ export default function Profile() {
                 </button>
             </div>
 
+            <div className="bg-surface border border-gray-800 p-4 rounded-xl mb-6">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                        <div className="text-sm font-bold text-white">Opis profilu</div>
+                        <div className="text-[10px] text-gray-500 uppercase mt-1">Krótki opis widoczny publicznie</div>
+                    </div>
+                    <div className="text-xs font-bold text-gray-500">{bioDraft.length}/{PROFILE_BIO_LIMIT}</div>
+                </div>
+
+                <textarea
+                    value={bioDraft}
+                    onChange={event => setBioDraft(event.target.value.slice(0, PROFILE_BIO_LIMIT))}
+                    placeholder="Napisz kilka słów o sobie, zainteresowaniach albo o tym, czym się zajmujesz."
+                    className="w-full min-h-[110px] bg-background border border-gray-700 rounded-xl p-3 text-sm text-white outline-none focus:border-primary resize-none"
+                    maxLength={PROFILE_BIO_LIMIT}
+                />
+
+                <div className="flex items-center justify-between gap-3 mt-3">
+                    <div className="text-xs text-gray-500 leading-relaxed">
+                        Publiczny profil pokaże maksymalnie {PROFILE_BIO_LIMIT} znaków po oczyszczeniu treści.
+                    </div>
+                    <button
+                        onClick={handleBioSave}
+                        disabled={!isBioDirty || bioSaving}
+                        className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold disabled:opacity-40"
+                    >
+                        {bioSaving ? 'Zapisywanie...' : 'Zapisz opis'}
+                    </button>
+                </div>
+            </div>
+
             <h4 className="font-bold text-gray-300 mb-3 ml-2 text-sm uppercase">Odznaki & Statystyki</h4>
-            <div className="bg-surface border border-gray-800 p-4 rounded-xl flex flex-col gap-3">
+            <div className="bg-surface border border-gray-800 p-4 rounded-xl flex flex-col gap-3 mb-6">
                 <div className="flex items-center justify-between pb-2 border-b border-gray-800">
                     <span className="text-xs text-gray-400">Ranking Publiczny</span>
                     <span className="text-xs font-bold">{profile.is_private ? 'Ukryty' : 'Widoczny'}</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {profile.roles?.includes('admin') && <div className="text-[10px] bg-red-500/10 text-red-500 p-1 px-2 rounded font-bold border border-red-500/20">PREZES SU</div>}
-                    {profile.teb_gabki > 1000 && <div className="text-[10px] bg-yellow-500/10 text-yellow-500 p-1 px-2 rounded font-bold border border-yellow-500/20">MILIONER</div>}
-                    {profile.badges?.map(badgeId => {
-                        const b = AVAILABLE_BADGES.find(x => x.id === badgeId)
-                        if (!b) return null
-                        return (
-                            <div key={badgeId} title={b.label} className="text-[10px] bg-primary/10 text-primary p-1 px-2 rounded font-bold border border-primary/20 flex items-center gap-1">
-                                <span>{b.icon}</span> {b.label.toUpperCase()}
-                            </div>
-                        )
-                    })}
+                    {showcaseItems.length > 0 ? showcaseItems.map(item => (
+                        <div key={item.id} title={item.label} className={`text-[10px] p-1 px-2 rounded font-bold flex items-center gap-1 ${item.className}`}>
+                            {item.icon ? <span>{item.icon}</span> : null}
+                            {item.label.toUpperCase()}
+                        </div>
+                    )) : (
+                        <div className="text-sm text-gray-500">Jeszcze nic tu nie ma. Kup odznakę albo zdobywaj TebGąbki.</div>
+                    )}
                 </div>
             </div>
 
@@ -354,7 +440,7 @@ export default function Profile() {
                     <div className="space-y-3">
                         <textarea
                             value={appealMessage}
-                            onChange={e => setAppealMessage(e.target.value)}
+                            onChange={event => setAppealMessage(event.target.value.slice(0, 1200))}
                             placeholder="Opisz krótko sytuację, wskaż kontekst i dlaczego kara powinna zostać cofnięta."
                             className="w-full min-h-[110px] bg-background border border-gray-700 rounded-xl p-3 text-sm text-white outline-none focus:border-primary resize-none"
                             disabled={!!pendingAppeal || appealLoading}
@@ -382,10 +468,10 @@ export default function Profile() {
                                     {appeal.status}
                                 </div>
                             </div>
-                            <div className="text-sm text-gray-300 whitespace-pre-wrap">{appeal.message}</div>
+                            <div className="text-sm text-gray-300 whitespace-pre-wrap">{sanitizePlainText(appeal.message, { maxLength: 1200, preserveLineBreaks: true })}</div>
                             {appeal.resolution_note && (
                                 <div className="mt-2 text-xs text-gray-400 border-t border-gray-800 pt-2">
-                                    Decyzja moderatora: {appeal.resolution_note}
+                                    Decyzja moderatora: {sanitizePlainText(appeal.resolution_note, { maxLength: 500, preserveLineBreaks: true })}
                                 </div>
                             )}
                         </div>
@@ -406,7 +492,6 @@ export default function Profile() {
                 <Edit2 size={16} className="text-gray-700 group-hover:text-white transition" />
             </Link>
 
-            {/* Modal Sklepu */}
             {isStoreOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                     <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative">
@@ -414,14 +499,19 @@ export default function Profile() {
                         <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><ShoppingBag className="text-primary" /> Sklep Profilowy</h3>
 
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between bg-background p-4 rounded-xl border border-gray-800">
+                            <div className="flex items-center justify-between bg-background p-4 rounded-xl border border-gray-800 gap-4">
                                 <div>
-                                    <div className="font-bold text-white text-sm">Nowy Awatar</div>
-                                    <div className="text-xs text-gray-500">Wgraj zdjęcie z CDN (WebP)</div>
+                                    <div className="font-bold text-white text-sm">Nowy Avatar</div>
+                                    <div className="text-xs text-gray-500">Kadrowanie, przybliżenie i zapis do CDN</div>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
                                     <span className="text-xs font-bold text-primary">50 TG</span>
-                                    <MediaUploader module="profiles" onUploadSuccess={updateAvatar} />
+                                    <button
+                                        onClick={() => setIsAvatarEditorOpen(true)}
+                                        className="px-3 py-2 rounded-xl bg-primary/15 text-primary border border-primary/30 text-sm font-bold hover:bg-primary/20 transition"
+                                    >
+                                        Edytuj
+                                    </button>
                                 </div>
                             </div>
 
@@ -431,7 +521,7 @@ export default function Profile() {
                                     {AVAILABLE_BADGES.map(badge => {
                                         const owned = profile.badges?.includes(badge.id)
                                         return (
-                                            <button 
+                                            <button
                                                 key={badge.id}
                                                 disabled={owned || profile.teb_gabki < badge.price}
                                                 onClick={() => buyBadge(badge.id, badge.price)}
@@ -454,6 +544,13 @@ export default function Profile() {
                     </div>
                 </div>
             )}
+
+            <AvatarEditorModal
+                isOpen={isAvatarEditorOpen}
+                onClose={() => setIsAvatarEditorOpen(false)}
+                currentAvatarUrl={profile.avatar_url}
+                onSaved={updateAvatar}
+            />
 
             <TebGabkiRanking />
         </div>

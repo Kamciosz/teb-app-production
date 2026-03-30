@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, UserX } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
+import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, User, UserX } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
 import { WordFilter } from '../../services/wordFilter'
 import { useToast } from '../../context/ToastContext'
+import { getRoleLabel, getUserInitial } from '../profile/profileMeta'
+import { sanitizePlainText } from '../../utils/safeContent'
 
 export default function TEBtalk() {
     const MAX_CHAT_MESSAGE = 2000
@@ -33,6 +35,7 @@ export default function TEBtalk() {
     const toast = useToast()
     const messagesEndRef = useRef(null)
     const location = useLocation()
+    const navigate = useNavigate()
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -41,12 +44,21 @@ export default function TEBtalk() {
                 loadCommunicationState(session.user.id)
             }
         })
-        // Auto-open chat if navigated from ReWear (or another screen) with seller info
-        if (location.state?.openChatWith) {
-            setActiveChatUser({ ...location.state.openChatWith, type: 'private' })
-            setView('chat')
-        }
     }, [])
+
+    useEffect(() => {
+        if (!location.state?.openChatWith) return
+
+        setActiveChatUser({ ...location.state.openChatWith, type: 'private' })
+        setView('chat')
+        navigate(location.pathname, { replace: true, state: {} })
+    }, [location.pathname, location.state, navigate])
+
+    useEffect(() => {
+        if (view === 'chat' && !activeChatUser) {
+            setView('list')
+        }
+    }, [view, activeChatUser])
 
     useEffect(() => {
         if (view === 'chat' && activeChatUser && myId) {
@@ -222,14 +234,15 @@ export default function TEBtalk() {
     }
 
     async function handleSearch(e) {
-        setSearchQuery(e.target.value)
-        if (e.target.value.length < 3) {
+        const nextQuery = sanitizePlainText(e.target.value, { maxLength: 60 })
+        setSearchQuery(nextQuery)
+        if (nextQuery.length < 3) {
             setSearchResults([])
             return
         }
         const { data } = await supabase.from('profiles')
             .select('id, full_name, role, avatar_url, is_private, dm_friends_only')
-            .ilike('full_name', `%${e.target.value}%`)
+            .ilike('full_name', `%${nextQuery}%`)
             .eq('is_private', false)
             .neq('id', myId)
             .limit(10)
@@ -241,7 +254,7 @@ export default function TEBtalk() {
 
         const { data: fallbackData } = await supabase.from('profiles')
             .select('id, full_name, role, avatar_url, is_private')
-            .ilike('full_name', `%${e.target.value}%`)
+            .ilike('full_name', `%${nextQuery}%`)
             .eq('is_private', false)
             .neq('id', myId)
             .limit(10)
@@ -308,6 +321,7 @@ export default function TEBtalk() {
 
         if (error) {
             console.error("Błąd pobierania wiadomości:", error)
+            setMessages([])
         } else if (data) {
             setMessages(data)
             scrollToBottom()
@@ -317,14 +331,15 @@ export default function TEBtalk() {
 
     async function sendMessage(e) {
         e.preventDefault()
-        if (!newMessage.trim() || !activeChatUser) return
+        const sanitizedMessage = sanitizePlainText(newMessage, { maxLength: MAX_CHAT_MESSAGE, preserveLineBreaks: true })
+        if (!sanitizedMessage || !activeChatUser) return
 
-        if (newMessage.trim().length > MAX_CHAT_MESSAGE) {
+        if (sanitizedMessage.length > MAX_CHAT_MESSAGE) {
             toast.error(`Wiadomość jest za długa (max ${MAX_CHAT_MESSAGE} znaków).`)
             return
         }
 
-        const msgText = newMessage.trim()
+        const msgText = sanitizedMessage
         const isGroup = activeChatUser.type === 'group'
         const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
         const tempId = Math.random().toString(36).substring(7)
@@ -407,8 +422,9 @@ export default function TEBtalk() {
     }
 
     async function createGroup() {
-        if (!groupName.trim()) return
-        if (groupName.trim().length > MAX_CHAT_GROUP_NAME) {
+        const cleanGroupName = sanitizePlainText(groupName, { maxLength: MAX_CHAT_GROUP_NAME })
+        if (!cleanGroupName) return
+        if (cleanGroupName.length > MAX_CHAT_GROUP_NAME) {
             toast.error(`Nazwa grupy jest za długa (max ${MAX_CHAT_GROUP_NAME} znaków).`)
             return
         }
@@ -416,7 +432,7 @@ export default function TEBtalk() {
         // 1. Stwórz grupę
         const { data: group, error: groupErr } = await supabase
             .from('chat_groups')
-            .insert([{ name: groupName.trim(), creator_id: myId }])
+            .insert([{ name: cleanGroupName, creator_id: myId }])
             .select()
             .single()
         
@@ -441,7 +457,7 @@ export default function TEBtalk() {
         await supabase.from('chat_group_messages').insert([{
             sender_id: myId,
             group_id: group.id,
-            content: `Grupa ${groupName.trim()} została utworzona!`
+            content: `Grupa ${cleanGroupName} została utworzona!`
         }])
 
         setIsCreatingGroup(false)
@@ -494,7 +510,22 @@ export default function TEBtalk() {
         }
 
         setActiveChatUser(target)
+        setMessages([])
         setView('chat')
+    }
+
+    const closeChat = () => {
+        setActiveChatUser(null)
+        setMessages([])
+        setIsGroupSettingsOpen(false)
+        setIsAddingMember(false)
+        setView('list')
+    }
+
+    const openProfile = (userId, event) => {
+        if (event) event.stopPropagation()
+        if (!userId) return
+        navigate(`/profile/${userId}`)
     }
 
     if (view === 'chat' && activeChatUser) {
@@ -502,27 +533,32 @@ export default function TEBtalk() {
             <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10">
                 {/* Header Czatu */}
                 <div className="bg-[#1a1a1a] px-4 py-3 border-b border-gray-800 flex items-center gap-3 shrink-0">
-                    <button onClick={() => setView('list')} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
+                    <button onClick={closeChat} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                         <ArrowLeft size={20} />
                     </button>
-                    <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shadow-sm">
-                        {activeChatUser.type === 'group' ? (
-                            <Users size={20} className="text-secondary" />
-                        ) : activeChatUser.avatar_url ? (
-                            <img src={ImageKitService.getOptimizedUrl(activeChatUser.avatar_url, 100)} alt="Av" className="w-full h-full object-cover" />
-                        ) : (
-                            activeChatUser.full_name.charAt(0).toUpperCase()
-                        )}
-                    </div>
-                    <div className="flex-1">
-                        <div className="font-bold text-white leading-tight flex items-center gap-1.5">
-                            {activeChatUser.full_name}
-                            {activeChatUser.role === 'admin' && <span className="bg-red-500 w-2 h-2 rounded-full shadow-[0_0_5px_red]"></span>}
+                    <button
+                        onClick={activeChatUser.type === 'group' ? undefined : (event) => openProfile(activeChatUser.id, event)}
+                        className={`flex items-center gap-3 flex-1 min-w-0 ${activeChatUser.type === 'group' ? 'cursor-default' : 'hover:text-primary transition'}`}
+                    >
+                        <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shadow-sm shrink-0">
+                            {activeChatUser.type === 'group' ? (
+                                <Users size={20} className="text-secondary" />
+                            ) : activeChatUser.avatar_url ? (
+                                <img src={ImageKitService.getOptimizedUrl(activeChatUser.avatar_url)} alt="Av" className="w-full h-full object-cover" />
+                            ) : (
+                                getUserInitial(activeChatUser.full_name)
+                            )}
                         </div>
-                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                            {activeChatUser.type === 'group' ? `Grupa (${groupMembers.length} osób)` : (activeChatUser.role === 'student' ? 'Uczeń' : activeChatUser.role)}
+                        <div className="flex-1 min-w-0 text-left">
+                            <div className="font-bold text-white leading-tight flex items-center gap-1.5 truncate">
+                                {activeChatUser.full_name}
+                                {activeChatUser.role === 'admin' && <span className="bg-red-500 w-2 h-2 rounded-full shadow-[0_0_5px_red]"></span>}
+                            </div>
+                            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider truncate">
+                                {activeChatUser.type === 'group' ? `Grupa (${groupMembers.length} osób)` : getRoleLabel(activeChatUser.role || 'student')}
+                            </div>
                         </div>
-                    </div>
+                    </button>
                     {activeChatUser.type === 'private' && (
                         <button
                             onClick={() => toggleBlock(activeChatUser.id)}
@@ -757,12 +793,15 @@ export default function TEBtalk() {
                             friends.map(friend => (
                                 <div key={friend.id} onClick={() => openChat({ ...friend, type: 'private' })} className="bg-surface border border-gray-800 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-primary transition group">
                                     <div className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 overflow-hidden flex items-center justify-center font-bold text-lg">
-                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url, 120)} alt="Av" className="w-full h-full object-cover" /> : friend.full_name.charAt(0)}
+                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url)} alt="Av" className="w-full h-full object-cover" /> : getUserInitial(friend.full_name)}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-white group-hover:text-primary transition">{friend.full_name}</div>
-                                        <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">{friend.role}</div>
-                                    </div>
+                                    <button type="button" onClick={(event) => openProfile(friend.id, event)} className="flex-1 text-left min-w-0">
+                                        <div className="font-bold text-white group-hover:text-primary transition truncate">{friend.full_name}</div>
+                                        <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest truncate">{getRoleLabel(friend.role || 'student')}</div>
+                                    </button>
+                                    <button type="button" onClick={(event) => openProfile(friend.id, event)} className="w-8 h-8 rounded-full bg-gray-800 text-gray-300 flex items-center justify-center hover:text-primary transition">
+                                        <User size={14} />
+                                    </button>
                                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                                         <MessageCircle size={16} />
                                     </div>
@@ -801,13 +840,21 @@ export default function TEBtalk() {
                                         {user.avatar_url ? (
                                             <img src={ImageKitService.getOptimizedUrl(user.avatar_url, 100)} alt="Av" className="w-full h-full object-cover" />
                                         ) : (
-                                            user.full_name.charAt(0).toUpperCase()
+                                            getUserInitial(user.full_name)
                                         )}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-white text-sm">{user.full_name}</div>
-                                        <div className="text-[10px] text-gray-500 uppercase">{user.role}</div>
-                                    </div>
+                                    <button type="button" onClick={(event) => openProfile(user.id, event)} className="flex-1 text-left min-w-0">
+                                        <div className="font-bold text-white text-sm truncate">{user.full_name}</div>
+                                        <div className="text-[10px] text-gray-500 uppercase truncate">{getRoleLabel(user.role || 'student')}</div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => openProfile(user.id, event)}
+                                        className="p-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-white hover:text-black transition active:scale-90"
+                                        title="Otwórz profil"
+                                    >
+                                        <User size={18} />
+                                    </button>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => toggleBlock(user.id)}
@@ -862,16 +909,16 @@ export default function TEBtalk() {
                                         {user.type === 'group' ? (
                                             <Users size={24} className="text-secondary" />
                                         ) : user.avatar_url ? (
-                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url, 120)} alt="Av" className="w-full h-full object-cover" />
+                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="Av" className="w-full h-full object-cover" />
                                         ) : (
-                                            user.full_name.charAt(0).toUpperCase()
+                                            getUserInitial(user.full_name)
                                         )}
                                         {user.type !== 'group' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-surface rounded-full z-10"></div>}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-white leading-tight">{user.full_name}</div>
-                                        <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">Kliknij, aby otworzyć czat...</div>
-                                    </div>
+                                    <button type="button" onClick={(event) => user.type === 'group' ? event.stopPropagation() : openProfile(user.id, event)} className="flex-1 text-left min-w-0">
+                                        <div className="font-bold text-white leading-tight truncate">{user.full_name}</div>
+                                        <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{user.type === 'group' ? 'Pokój grupowy' : getRoleLabel(user.role || 'student')}</div>
+                                    </button>
                                 </div>
                             ))}
                         </div>

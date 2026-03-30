@@ -11,6 +11,7 @@ import Librus from './features/librus/Librus'
 import Admin from './features/admin/Admin'
 import Features from './features/features/Features'
 import Profile from './features/profile/Profile'
+import PublicProfile from './features/profile/PublicProfile'
 import TEBtalk from './features/tebtalk/TEBtalk'
 import Groups from './features/groups/Groups'
 import PrivacyPolicy from './features/privacy/PrivacyPolicy'
@@ -265,6 +266,7 @@ function App() {
                                 <Route path="/" element={<Feed />} />
                                 <Route path="/features" element={<Features />} />
                                 <Route path="/profile" element={<Profile />} />
+                                <Route path="/profile/:userId" element={<PublicProfile />} />
                                 <Route path="/rewear" element={<ReWear />} />
                                 <Route path="/librus" element={<Librus />} />
                                 <Route path="/tebtalk" element={<TEBtalk />} />

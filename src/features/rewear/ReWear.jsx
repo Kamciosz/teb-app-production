@@ -5,7 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
+import AppFixedLayer from '../../components/common/AppFixedLayer'
 import { ImageKitService } from '../../services/imageKitService'
+import { getRoleLabel } from '../profile/profileMeta'
+import { sanitizePlainText } from '../../utils/safeContent'
 
 export default function ReWear() {
     const MAX_REWEAR_TITLE = 200
@@ -98,13 +101,16 @@ export default function ReWear() {
 
     async function handleAddItem(e) {
         e.preventDefault()
-        if (!newItemTitle || !newItemPrice || !newItemDesc) return
+        const safeTitle = sanitizePlainText(newItemTitle, { maxLength: MAX_REWEAR_TITLE })
+        const safeDescription = sanitizePlainText(newItemDesc, { maxLength: MAX_REWEAR_DESC, preserveLineBreaks: true })
 
-        if (newItemTitle.trim().length > MAX_REWEAR_TITLE) {
+        if (!safeTitle || !newItemPrice || !safeDescription) return
+
+        if (safeTitle.length > MAX_REWEAR_TITLE) {
             alert(`Tytuł jest za długi (max ${MAX_REWEAR_TITLE} znaków).`)
             return
         }
-        if (newItemDesc.trim().length > MAX_REWEAR_DESC) {
+        if (safeDescription.length > MAX_REWEAR_DESC) {
             alert(`Opis jest za długi (max ${MAX_REWEAR_DESC} znaków).`)
             return
         }
@@ -156,8 +162,8 @@ export default function ReWear() {
 
             const { error } = await supabase.from('rewear_posts').insert([{
                 seller_id: session.user.id,
-                title: newItemTitle,
-                description: newItemDesc + ' |META:' + extraDesc,
+                title: safeTitle,
+                description: safeDescription + ' |META:' + extraDesc,
                 price_teb_gabki: newItemCurrency === 'TG' ? parseFloat(newItemPrice) : 0,
                 price_pln: newItemCurrency === 'PLN' ? parseFloat(newItemPrice) : 0,
                 item_type: dbItemType,
@@ -197,7 +203,7 @@ export default function ReWear() {
 
     const cleanDescription = (desc) => {
         if (!desc) return "Brak opisu"
-        return desc.split('|META:')[0]
+        return sanitizePlainText(desc.split('|META:')[0], { maxLength: MAX_REWEAR_DESC, preserveLineBreaks: true })
     }
 
     // Aplikacja Filtrów
@@ -371,7 +377,15 @@ export default function ReWear() {
                                     <p className="text-sm text-gray-300 leading-relaxed">{cleanDescription(selectedItem.description)}</p>
                                     <div className="pt-3 border-t border-gray-800 flex items-center justify-between">
                                         <div className="text-xs text-gray-500">
-                                            Wystawił: <span className="text-white font-bold">{selectedItem.profiles?.full_name}</span>
+                                            Wystawil:{' '}
+                                            <button
+                                                type="button"
+                                                onClick={() => navigate(`/profile/${selectedItem.seller_id}`)}
+                                                className="text-white font-bold hover:text-primary transition"
+                                            >
+                                                {selectedItem.profiles?.full_name}
+                                            </button>
+                                            <span className="text-gray-600 ml-2">{getRoleLabel(selectedItem.profiles?.role || 'student')}</span>
                                         </div>
                                         <div className="text-xs text-gray-600">
                                             {new Date(selectedItem.created_at).toLocaleDateString('pl-PL')}
@@ -410,9 +424,13 @@ export default function ReWear() {
             })()}
 
             {/* FAB (Floating Action Button) do szybkiego aparatu/oferty */}
-            <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-6 w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(59,130,246,0.5)] z-40 transition transform active:scale-95">
-                <Plus size={30} strokeWidth={3} />
-            </button>
+            <AppFixedLayer className="bottom-24 z-40 px-4">
+                <div className="flex justify-end">
+                    <button onClick={() => setIsModalOpen(true)} className="w-14 h-14 bg-primary text-white rounded-full flex items-center justify-center shadow-[0_4px_15px_rgba(59,130,246,0.5)] transition transform active:scale-95">
+                        <Plus size={30} strokeWidth={3} />
+                    </button>
+                </div>
+            </AppFixedLayer>
 
             {/* Modal "Vinted Pro" */}
             {isModalOpen && (

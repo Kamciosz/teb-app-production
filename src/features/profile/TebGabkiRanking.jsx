@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { Award, TrendingUp, User, EyeOff } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
+import { ImageKitService } from '../../services/imageKitService'
+import { getRoleShortLabel } from './profileMeta'
 
 export default function TebGabkiRanking() {
     const [ranking, setRanking] = useState([])
     const [myRank, setMyRank] = useState(null)
     const [loading, setLoading] = useState(true)
     const [view, setView] = useState('top') // 'top' or 'around_me'
+    const navigate = useNavigate()
 
     useEffect(() => {
         fetchRanking()
@@ -59,14 +63,14 @@ export default function TebGabkiRanking() {
 
             <div className="max-h-80 overflow-y-auto divide-y divide-gray-800/50">
                 {ranking.map((user, index) => (
-                    <div key={user.id} className={`p-4 flex items-center gap-4 transition ${index < 3 ? 'bg-yellow-500/5' : ''}`}>
+                    <button key={user.id} onClick={() => navigate(`/profile/${user.id}`)} className={`w-full p-4 flex items-center gap-4 transition text-left hover:bg-white/[0.03] ${index < 3 ? 'bg-yellow-500/5' : ''}`}>
                         <div className="w-6 text-center">
                             {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : <span className="text-gray-500 text-xs font-bold">{index + 1}</span>}
                         </div>
                         
                         <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex-shrink-0 overflow-hidden">
                             {user.avatar_url ? (
-                                <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="" className="w-full h-full object-cover" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-gray-500"><User size={20} /></div>
                             )}
@@ -75,7 +79,7 @@ export default function TebGabkiRanking() {
                         <div className="flex-1 min-w-0">
                             <div className="font-bold text-sm text-white truncate flex items-center gap-2">
                                 {user.full_name}
-                                {user.role === 'admin' && <span className="text-[8px] bg-red-500/20 text-red-500 px-1 rounded uppercase">ADMIN</span>}
+                                <span className="text-[8px] bg-primary/15 text-primary px-1.5 py-0.5 rounded uppercase border border-primary/20">{getRoleShortLabel(user.role)}</span>
                             </div>
                             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest flex items-center gap-1">
                                 <TrendingUp size={10} className="text-green-500" /> Aktywny Uczeń
@@ -86,7 +90,7 @@ export default function TebGabkiRanking() {
                             <div className="text-primary font-black text-sm">🪙 {user.teb_gabki || 0}</div>
                             <div className="text-[9px] text-gray-600 font-bold uppercase">TG</div>
                         </div>
-                    </div>
+                    </button>
                 ))}
 
                 {ranking.length === 0 && (
