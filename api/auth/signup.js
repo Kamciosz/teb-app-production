@@ -6,6 +6,10 @@ import {
   sendMethodNotAllowed
 } from '../../lib/serverAuth.js';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_NAME_LENGTH = 80;
+
 export default async function handler(req, res) {
   applyNoStore(res);
 
@@ -24,6 +28,18 @@ export default async function handler(req, res) {
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  if (!EMAIL_REGEX.test(email)) {
+    return res.status(400).json({ error: 'Invalid email address' });
+  }
+
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  }
+
+  if (fullName.length > MAX_NAME_LENGTH) {
+    return res.status(400).json({ error: `Full name must be at most ${MAX_NAME_LENGTH} characters` });
   }
 
   try {
