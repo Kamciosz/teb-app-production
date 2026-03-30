@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Home, LayoutGrid, User, ShieldAlert } from 'lucide-react'
-import { supabase, signInWithEmail, signUpWithEmail } from './services/supabase'
+import { supabase, signInWithEmail, signUpWithEmail, resendConfirmationEmail } from './services/supabase'
 import { NotificationService } from './services/notificationService'
 import { ToastProvider } from './context/ToastContext'
 
@@ -32,6 +32,7 @@ function App() {
     const [authError, setAuthError] = useState('')
     const [authMessage, setAuthMessage] = useState('')
     const [isLoading, setIsLoading] = useState(false)
+    const [isResendingConfirmation, setIsResendingConfirmation] = useState(false)
     const [retryCount, setRetryCount] = useState(0)
 
     const extractNameFromEmail = (mail) => {
@@ -158,6 +159,29 @@ function App() {
             setAuthError('')
         } catch (error) {
             setAuthError(error.message)
+        }
+    }
+
+    const handleResendConfirmation = async () => {
+        let finalEmail = email.trim().toLowerCase()
+        if (!finalEmail.includes('@')) {
+            finalEmail = `${finalEmail}@teb.edu.pl`
+        }
+
+        if (!finalEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/) || !finalEmail.endsWith('@teb.edu.pl')) {
+            setAuthError('Wpisz poprawny szkolny e-mail (@teb.edu.pl), aby ponownie wysłać link potwierdzający.')
+            return
+        }
+
+        try {
+            setIsResendingConfirmation(true)
+            await resendConfirmationEmail(finalEmail)
+            setAuthMessage('Jeśli konto istnieje, wysłaliśmy nowy link potwierdzający. Sprawdź także folder Spam/Oferty.')
+            setAuthError('')
+        } catch {
+            setAuthError('Nie udało się ponownie wysłać linku. Spróbuj za chwilę.')
+        } finally {
+            setIsResendingConfirmation(false)
         }
     }
 
@@ -321,6 +345,17 @@ function App() {
                                 {!isRegister && (
                                     <button type="button" onClick={handleResetPassword} disabled={isLoading} className="text-xs text-primary underline text-right w-full mt-1 pr-2 disabled:opacity-50">
                                         Nie pamiętasz hasła?
+                                    </button>
+                                )}
+
+                                {!isRegister && authError && authError.includes('Potwierdź swoją rejestrację') && (
+                                    <button
+                                        type="button"
+                                        onClick={handleResendConfirmation}
+                                        disabled={isLoading || isResendingConfirmation}
+                                        className="text-xs bg-blue-900/40 text-blue-200 border border-blue-700 px-3 py-2 rounded font-semibold hover:bg-blue-900/60 transition disabled:opacity-50"
+                                    >
+                                        {isResendingConfirmation ? '⏳ Wysyłanie...' : 'Wyślij ponownie e-mail potwierdzający'}
                                     </button>
                                 )}
                             </form>

@@ -199,6 +199,16 @@ try {
                 redirectTo: options.redirectTo
             })
             return { data: { ok: true }, error: null }
+        },
+        resend: async ({ type, email, options = {} }) => {
+            if (type !== 'signup') {
+                throw new Error('Unsupported resend type')
+            }
+            await postJson('/api/auth/resend-confirmation', {
+                email,
+                redirectTo: options.emailRedirectTo
+            })
+            return { data: { ok: true }, error: null }
         }
     }
 
@@ -215,7 +225,8 @@ try {
             signInWithPassword: () => Promise.reject(new Error('Supabase not configured correctly')),
             signUp: () => Promise.reject(new Error('Supabase not configured correctly')),
             signOut: () => Promise.resolve({ error: null }),
-            resetPasswordForEmail: () => Promise.resolve({ error: null })
+            resetPasswordForEmail: () => Promise.resolve({ error: null }),
+            resend: () => Promise.resolve({ data: { ok: true }, error: null })
         },
         from: () => {
             const notConfiguredError = new Error('Supabase not configured')
@@ -302,6 +313,18 @@ export async function signInWithEmail(email, password) {
         }
         throw error
     }
+}
+
+export async function resendConfirmationEmail(email) {
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : ''
+    await supabase.auth.resend({
+        type: 'signup',
+        email: normalizedEmail,
+        options: {
+            emailRedirectTo: window.location.origin
+        }
+    })
+    return true
 }
 
 // Globalny wylogowywacz
