@@ -6,7 +6,6 @@ import {
   sendMethodNotAllowed,
   setSessionCookies
 } from '../../lib/serverAuth.js';
-import { createClient } from '@supabase/supabase-js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -59,45 +58,11 @@ function registerAttemptAndCheck(key, limit, now) {
   return { blocked: false, retryAfterSeconds: 0 };
 }
 
-function shouldBypassEmailConfirmation() {
-  const bypassEnabled = process.env.AUTH_BYPASS_CONFIRMATION_ON_LIMIT;
-  const wantsBypass = bypassEnabled === '1' || bypassEnabled === 'true';
-
-  if (!wantsBypass) return false;
-
-  const isProduction = process.env.NODE_ENV === 'production';
-  const explicitProdAllow = process.env.AUTH_BYPASS_ALLOW_IN_PRODUCTION;
-  const allowInProduction = explicitProdAllow === '1' || explicitProdAllow === 'true';
-
-  if (isProduction && !allowInProduction) {
-    return false;
-  }
-
-  return true;
-}
-
 function maskEmail(email) {
   if (!email || typeof email !== 'string') return 'unknown';
   const atIndex = email.indexOf('@');
   if (atIndex <= 1) return `***${email.slice(atIndex)}`;
   return `${email.slice(0, 2)}***${email.slice(atIndex)}`;
-}
-
-function createServiceRoleClient() {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return null;
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false
-    }
-  });
 }
 
 function toClientSession(session) {
@@ -205,58 +170,6 @@ export default async function handler(req, res) {
       console.error(`[SIGNUP ERROR] email=${maskEmail(email)}, error=${error.message}`, error);
       
       if (String(error.message || '').toLowerCase().includes('confirmation email')) {
-        if (shouldBypassEmailConfirmation()) {
-          const serviceClient = createServiceRoleClient();
-          if (!serviceClient) {
-            return res.status(503).json({
-              error: 'Brak konfiguracji obejscia limitu maili (SUPABASE_SERVICE_ROLE_KEY).'
-            });
-          }
-
-          const { data: adminData, error: adminError } = await serviceClient.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true,
-            user_metadata: {
-              full_name: fullName || null
-            }
-          });
-
-          if (adminError) {
-            const adminMessage = String(adminError.message || '').toLowerCase();
-            if (adminMessage.includes('already') || adminMessage.includes('registered')) {
-              return res.status(200).json({
-                user: null,
-                session: null,
-                note: 'If this account already exists, please sign in or reset your password.'
-              });
-            }
-            console.error(`[SIGNUP BYPASS ERROR] email=${maskEmail(email)}, error=${adminError.message}`, adminError);
-            return res.status(503).json({ error: 'Nie udalo sie utworzyc konta w trybie awaryjnym.' });
-          }
-
-          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-
-          if (signInError || !signInData?.session) {
-            console.error(`[SIGNUP BYPASS SIGNIN ERROR] email=${maskEmail(email)}, error=${signInError?.message}`);
-            return res.status(201).json({
-              user: adminData?.user || null,
-              session: null,
-              note: 'Konto utworzone, ale automatyczne logowanie nie powiodlo sie.'
-            });
-          }
-
-          setSessionCookies(res, signInData.session);
-          return res.status(200).json({
-            user: signInData.user || adminData?.user || null,
-            session: toClientSession(signInData.session),
-            fallbackUsed: true
-          });
-        }
-
         return res.status(503).json({ error: 'Rejestracja chwilowo niedostępna: problem z wysyłką maila potwierdzającego. Spróbuj ponownie za chwilę.' });
       }
       if (String(error.message || '').toLowerCase().includes('already registered')) {
