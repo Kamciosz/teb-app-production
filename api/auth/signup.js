@@ -10,6 +10,28 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 const MAX_NAME_LENGTH = 80;
 
+function resolveEmailRedirectTo(req) {
+  const rawOrigin = req.headers.origin;
+  if (typeof rawOrigin === 'string' && rawOrigin) {
+    try {
+      const parsed = new URL(rawOrigin);
+      return parsed.origin;
+    } catch {
+      return null;
+    }
+  }
+
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  if (!host) return null;
+
+  const protoHeader = req.headers['x-forwarded-proto'];
+  const proto = Array.isArray(protoHeader)
+    ? protoHeader[0]
+    : (typeof protoHeader === 'string' && protoHeader) || (process.env.NODE_ENV === 'development' ? 'http' : 'https');
+
+  return `${proto}://${host}`;
+}
+
 export default async function handler(req, res) {
   applyNoStore(res);
 
@@ -44,10 +66,12 @@ export default async function handler(req, res) {
 
   try {
     const supabase = createServerSupabaseClient();
+    const emailRedirectTo = resolveEmailRedirectTo(req);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        ...(emailRedirectTo ? { emailRedirectTo } : {}),
         data: {
           full_name: fullName || null
         }
@@ -55,6 +79,9 @@ export default async function handler(req, res) {
     });
 
     if (error) {
+      if (String(error.message || '').toLowerCase().includes('confirmation email')) {
+        return res.status(503).json({ error: 'Rejestracja chwilowo niedostępna: problem z wysyłką maila potwierdzającego. Spróbuj ponownie za chwilę.' });
+      }
       return res.status(400).json({ error: error.message });
     }
 
