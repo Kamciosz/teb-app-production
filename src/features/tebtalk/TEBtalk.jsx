@@ -8,7 +8,7 @@ import { ImageKitService } from '../../services/imageKitService'
 import { WordFilter } from '../../services/wordFilter'
 import { useToast } from '../../context/ToastContext'
 import { getRoleLabel, getUserInitial } from '../profile/profileMeta'
-import { sanitizePlainText } from '../../utils/safeContent'
+import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
 
 export default function TEBtalk() {
     const MAX_CHAT_MESSAGE = 2000
@@ -23,6 +23,7 @@ export default function TEBtalk() {
     const [newMessage, setNewMessage] = useState('')
     const [myId, setMyId] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [chatLoading, setChatLoading] = useState(false)
     const [isCreatingGroup, setIsCreatingGroup] = useState(false)
     const [groupName, setGroupName] = useState('')
     const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false)
@@ -31,6 +32,7 @@ export default function TEBtalk() {
     const [isAddingMember, setIsAddingMember] = useState(false)
     const [myBlockedIds, setMyBlockedIds] = useState([])
     const [blockedByIds, setBlockedByIds] = useState([])
+    const [chatError, setChatError] = useState('')
     
     const toast = useToast()
     const messagesEndRef = useRef(null)
@@ -40,13 +42,49 @@ export default function TEBtalk() {
     const routeChat = location.state?.openChatWith
     const routeChatId = searchParams.get('chat') || routeChat?.id || null
 
+    const normalizePrivateTarget = (target) => {
+        if (!target?.id) return null
+
+        return {
+            id: target.id,
+            full_name: sanitizePlainText(target.full_name, { maxLength: 80 }) || 'Użytkownik',
+            role: target.role || 'student',
+            avatar_url: sanitizeImageUrl(target.avatar_url),
+            dm_friends_only: Boolean(target.dm_friends_only),
+            type: 'private'
+        }
+    }
+
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session) {
-                setMyId(session.user.id)
-                loadCommunicationState(session.user.id)
-            }
-        })
+        supabase.auth.getSession()
+            .then(({ data: { session } }) => {
+                if (session) {
+                    setMyId(session.user.id)
+                    loadCommunicationState(session.user.id)
+                    return
+                }
+
+                if (import.meta.env.DEV) {
+                    const fallbackUserId = 'local-test-user'
+                    setMyId(fallbackUserId)
+                    loadCommunicationState(fallbackUserId)
+                    return
+                }
+
+                setChatError('Sesja wygasła. Zaloguj się ponownie, aby otworzyć wiadomości.')
+                setLoading(false)
+            })
+            .catch(error => {
+                console.error('Failed to load session for TEBtalk:', error)
+                if (import.meta.env.DEV) {
+                    const fallbackUserId = 'local-test-user'
+                    setMyId(fallbackUserId)
+                    loadCommunicationState(fallbackUserId)
+                    return
+                }
+                setChatError('Nie udało się odczytać sesji użytkownika.')
+                setLoading(false)
+            })
     }, [])
 
     useEffect(() => {
@@ -55,23 +93,49 @@ export default function TEBtalk() {
         let cancelled = false
 
         async function openRouteChat() {
-            const fallbackTarget = routeChat ? { ...routeChat, type: 'private' } : null
+            setChatLoading(true)
+            setChatError('')
 
-            const { data } = await supabase
-                .from('profiles')
-                .select('id, full_name, role, avatar_url, dm_friends_only')
-                .eq('id', routeChatId)
-                .single()
+            try {
+                const fallbackTarget = normalizePrivateTarget(routeChat)
 
-            if (cancelled) return
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, role, avatar_url, dm_friends_only')
+                    .eq('id', routeChatId)
+                    .single()
 
-            const target = data ? { ...data, type: 'private' } : fallbackTarget
-            if (!target?.id) return
+                if (cancelled) return
 
-            setActiveChatUser(target)
-            setMessages([])
-            setView('chat')
-            navigate('/tebtalk', { replace: true, state: null })
+                if (error && !fallbackTarget) {
+                    console.error('Failed to load chat target profile:', error)
+                    setChatError('Nie udało się otworzyć tej rozmowy.')
+                    setActiveChatUser(null)
+                    setView('list')
+                    return
+                }
+
+                const target = normalizePrivateTarget(data) || fallbackTarget
+                if (!target?.id) {
+                    setChatError('Nie udało się odczytać danych rozmówcy.')
+                    setActiveChatUser(null)
+                    setView('list')
+                    return
+                }
+
+                setActiveChatUser(target)
+                setGroupMembers([])
+                setMessages([])
+                setView('chat')
+            } catch (error) {
+                if (cancelled) return
+                console.error('Unexpected route chat opening error:', error)
+                setChatError('Wystąpił błąd podczas otwierania rozmowy.')
+                setActiveChatUser(null)
+                setView('list')
+            } finally {
+                if (!cancelled) setChatLoading(false)
+            }
         }
 
         openRouteChat()
@@ -79,7 +143,7 @@ export default function TEBtalk() {
         return () => {
             cancelled = true
         }
-    }, [myId, navigate, routeChat, routeChatId])
+    }, [myId, routeChat, routeChatId])
 
     useEffect(() => {
         if (view === 'chat' && !activeChatUser) {
@@ -91,10 +155,21 @@ export default function TEBtalk() {
         if (view === 'chat' && activeChatUser && myId) {
             const isGroup = activeChatUser.type === 'group'
             const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
-            
-            fetchMessages(activeChatUser.id, isGroup)
-            
-            if (isGroup) fetchGroupMembers(activeChatUser.id)
+
+            setChatError('')
+
+            const loadChat = async () => {
+                setChatLoading(true)
+                try {
+                    if (isGroup) await fetchGroupMembers(activeChatUser.id)
+                    else setGroupMembers([])
+                    await fetchMessages(activeChatUser.id, isGroup)
+                } finally {
+                    setChatLoading(false)
+                }
+            }
+
+            loadChat()
 
             const channel = supabase.channel(isGroup ? `group_${activeChatUser.id}` : 'direct_messages')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: tableName }, payload => {
@@ -112,8 +187,12 @@ export default function TEBtalk() {
                         }
                     }
                 })
-                .subscribe()
-                .catch(err => console.warn('Failed to subscribe to messages:', err))
+                .subscribe((status) => {
+                    if (status === 'CHANNEL_ERROR') {
+                        console.warn('Failed to subscribe to messages for chat:', activeChatUser.id)
+                        setChatError('Połączenie z rozmową zostało przerwane. Odśwież widok.')
+                    }
+                })
 
             return () => { supabase.removeChannel(channel) }
         }
@@ -202,7 +281,7 @@ export default function TEBtalk() {
     }
 
     async function fetchGroupMembers(groupId) {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('chat_group_members')
             .select(`
                 user_id,
@@ -211,7 +290,24 @@ export default function TEBtalk() {
                 profiles (full_name, avatar_url)
             `)
             .eq('group_id', groupId)
-        if (data) setGroupMembers(data)
+
+        if (error) {
+            console.error('Błąd pobierania członków grupy:', error)
+            setGroupMembers([])
+            return []
+        }
+
+        const normalizedMembers = (data || []).map(member => ({
+            ...member,
+            nickname: sanitizePlainText(member.nickname, { maxLength: 80 }),
+            profiles: {
+                full_name: sanitizePlainText(member.profiles?.full_name, { maxLength: 80 }) || 'Użytkownik',
+                avatar_url: sanitizeImageUrl(member.profiles?.avatar_url)
+            }
+        }))
+
+        setGroupMembers(normalizedMembers)
+        return normalizedMembers
     }
 
     async function fetchRecentChats(userId, blockState = null) {
@@ -335,7 +431,6 @@ export default function TEBtalk() {
     }
 
     async function fetchMessages(partnerId, isGroup = false) {
-        setLoading(true)
         let query = supabase.from(isGroup ? 'chat_group_messages' : 'direct_messages').select('*')
         
         if (isGroup) {
@@ -349,11 +444,11 @@ export default function TEBtalk() {
         if (error) {
             console.error("Błąd pobierania wiadomości:", error)
             setMessages([])
+            setChatError('Nie udało się pobrać wiadomości.')
         } else if (data) {
             setMessages(data)
             scrollToBottom()
         }
-        setLoading(false)
     }
 
     async function sendMessage(e) {
@@ -411,12 +506,18 @@ export default function TEBtalk() {
 
     async function sendImage(url) {
         if (!activeChatUser) return
+        const safeUrl = sanitizeImageUrl(url)
+        if (!safeUrl) {
+            toast.error('Nieprawidłowy adres obrazu.')
+            return
+        }
+
         const isGroup = activeChatUser.type === 'group'
         const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
 
         const payload = {
             sender_id: myId,
-            content: url
+            content: safeUrl
         }
         if (isGroup) payload.group_id = activeChatUser.id
         else payload.receiver_id = activeChatUser.id
@@ -525,18 +626,25 @@ export default function TEBtalk() {
     }
 
     const openChat = (target) => {
-        if (target.type === 'private') {
-            if (isBlockedRelationship(target.id)) {
+        const normalizedTarget = target?.type === 'private' ? normalizePrivateTarget(target) : target
+        if (!normalizedTarget?.id) {
+            toast.error('Nie udało się otworzyć rozmowy.')
+            return
+        }
+
+        if (normalizedTarget.type === 'private') {
+            if (isBlockedRelationship(normalizedTarget.id)) {
                 toast.info('Nie możesz otworzyć rozmowy, ponieważ relacja jest zablokowana.')
                 return
             }
-            if (target.dm_friends_only && !isAcceptedFriend(target.id)) {
+            if (normalizedTarget.dm_friends_only && !isAcceptedFriend(normalizedTarget.id)) {
                 toast.info('Ten użytkownik przyjmuje prywatne wiadomości tylko od znajomych.')
                 return
             }
         }
 
-        setActiveChatUser(target)
+        setChatError('')
+        setActiveChatUser(normalizedTarget)
         setMessages([])
         setView('chat')
     }
@@ -544,9 +652,13 @@ export default function TEBtalk() {
     const closeChat = () => {
         setActiveChatUser(null)
         setMessages([])
+        setChatError('')
         setIsGroupSettingsOpen(false)
         setIsAddingMember(false)
         setView('list')
+        if (routeChatId || routeChat) {
+            navigate('/tebtalk', { replace: true, state: null })
+        }
     }
 
     const openProfile = (userId, event) => {
@@ -556,6 +668,9 @@ export default function TEBtalk() {
     }
 
     if (view === 'chat' && activeChatUser) {
+        const activeChatName = sanitizePlainText(activeChatUser.full_name, { maxLength: 80 }) || 'Użytkownik'
+        const activeChatAvatarUrl = sanitizeImageUrl(activeChatUser.avatar_url)
+
         return (
             <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10">
                 {/* Header Czatu */}
@@ -567,19 +682,19 @@ export default function TEBtalk() {
                         <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shadow-sm shrink-0">
                             {activeChatUser.type === 'group' ? (
                                 <Users size={20} className="text-secondary" />
-                            ) : activeChatUser.avatar_url ? (
+                            ) : activeChatAvatarUrl ? (
                                 <button type="button" onClick={(event) => openProfile(activeChatUser.id, event)} className="w-full h-full">
-                                    <img src={ImageKitService.getOptimizedUrl(activeChatUser.avatar_url)} alt="Av" className="w-full h-full object-cover" />
+                                    <img src={ImageKitService.getOptimizedUrl(activeChatAvatarUrl)} alt="Av" className="w-full h-full object-cover" />
                                 </button>
                             ) : (
                                 <button type="button" onClick={(event) => openProfile(activeChatUser.id, event)} className="w-full h-full flex items-center justify-center">
-                                    {getUserInitial(activeChatUser.full_name)}
+                                    {getUserInitial(activeChatName)}
                                 </button>
                             )}
                         </div>
                         <div className="flex-1 min-w-0 text-left">
                             <div className="font-bold text-white leading-tight flex items-center gap-1.5 truncate">
-                                {activeChatUser.full_name}
+                                {activeChatName}
                                 {activeChatUser.role === 'admin' && <span className="bg-red-500 w-2 h-2 rounded-full shadow-[0_0_5px_red]"></span>}
                             </div>
                             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider truncate">
@@ -605,7 +720,16 @@ export default function TEBtalk() {
 
                 {/* Pole Wiadomości */}
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scrollbar-none">
-                    {messages.length === 0 ? (
+                    {chatError ? (
+                        <div className="m-auto max-w-xs rounded-2xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-center text-sm text-red-200">
+                            {chatError}
+                        </div>
+                    ) : chatLoading ? (
+                        <div className="m-auto text-center text-gray-500 flex flex-col items-center gap-2">
+                            <MessageCircle size={32} className="opacity-50 animate-pulse" />
+                            <p className="text-sm">Otwieranie rozmowy...</p>
+                        </div>
+                    ) : messages.length === 0 ? (
                         <div className="m-auto text-center text-gray-500 flex flex-col items-center gap-2">
                             <MessageCircle size={32} className="opacity-50" />
                             <p className="text-sm">Brak wiadomości.<br />Napisz jako pierwszy!</p>
@@ -616,12 +740,14 @@ export default function TEBtalk() {
                             const sender = activeChatUser.type === 'group' 
                                 ? groupMembers.find(m => m.user_id === msg.sender_id)
                                 : null
+                            const senderName = sanitizePlainText(sender?.nickname || sender?.profiles?.full_name, { maxLength: 80 }) || 'Użytkownik'
+                            const safeMessageImageUrl = sanitizeImageUrl(msg.content)
                             
                             return (
                                 <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-2 group relative`}>
                                     {!isMe && activeChatUser.type === 'group' && sender && (
                                         <div className="text-[9px] font-bold text-gray-500 mb-0.5 ml-1 uppercase">
-                                            {sender.nickname || sender.profiles.full_name}
+                                            {senderName}
                                         </div>
                                     )}
                                     <div className="flex items-center gap-2">
@@ -639,16 +765,16 @@ export default function TEBtalk() {
                                             </div>
                                         )}
                                         <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.is_deleted ? 'bg-gray-800/30 text-gray-600 italic border border-gray-800' : isMe ? 'bg-primary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
-                                            {msg.is_deleted ? 'Wiadomość usunięta' : msg.content.startsWith('https://') ? (
+                                            {msg.is_deleted ? 'Wiadomość usunięta' : safeMessageImageUrl ? (
                                                 <img
-                                                    src={ImageKitService.getOptimizedUrl(msg.content, 400)}
+                                                    src={ImageKitService.getOptimizedUrl(safeMessageImageUrl, 400)}
                                                     alt="Przesłane zdjęcie"
                                                     className="rounded-lg cursor-pointer hover:opacity-90 transition"
-                                                    onClick={() => window.open(msg.content, '_blank', 'noopener,noreferrer')}
+                                                    onClick={() => window.open(safeMessageImageUrl, '_blank', 'noopener,noreferrer')}
                                                     loading="lazy"
                                                 />
                                             ) : (
-                                                msg.content
+                                                sanitizePlainText(msg.content, { maxLength: MAX_CHAT_MESSAGE, preserveLineBreaks: true })
                                             )}
                                         </div>
                                     </div>
@@ -784,6 +910,11 @@ export default function TEBtalk() {
 
     return (
         <div className="pb-10">
+            {chatError && view !== 'chat' ? (
+                <div className="mb-4 rounded-2xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-sm text-red-200">
+                    {chatError}
+                </div>
+            ) : null}
             <div className="flex justify-between items-center mb-6 px-2">
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight">TEBtalk</h2>

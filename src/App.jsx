@@ -18,6 +18,7 @@ import PrivacyPolicy from './features/privacy/PrivacyPolicy'
 
 import InstallPrompt from './components/InstallPrompt'
 import ReloadPrompt from './components/ReloadPrompt'
+import AppErrorBoundary from './components/AppErrorBoundary'
 
 function App() {
     const [session, setSession] = useState(null)
@@ -262,18 +263,20 @@ function App() {
 
                         {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
                         <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
-                            <Routes>
-                                <Route path="/" element={<Feed />} />
-                                <Route path="/features" element={<Features />} />
-                                <Route path="/profile" element={<Profile />} />
-                                <Route path="/profile/:userId" element={<PublicProfile />} />
-                                <Route path="/rewear" element={<ReWear />} />
-                                <Route path="/librus" element={<Librus />} />
-                                <Route path="/tebtalk" element={<TEBtalk />} />
-                                <Route path="/groups" element={<Groups />} />
-                                <Route path="/admin" element={<Admin />} />
-                                <Route path="/privacy" element={<PrivacyPolicy />} />
-                            </Routes>
+                            <AppErrorBoundary>
+                                <Routes>
+                                    <Route path="/" element={<Feed />} />
+                                    <Route path="/features" element={<Features />} />
+                                    <Route path="/profile" element={<Profile />} />
+                                    <Route path="/profile/:userId" element={<PublicProfile />} />
+                                    <Route path="/rewear" element={<ReWear />} />
+                                    <Route path="/librus" element={<Librus />} />
+                                    <Route path="/tebtalk" element={<TEBtalk />} />
+                                    <Route path="/groups" element={<Groups />} />
+                                    <Route path="/admin" element={<Admin />} />
+                                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                                </Routes>
+                            </AppErrorBoundary>
                         </main>
 
                         {/* Proaktywna opcja instalacji aplikacji na telefon PWA */}
