@@ -5,6 +5,58 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUBJECT_MAX_LENGTH = 200;
 const BODY_MAX_LENGTH = 50000;
 
+function resolveProviderOrder() {
+  const configured = String(process.env.EMAIL_PROVIDER || 'auto').trim().toLowerCase();
+  if (configured === 'brevo') return ['brevo'];
+  if (configured === 'resend') return ['resend'];
+  return ['brevo', 'resend'];
+}
+
+function canUseBrevo() {
+  return Boolean(process.env.BREVO_API_KEY && process.env.BREVO_FROM);
+}
+
+function canUseResend() {
+  return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM);
+}
+
+async function sendWithBrevo({ recipients, subject, html, text }) {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'api-key': process.env.BREVO_API_KEY
+    },
+    body: JSON.stringify({
+      sender: { email: process.env.BREVO_FROM },
+      to: recipients.map((email) => ({ email })),
+      subject,
+      ...(html ? { htmlContent: html } : {}),
+      ...(text ? { textContent: text } : {})
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.message || 'Brevo send failed');
+    error.status = response.status;
+    throw error;
+  }
+
+  return payload;
+}
+
+async function sendWithResend({ recipients, subject, html, text }) {
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  return resend.emails.send({
+    from: process.env.RESEND_FROM,
+    to: recipients,
+    subject,
+    html: html || undefined,
+    text: text || undefined
+  });
+}
+
 function normalizeRecipients(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value.trim()) return [value.trim()];
@@ -36,7 +88,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM) {
+  if (!canUseBrevo() && !canUseResend()) {
     return res.status(503).json({ error: 'Email provider not configured' });
   }
 
@@ -68,16 +120,39 @@ export default async function handler(req, res) {
   }
 
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    const result = await resend.emails.send({
-      from: process.env.RESEND_FROM,
-      to: recipients,
-      subject,
-      html: html || undefined,
-      text: text || undefined
-    });
+    const providers = resolveProviderOrder();
+    const providerErrors = [];
 
-    return res.status(200).json({ ok: true, result });
+    for (const provider of providers) {
+      try {
+        if (provider === 'brevo' && canUseBrevo()) {
+          const result = await sendWithBrevo({ recipients, subject, html, text });
+          return res.status(200).json({ ok: true, provider: 'brevo', result });
+        }
+
+        if (provider === 'resend' && canUseResend()) {
+          const result = await sendWithResend({ recipients, subject, html, text });
+          return res.status(200).json({ ok: true, provider: 'resend', result });
+        }
+      } catch (providerError) {
+        providerErrors.push(providerError);
+      }
+    }
+
+    const finalError = providerErrors[providerErrors.length - 1] || new Error('Email send failed');
+    const status = finalError?.statusCode || finalError?.status || finalError?.response?.status || 500;
+    const safeStatus = status >= 400 && status < 600 ? status : 500;
+
+    if (safeStatus === 429) {
+      return res.status(429).json({ error: 'Rate limited by email provider' });
+    }
+
+    if (safeStatus === 401 || safeStatus === 403) {
+      return res.status(502).json({ error: 'Email provider authentication failed' });
+    }
+
+    console.error('send-email provider error', finalError);
+    return res.status(safeStatus).json({ error: 'Email send failed' });
   } catch (error) {
     const status = error?.statusCode || error?.status || error?.response?.status || 500;
     const safeStatus = status >= 400 && status < 600 ? status : 500;
