@@ -47,12 +47,17 @@ export default function TEBtalk() {
     }, [])
 
     useEffect(() => {
-        if (!location.state?.openChatWith) return
+        const routeChat = location.state?.openChatWith
+        if (!routeChat?.id) return
 
-        setActiveChatUser({ ...location.state.openChatWith, type: 'private' })
+        setActiveChatUser({ ...routeChat, type: 'private' })
+        setMessages([])
         setView('chat')
-        navigate(location.pathname, { replace: true, state: {} })
-    }, [location.pathname, location.state, navigate])
+
+        setTimeout(() => {
+            navigate(location.pathname, { replace: true, state: null })
+        }, 0)
+    }, [location.state?.openChatWith?.id])
 
     useEffect(() => {
         if (view === 'chat' && !activeChatUser) {
@@ -536,17 +541,18 @@ export default function TEBtalk() {
                     <button onClick={closeChat} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                         <ArrowLeft size={20} />
                     </button>
-                    <button
-                        onClick={activeChatUser.type === 'group' ? undefined : (event) => openProfile(activeChatUser.id, event)}
-                        className={`flex items-center gap-3 flex-1 min-w-0 ${activeChatUser.type === 'group' ? 'cursor-default' : 'hover:text-primary transition'}`}
-                    >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shadow-sm shrink-0">
                             {activeChatUser.type === 'group' ? (
                                 <Users size={20} className="text-secondary" />
                             ) : activeChatUser.avatar_url ? (
-                                <img src={ImageKitService.getOptimizedUrl(activeChatUser.avatar_url)} alt="Av" className="w-full h-full object-cover" />
+                                <button type="button" onClick={(event) => openProfile(activeChatUser.id, event)} className="w-full h-full">
+                                    <img src={ImageKitService.getOptimizedUrl(activeChatUser.avatar_url)} alt="Av" className="w-full h-full object-cover" />
+                                </button>
                             ) : (
-                                getUserInitial(activeChatUser.full_name)
+                                <button type="button" onClick={(event) => openProfile(activeChatUser.id, event)} className="w-full h-full flex items-center justify-center">
+                                    {getUserInitial(activeChatUser.full_name)}
+                                </button>
                             )}
                         </div>
                         <div className="flex-1 min-w-0 text-left">
@@ -558,7 +564,7 @@ export default function TEBtalk() {
                                 {activeChatUser.type === 'group' ? `Grupa (${groupMembers.length} osób)` : getRoleLabel(activeChatUser.role || 'student')}
                             </div>
                         </div>
-                    </button>
+                    </div>
                     {activeChatUser.type === 'private' && (
                         <button
                             onClick={() => toggleBlock(activeChatUser.id)}
@@ -792,16 +798,13 @@ export default function TEBtalk() {
                         ) : (
                             friends.map(friend => (
                                 <div key={friend.id} onClick={() => openChat({ ...friend, type: 'private' })} className="bg-surface border border-gray-800 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-primary transition group">
-                                    <div className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 overflow-hidden flex items-center justify-center font-bold text-lg">
+                                    <button type="button" onClick={(event) => openProfile(friend.id, event)} className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 overflow-hidden flex items-center justify-center font-bold text-lg shrink-0">
                                         {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url)} alt="Av" className="w-full h-full object-cover" /> : getUserInitial(friend.full_name)}
-                                    </div>
-                                    <button type="button" onClick={(event) => openProfile(friend.id, event)} className="flex-1 text-left min-w-0">
+                                    </button>
+                                    <div className="flex-1 text-left min-w-0">
                                         <div className="font-bold text-white group-hover:text-primary transition truncate">{friend.full_name}</div>
                                         <div className="text-[10px] text-gray-500 uppercase font-bold tracking-widest truncate">{getRoleLabel(friend.role || 'student')}</div>
-                                    </button>
-                                    <button type="button" onClick={(event) => openProfile(friend.id, event)} className="w-8 h-8 rounded-full bg-gray-800 text-gray-300 flex items-center justify-center hover:text-primary transition">
-                                        <User size={14} />
-                                    </button>
+                                    </div>
                                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                                         <MessageCircle size={16} />
                                     </div>
@@ -835,26 +838,18 @@ export default function TEBtalk() {
                     {searchResults.length > 0 ? (
                         <div className="flex flex-col gap-2">
                             {searchResults.map(user => (
-                                <div key={user.id} className="bg-surface border border-gray-800 p-3 rounded-2xl flex items-center gap-3 transition">
-                                    <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden">
+                                <div key={user.id} onClick={() => openChat({ ...user, type: 'private' })} className="bg-surface border border-gray-800 p-3 rounded-2xl flex items-center gap-3 transition cursor-pointer hover:border-primary/40">
+                                    <button type="button" onClick={(event) => openProfile(user.id, event)} className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shrink-0">
                                         {user.avatar_url ? (
-                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url, 100)} alt="Av" className="w-full h-full object-cover" />
+                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="Av" className="w-full h-full object-cover" />
                                         ) : (
                                             getUserInitial(user.full_name)
                                         )}
-                                    </div>
-                                    <button type="button" onClick={(event) => openProfile(user.id, event)} className="flex-1 text-left min-w-0">
+                                    </button>
+                                    <div className="flex-1 text-left min-w-0">
                                         <div className="font-bold text-white text-sm truncate">{user.full_name}</div>
                                         <div className="text-[10px] text-gray-500 uppercase truncate">{getRoleLabel(user.role || 'student')}</div>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={(event) => openProfile(user.id, event)}
-                                        className="p-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-white hover:text-black transition active:scale-90"
-                                        title="Otwórz profil"
-                                    >
-                                        <User size={18} />
-                                    </button>
+                                    </div>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => toggleBlock(user.id)}
@@ -871,12 +866,8 @@ export default function TEBtalk() {
                                         >
                                             <Plus size={18} />
                                         </button>
-                                        <button 
-                                            onClick={() => openChat({ ...user, type: 'private' })}
-                                            disabled={isBlockedRelationship(user.id) || (user.dm_friends_only && !isAcceptedFriend(user.id))}
-                                            className="p-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-white hover:text-black transition active:scale-90 disabled:opacity-40"
-                                        >
-                                            <MessageCircle size={18} />
+                                        <button type="button" onClick={(event) => openProfile(user.id, event)} className="p-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-white hover:text-black transition active:scale-90" title="Otwórz profil">
+                                            <User size={18} />
                                         </button>
                                     </div>
                                 </div>
@@ -905,7 +896,7 @@ export default function TEBtalk() {
                         <div className="flex flex-col gap-2">
                             {recentChats.map(user => (
                                 <div key={user.id} onClick={() => openChat(user)} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:border-gray-600 transition">
-                                    <div className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold text-lg relative overflow-hidden">
+                                    <button type="button" onClick={(event) => user.type === 'group' ? event.stopPropagation() : openProfile(user.id, event)} className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold text-lg relative overflow-hidden shrink-0">
                                         {user.type === 'group' ? (
                                             <Users size={24} className="text-secondary" />
                                         ) : user.avatar_url ? (
@@ -914,11 +905,11 @@ export default function TEBtalk() {
                                             getUserInitial(user.full_name)
                                         )}
                                         {user.type !== 'group' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-surface rounded-full z-10"></div>}
-                                    </div>
-                                    <button type="button" onClick={(event) => user.type === 'group' ? event.stopPropagation() : openProfile(user.id, event)} className="flex-1 text-left min-w-0">
+                                    </button>
+                                    <div className="flex-1 text-left min-w-0">
                                         <div className="font-bold text-white leading-tight truncate">{user.full_name}</div>
                                         <div className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{user.type === 'group' ? 'Pokój grupowy' : getRoleLabel(user.role || 'student')}</div>
-                                    </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>

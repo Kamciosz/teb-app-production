@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import { CleanupService } from '../../services/cleanupService'
+import { sanitizePlainText } from '../../utils/safeContent'
 
 export default function Admin() {
     const [view, setView] = useState('users') // 'users', 'reports', 'groups', 'appeals', 'audit', 'system'
@@ -18,12 +19,19 @@ export default function Admin() {
     const [myId, setMyId] = useState(null)
     const [banDuration, setBanDuration] = useState('1440') // 1 day in minutes
     const [pageError, setPageError] = useState('')
+    const [userSearch, setUserSearch] = useState('')
+    const [reportSearch, setReportSearch] = useState('')
 
     const ROLES = ['student', 'teacher', 'admin', 'editor', 'moderator_content', 'moderator_users', 'su_member']
 
     useEffect(() => {
         checkAccessAndFetch()
-    }, [view])
+    }, [])
+
+    useEffect(() => {
+        if (myRoles.length === 0) return
+        fetchViewData(view, myRoles)
+    }, [view, myRoles])
 
     async function handleCleanup() {
         if (!window.confirm("Czy na pewno chcesz uruchomić Śmieciarkę? Ta operacja trwale usunie stare media i wpisy zgodnie z polityką prywatności.")) return
@@ -38,6 +46,66 @@ export default function Admin() {
             alert(`🚛 Sprzątanie zakończone!\nUsunięto:\n- ${result.deleted.chat} wiadomości\n- ${result.deleted.rewear} ofert giełdy\n- ${result.deleted.reports} raportów`)
         } else {
             alert("❌ Błąd podczas sprzątania: " + result.error)
+        }
+    }
+
+    async function fetchViewData(targetView, roles) {
+        const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
+        const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
+        const canOpenAudit = canManageUsers || canManageContent
+
+        if (targetView === 'users' && canManageUsers) {
+            const primaryUsers = await supabase
+                .from('profiles')
+                .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
+                .order('created_at', { ascending: false })
+
+            if (primaryUsers.data) {
+                setUsers(primaryUsers.data)
+            } else {
+                const fallbackUsers = await supabase
+                    .from('profiles')
+                    .select('id, full_name, roles, role, is_banned, banned_until, created_at')
+                    .order('created_at', { ascending: false })
+
+                if (fallbackUsers.data) {
+                    setUsers(fallbackUsers.data.map(user => ({ ...user, ban_reason: null })))
+                }
+            }
+        }
+
+        if (targetView === 'reports' && (canManageUsers || canManageContent)) {
+            const { data } = await supabase.from('reports')
+                .select('*, reporter:profiles!reporter_id(full_name)')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+            if (data) setReports(data)
+        }
+
+        if (targetView === 'groups' && canManageUsers) {
+            const { data } = await supabase.from('groups')
+                .select('*, creator:profiles!creator_id(full_name)')
+                .eq('is_approved', false)
+                .order('created_at', { ascending: false })
+            if (data) setPendingGroups(data)
+        }
+
+        if (targetView === 'appeals' && canManageUsers) {
+            const { data } = await supabase.from('punishment_appeals')
+                .select('id, status, punishment_type, message, resolution_note, created_at, appellant:profiles!appellant_user_id(full_name), audit:moderation_audit_log!audit_log_id(action_type, reason, metadata, created_at)')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+
+            setAppeals(data || [])
+        }
+
+        if (targetView === 'audit' && canOpenAudit) {
+            const { data } = await supabase.from('moderation_audit_log')
+                .select('id, action_type, reason, metadata, created_at, actor:profiles!actor_user_id(full_name), target:profiles!target_user_id(full_name)')
+                .order('created_at', { ascending: false })
+                .limit(100)
+
+            setAuditEntries(data || [])
         }
     }
 
@@ -65,61 +133,7 @@ export default function Admin() {
 
             const roles = profile?.roles || (profile?.role ? [profile.role] : ['student'])
             setMyRoles(roles)
-            const canManageUsers = roles.includes('admin') || roles.includes('moderator_users')
-            const canManageContent = roles.includes('admin') || roles.includes('moderator_content')
-            const canOpenAudit = canManageUsers || canManageContent
-
-            if (canManageUsers || canManageContent) {
-                if (view === 'users' && canManageUsers) {
-                    const primaryUsers = await supabase
-                        .from('profiles')
-                        .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
-                        .order('created_at', { ascending: false })
-
-                    if (primaryUsers.data) {
-                        setUsers(primaryUsers.data)
-                    } else {
-                        const fallbackUsers = await supabase
-                            .from('profiles')
-                            .select('id, full_name, roles, role, is_banned, banned_until, created_at')
-                            .order('created_at', { ascending: false })
-
-                        if (fallbackUsers.data) {
-                            setUsers(fallbackUsers.data.map(user => ({ ...user, ban_reason: null })))
-                        }
-                    }
-                }
-                if (view === 'reports' && (canManageUsers || canManageContent)) {
-                    const { data } = await supabase.from('reports')
-                        .select('*, reporter:profiles!reporter_id(full_name)')
-                        .eq('status', 'pending')
-                        .order('created_at', { ascending: false })
-                    if (data) setReports(data)
-                }
-                if (view === 'groups' && canManageUsers) {
-                    const { data } = await supabase.from('groups')
-                        .select('*, creator:profiles!creator_id(full_name)')
-                        .eq('is_approved', false)
-                        .order('created_at', { ascending: false })
-                    if (data) setPendingGroups(data)
-                }
-                if (view === 'appeals' && canManageUsers) {
-                    const { data } = await supabase.from('punishment_appeals')
-                        .select('id, status, punishment_type, message, resolution_note, created_at, appellant:profiles!appellant_user_id(full_name), audit:moderation_audit_log!audit_log_id(action_type, reason, metadata, created_at)')
-                        .eq('status', 'pending')
-                        .order('created_at', { ascending: false })
-
-                    setAppeals(data || [])
-                }
-                if (view === 'audit' && canOpenAudit) {
-                    const { data } = await supabase.from('moderation_audit_log')
-                        .select('id, action_type, reason, metadata, created_at, actor:profiles!actor_user_id(full_name), target:profiles!target_user_id(full_name)')
-                        .order('created_at', { ascending: false })
-                        .limit(100)
-
-                    setAuditEntries(data || [])
-                }
-            }
+            await fetchViewData(view, roles)
         } finally {
             setLoading(false)
         }
@@ -143,8 +157,16 @@ export default function Admin() {
         }
         if (newRoles.length === 0) newRoles = ['student']
 
-        await supabase.from('profiles').update({ roles: newRoles, role: newRoles[0] }).eq('id', userId)
-        checkAccessAndFetch()
+        const { error } = await supabase.from('profiles').update({ roles: newRoles, role: newRoles[0] }).eq('id', userId)
+        if (error) {
+            alert(`Nie udało się zaktualizować rang: ${error.message}`)
+            return
+        }
+
+        setUsers(prev => prev.map(user => {
+            if (user.id !== userId) return user
+            return { ...user, roles: newRoles, role: newRoles[0] }
+        }))
     }
 
     async function handleBan(userId, isBanned) {
@@ -155,44 +177,68 @@ export default function Admin() {
 
         let banReason = null
         if (!isBanned) {
-            banReason = window.prompt('Podaj powód kary. Użytkownik zobaczy ten powód przy apelacji.')?.trim()
+            banReason = sanitizePlainText(window.prompt('Podaj powód kary. Użytkownik zobaczy ten powód przy apelacji.') || '', { maxLength: 240, preserveLineBreaks: true })
             if (!banReason) return
         }
 
         const banUntil = isBanned ? null : new Date(Date.now() + parseInt(banDuration) * 60000).toISOString()
 
-        await supabase.from('profiles').update({
+        const { error } = await supabase.from('profiles').update({
             is_banned: !isBanned,
             banned_until: banUntil,
             ban_reason: isBanned ? null : banReason
         }).eq('id', userId)
+        if (error) {
+            alert(`Nie udało się zmienić statusu bana: ${error.message}`)
+            return
+        }
 
-        checkAccessAndFetch()
+        setUsers(prev => prev.map(user => {
+            if (user.id !== userId) return user
+            return {
+                ...user,
+                is_banned: !isBanned,
+                banned_until: banUntil,
+                ban_reason: isBanned ? null : banReason
+            }
+        }))
     }
 
     async function resolveReport(reportId, status) {
         // status: 'resolved' lub 'dismissed'
-        await supabase.from('reports').update({ status }).eq('id', reportId)
-        checkAccessAndFetch()
+        const { error } = await supabase.from('reports').update({ status }).eq('id', reportId)
+        if (error) {
+            alert(`Nie udało się zaktualizować zgłoszenia: ${error.message}`)
+            return
+        }
+        setReports(prev => prev.filter(report => report.id !== reportId))
     }
 
     async function handleGroupApproval(groupId, isApproved) {
         if (isApproved) {
-            await supabase.from('groups').update({ is_approved: true }).eq('id', groupId)
+            const { error } = await supabase.from('groups').update({ is_approved: true }).eq('id', groupId)
+            if (error) {
+                alert(`Nie udało się zatwierdzić grupy: ${error.message}`)
+                return
+            }
         } else {
-            await supabase.from('groups').delete().eq('id', groupId)
+            const { error } = await supabase.from('groups').delete().eq('id', groupId)
+            if (error) {
+                alert(`Nie udało się odrzucić grupy: ${error.message}`)
+                return
+            }
         }
-        checkAccessAndFetch()
+        setPendingGroups(prev => prev.filter(group => group.id !== groupId))
     }
 
     async function resolveAppeal(appealId, status) {
-        const resolutionNote = window.prompt(
+        const resolutionNote = sanitizePlainText(window.prompt(
             status === 'approved'
                 ? 'Dodaj krótkie uzasadnienie cofnięcia kary.'
                 : 'Dodaj krótkie uzasadnienie odrzucenia apelacji.'
-        )
+        ) || '', { maxLength: 240, preserveLineBreaks: true })
 
-        if (resolutionNote === null) return
+        if (!resolutionNote) return
 
         const { error } = await supabase.rpc('resolve_punishment_appeal', {
             p_appeal_id: appealId,
@@ -205,8 +251,31 @@ export default function Admin() {
             return
         }
 
-        checkAccessAndFetch()
+        setAppeals(prev => prev.filter(appeal => appeal.id !== appealId))
     }
+
+    const canManageUsers = useMemo(() => myRoles.includes('admin') || myRoles.includes('moderator_users'), [myRoles])
+    const canManageContent = useMemo(() => myRoles.includes('admin') || myRoles.includes('moderator_content'), [myRoles])
+    const filteredUsers = useMemo(() => {
+        const q = sanitizePlainText(userSearch, { maxLength: 80 }).toLowerCase()
+        if (!q) return users
+        return users.filter(user => {
+            const roles = (user.roles || [user.role] || []).join(' ').toLowerCase()
+            return (user.full_name || '').toLowerCase().includes(q) || (user.id || '').toLowerCase().includes(q) || roles.includes(q)
+        })
+    }, [users, userSearch])
+
+    const filteredReports = useMemo(() => {
+        const q = sanitizePlainText(reportSearch, { maxLength: 80 }).toLowerCase()
+        if (!q) return reports
+        return reports.filter(report => {
+            const reporter = report.reporter?.full_name || ''
+            return reporter.toLowerCase().includes(q)
+                || (report.reason || '').toLowerCase().includes(q)
+                || (report.reported_entity_type || '').toLowerCase().includes(q)
+                || (report.reported_entity_id || '').toLowerCase().includes(q)
+        })
+    }, [reports, reportSearch])
 
     if (loading) return <div className="text-center text-primary mt-10 animate-pulse">Weryfikacja Modeli Bezpieczeństwa (RLS)...</div>
 
@@ -240,7 +309,7 @@ export default function Admin() {
             )}
 
             {/* Pasek Zakładek RBAC */}
-            <div className="grid grid-cols-3 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1">
+            <div className="grid grid-cols-3 md:grid-cols-6 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1">
                 <button
                     onClick={() => setView('reports')}
                     className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'reports' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
@@ -357,12 +426,98 @@ export default function Admin() {
             {view === 'users' && (
                 <div className="flex flex-col gap-3 fade-in">
                     <div className="flex bg-surface border border-gray-800 rounded-xl p-2 mb-2 max-w-md">
-                        <input type="text" placeholder="Szukaj ucznia do moderacji..." className="bg-transparent text-white pl-2 outline-none w-full text-sm font-bold" />
+                        <input
+                            type="text"
+                            placeholder="Szukaj ucznia po nazwie, ID lub roli..."
+                            value={userSearch}
+                            onChange={event => setUserSearch(event.target.value)}
+                            className="bg-transparent text-white pl-2 outline-none w-full text-sm font-bold"
+                        />
                         <button className="p-2 text-gray-400"><Search size={18} /></button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {users.map(u => {
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-1">
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Wszyscy</div>
+                            <div className="text-xl font-black text-white mt-1">{users.length}</div>
+                        </div>
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Filtrowani</div>
+                            <div className="text-xl font-black text-primary mt-1">{filteredUsers.length}</div>
+                        </div>
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Zbanowani</div>
+                            <div className="text-xl font-black text-red-400 mt-1">{users.filter(user => user.is_banned).length}</div>
+                        </div>
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Moderatorzy/Admin</div>
+                            <div className="text-xl font-black text-orange-300 mt-1">{users.filter(user => (user.roles || [user.role] || []).some(role => ['admin', 'moderator_users', 'moderator_content'].includes(role))).length}</div>
+                        </div>
+                    </div>
+
+                    <div className="hidden lg:block bg-surface border border-gray-800 rounded-xl overflow-hidden">
+                        <div className="grid grid-cols-[1.2fr_1.1fr_0.8fr_1fr] gap-3 px-4 py-3 text-[10px] uppercase tracking-widest font-bold text-gray-500 border-b border-gray-800 bg-[#171717]">
+                            <span>Użytkownik</span>
+                            <span>Role</span>
+                            <span>Status</span>
+                            <span>Akcje</span>
+                        </div>
+                        <div className="max-h-[55vh] overflow-y-auto">
+                            {filteredUsers.map(u => {
+                                const userRoles = u.roles || [u.role] || ['student']
+                                return (
+                                    <div key={u.id} className="grid grid-cols-[1.2fr_1.1fr_0.8fr_1fr] gap-3 px-4 py-3 border-b border-gray-800/70 hover:bg-white/[0.02]">
+                                        <div>
+                                            <div className="font-bold text-white text-sm">{u.full_name}</div>
+                                            <div className="text-[10px] text-gray-500 font-mono mt-1">{u.id}</div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {ROLES.map(rank => (
+                                                <button
+                                                    key={rank}
+                                                    onClick={() => toggleRank(u.id, userRoles, rank)}
+                                                    className={`text-[9px] px-2 py-1 rounded border transition ${userRoles.includes(rank) ? 'bg-primary/20 border-primary text-primary' : 'bg-[#121212] border-gray-800 text-gray-500 hover:border-gray-600'}`}
+                                                >
+                                                    {rank}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div>
+                                            {u.is_banned ? (
+                                                <div className="text-[11px] font-bold text-red-400">BAN</div>
+                                            ) : (
+                                                <div className="text-[11px] font-bold text-green-400">AKTYWNY</div>
+                                            )}
+                                            {u.banned_until ? <div className="text-[10px] text-gray-500 mt-1">do {new Date(u.banned_until).toLocaleString()}</div> : null}
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                            <select
+                                                className="bg-background border border-gray-700 rounded text-[10px] text-gray-400 p-1 outline-none"
+                                                value={banDuration}
+                                                onChange={(e) => setBanDuration(e.target.value)}
+                                                disabled={u.is_banned}
+                                            >
+                                                <option value="60">1h</option>
+                                                <option value="1440">24h</option>
+                                                <option value="4320">3 dni</option>
+                                                <option value="10080">7 dni</option>
+                                                <option value="52560000">Permanentny</option>
+                                            </select>
+                                            <button
+                                                onClick={() => handleBan(u.id, u.is_banned)}
+                                                className={`flex-1 py-1.5 rounded text-[10px] font-bold transition flex justify-center items-center gap-1 ${u.is_banned ? 'bg-green-500/10 text-green-500 border border-green-500/30' : 'bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20'}`}
+                                            >
+                                                {u.is_banned ? <><UserCheck size={14} /> Odbanuj</> : <><UserMinus size={14} /> Nałóż karę</>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
+                        {filteredUsers.map(u => {
                         const userRoles = u.roles || [u.role] || ['student']
                         return (
                             <div key={u.id} className={`bg-surface border p-4 rounded-xl flex flex-col gap-3 transition ${u.is_banned ? 'border-red-500/50 bg-red-500/5' : 'border-gray-800'}`}>
@@ -510,14 +665,24 @@ export default function Admin() {
             {/* Widok: Zgłoszenia */}
             {view === 'reports' && (
                 <div className="flex flex-col gap-3 fade-in">
+                    <div className="flex bg-surface border border-gray-800 rounded-xl p-2 mb-1 max-w-lg">
+                        <input
+                            type="text"
+                            placeholder="Filtruj tickety po zgłaszającym, typie i powodzie..."
+                            value={reportSearch}
+                            onChange={event => setReportSearch(event.target.value)}
+                            className="bg-transparent text-white pl-2 outline-none w-full text-sm font-bold"
+                        />
+                        <button className="p-2 text-gray-400"><Search size={18} /></button>
+                    </div>
                     {reports.length === 0 ? (
                         <div className="text-center text-gray-500 mt-6 p-8 border border-gray-800 border-dashed rounded-2xl">
                             <AlertOctagon size={40} className="mx-auto mb-3 opacity-20" />
                             Szkoła jest czysta. Brak otwartych ticketów z incydentami.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {reports.map(r => (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {filteredReports.map(r => (
                             <div key={r.id} className="bg-surface border border-red-500/30 p-4 rounded-xl flex flex-col gap-3 shadow-[0_0_15px_rgba(239,68,68,0.1)] relative overflow-hidden">
                                 <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg">NOWE ZGŁOSZENIE</div>
 
@@ -535,21 +700,37 @@ export default function Admin() {
                                                 <div className="text-[9px] text-gray-500 uppercase font-black mb-2 flex items-center gap-1">
                                                     <ShieldAlert size={10} /> Kontekst Rozmowy (±5 wiadomości):
                                                 </div>
-                                                <div className="flex flex-col gap-1.5">
-                                                    {(() => {
-                                                        try {
-                                                            const context = JSON.parse(r.context);
-                                                            return context.map((ctx, i) => (
-                                                                <div key={i} className={`text-[10px] leading-tight ${ctx.t?.includes(r.reported_entity_id) ? 'bg-red-500/10 p-1 rounded' : ''}`}>
-                                                                    <span className="font-bold text-gray-300">{ctx.u || 'Unknown'}: </span>
-                                                                    <span className="text-gray-400">{ctx.t || 'No content'}</span>
+                                                {(() => {
+                                                    const context = typeof r.context === 'string' ? (() => {
+                                                        try { return JSON.parse(r.context) } catch { return null }
+                                                    })() : r.context
+
+                                                    if (!context) {
+                                                        return <div className="text-[10px] text-gray-500 italic">Brak dostępnego kontekstu</div>
+                                                    }
+
+                                                    const relatedMessages = Array.isArray(context)
+                                                        ? context
+                                                        : (Array.isArray(context.related_message_ids) ? context.related_message_ids.map(id => ({ id })) : [])
+
+                                                    return (
+                                                        <div className="flex flex-col gap-1.5">
+                                                            {context.details ? (
+                                                                <div className="text-[11px] text-red-200 bg-red-500/10 border border-red-500/20 rounded p-2 whitespace-pre-wrap">
+                                                                    {context.details}
                                                                 </div>
-                                                            ));
-                                                        } catch (e) {
-                                                            return <div className="text-[10px] text-gray-500 italic">Brak dostępnego kontekstu</div>;
-                                                        }
-                                                    })()}
-                                                </div>
+                                                            ) : null}
+                                                            {relatedMessages.length > 0 ? relatedMessages.map((ctx, i) => (
+                                                                <div key={`${ctx.id || i}-${i}`} className="text-[10px] leading-tight bg-background/70 p-1 rounded">
+                                                                    <span className="font-bold text-gray-300">Msg ID: </span>
+                                                                    <span className="text-gray-400">{ctx.id || ctx}</span>
+                                                                </div>
+                                                            )) : (
+                                                                <div className="text-[10px] text-gray-500 italic">Brak załączonych wiadomości kontekstowych</div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })()}
                                             </div>
                                         )}
                                     </div>
@@ -602,7 +783,7 @@ export default function Admin() {
                                             <XCircle size={16} />
                                         </button>
                                         <button onClick={() => handleGroupApproval(g.id, true)} className="px-4 py-1.5 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition shadow-lg shadow-green-500/20">
-                                            ZATOERDŹ
+                                            ZATWIERDŹ
                                         </button>
                                     </div>
                                 </div>

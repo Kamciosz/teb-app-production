@@ -1,16 +1,19 @@
 import React, { useState } from 'react'
 import { AlertOctagon, X } from 'lucide-react'
 import { supabase } from '../services/supabase'
+import { sanitizePlainText } from '../utils/safeContent'
 
 export default function ReportButton({ entityType, entityId, subtle = false }) {
     const [isOpen, setIsOpen] = useState(false)
     const [reason, setReason] = useState('')
+    const [details, setDetails] = useState('')
     const [loading, setLoading] = useState(false)
     const [success, setSuccess] = useState(false)
 
     async function handleReport(e) {
         e.preventDefault()
-        if (!reason || !entityType || !entityId) return
+        const safeDetails = sanitizePlainText(details, { maxLength: 1000, preserveLineBreaks: true })
+        if (!reason || !safeDetails || !entityType || !entityId) return
         setLoading(true)
 
         try {
@@ -25,7 +28,11 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                 reporter_id: session.user.id,
                 reported_entity_type: entityType,
                 reported_entity_id: entityId,
-                reason: reason,
+                reason: sanitizePlainText(reason, { maxLength: 60 }),
+                context: {
+                    details: safeDetails,
+                    generated_at: new Date().toISOString()
+                },
                 status: 'pending'
             }
 
@@ -61,6 +68,7 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                                 const slicedContext = context.slice(start, end)
                                 
                                 reportData.context = {
+                                    ...(reportData.context || {}),
                                     anchor_message_id: mainMsg.id,
                                     thread_scope: entityType,
                                     related_message_ids: slicedContext.map(m => m.id),
@@ -91,6 +99,7 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                     setIsOpen(false)
                     setSuccess(false)
                     setReason('')
+                    setDetails('')
                 }, 2000)
             }
         } catch (err) {
@@ -152,12 +161,24 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                                         <option value="other">Inny powód (napisz obsłudze e-mail)</option>
                                     </select>
                                 </div>
+                                <div>
+                                    <label className="text-xs text-gray-400 font-bold mb-2 block">Opisz problem</label>
+                                    <textarea
+                                        value={details}
+                                        onChange={e => setDetails(e.target.value.slice(0, 1000))}
+                                        required
+                                        maxLength={1000}
+                                        placeholder="Napisz co się stało, gdzie i dlaczego to narusza zasady..."
+                                        className="w-full min-h-[120px] p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-red-500 resize-none text-sm"
+                                    />
+                                    <div className="text-[10px] text-gray-500 mt-1 text-right">{details.length}/1000</div>
+                                </div>
                                 <p className="text-xs text-gray-500 mt-2 bg-background p-3 rounded-xl border border-gray-800">
                                     Pamiętaj, by nie nadużywać tej funkcji. Zbyt wiele fałszywych ticketów grozi banem.
                                 </p>
                                 <div className="flex justify-end gap-3 mt-4">
                                     <button type="button" onClick={() => setIsOpen(false)} className="px-4 py-2.5 rounded-xl text-gray-400 hover:text-white font-bold text-sm">Anuluj</button>
-                                    <button type="submit" disabled={loading || !reason} className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl shadow-[0_0_15px_rgba(239,68,68,0.3)] transition active:scale-95 text-sm">
+                                    <button type="submit" disabled={loading || !reason || !details.trim()} className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl shadow-[0_0_15px_rgba(239,68,68,0.3)] transition active:scale-95 text-sm">
                                         {loading ? 'Wysyłanie...' : 'Wyślij Ticket'}
                                     </button>
                                 </div>
