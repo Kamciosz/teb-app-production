@@ -94,8 +94,18 @@ function App() {
                 }, 15000)
 
                 try {
-                    await signUpWithEmail(finalEmail, password, finalName)
+                    const signupResult = await signUpWithEmail(finalEmail, password, finalName)
                     clearTimeout(signupTimeout)
+                    if (signupResult?.note) {
+                        setAuthMessage('ℹ️ Konto może już istnieć. Przejdź do logowania i użyj opcji "Wyślij ponownie e-mail potwierdzający".')
+                        setIsRegister(false)
+                        setEmail(finalEmail)
+                        setPassword('')
+                        setConfirmPassword('')
+                        setFullName('')
+                        return
+                    }
+
                     setAuthMessage('✅ Konto zostało utworzone! Sprawdź e-mail aby potwierdzić rejestrację.')
                     setIsRegister(false)
                     setEmail('')
