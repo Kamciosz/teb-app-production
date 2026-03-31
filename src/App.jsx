@@ -7,6 +7,7 @@ import { ToastProvider } from './context/ToastContext'
 
 import Feed from './features/feed/Feed'
 import ReWear from './features/rewear/ReWear'
+import ReWearInbox from './features/rewear/ReWearInbox'
 import Librus from './features/librus/Librus'
 import Admin from './features/admin/Admin'
 import Features from './features/features/Features'
@@ -414,6 +415,7 @@ function App() {
                                     <Route path="/profile" element={<Profile />} />
                                     <Route path="/profile/:userId" element={<PublicProfile />} />
                                     <Route path="/rewear" element={<ReWear />} />
+                                    <Route path="/rewear/inbox" element={<ReWearInbox />} />
                                     <Route path="/librus" element={<Librus />} />
                                     <Route path="/tebtalk" element={<TEBtalk />} />
                                     <Route path="/groups" element={<Groups />} />

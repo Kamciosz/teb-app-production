@@ -37,14 +37,22 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
             }
 
             // Pobieranie kontekstu dla wiadomości (Context Report)
-            if (entityType === 'group_message' || entityType === 'direct_message') {
-                const tableName = entityType === 'group_message' ? 'group_messages' : 'direct_messages'
+            if (entityType === 'group_message' || entityType === 'direct_message' || entityType === 'rewear_message') {
+                const tableName = entityType === 'group_message'
+                    ? 'group_messages'
+                    : entityType === 'rewear_message'
+                        ? 'rewear_messages'
+                        : 'direct_messages'
+                const scopeColumn = entityType === 'group_message' ? 'group_id' : 'conversation_id'
+                const messageSelect = entityType === 'group_message'
+                    ? 'id, group_id, created_at'
+                    : 'id, conversation_id, created_at'
                 
                 try {
                     // Pobierz wiadomość, którą zgłoszono, aby znać jej datę/grupę
                     const { data: mainMsg, error: msgErr } = await supabase
                         .from(tableName)
-                        .select('id, group_id, conversation_id, created_at')
+                        .select(messageSelect)
                         .eq('id', entityId)
                         .single()
                     
@@ -55,7 +63,7 @@ export default function ReportButton({ entityType, entityId, subtle = false }) {
                         const { data: context, error: contextErr } = await supabase
                             .from(tableName)
                             .select('id, sender_id, created_at')
-                            .eq(entityType === 'group_message' ? 'group_id' : 'conversation_id', mainMsg.group_id || mainMsg.conversation_id)
+                            .eq(scopeColumn, mainMsg[scopeColumn])
                             .order('created_at', { ascending: true })
                         
                         if (contextErr) {

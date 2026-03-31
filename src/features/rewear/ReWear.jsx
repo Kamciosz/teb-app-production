@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft, MessageCircle, ZoomIn } from 'lucide-react'
+import { Search, Filter, Camera, Plus, X, Tag, Trash2, ArrowLeft, MessageCircle, ZoomIn, Heart, Inbox } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
@@ -8,6 +8,7 @@ import MediaUploader from '../../components/common/MediaUploader'
 import AppFixedLayer from '../../components/common/AppFixedLayer'
 import { ImageKitService } from '../../services/imageKitService'
 import { getRoleLabel } from '../profile/profileMeta'
+import { useToast } from '../../context/ToastContext'
 import { sanitizePlainText } from '../../utils/safeContent'
 
 export default function ReWear() {
@@ -20,8 +21,14 @@ export default function ReWear() {
     const [selectedItem, setSelectedItem] = useState(null)
     const [myUserId, setMyUserId] = useState(null)
     const [lightbox, setLightbox] = useState(null) // { photos: [], index: number }
+    const [interestedPostIds, setInterestedPostIds] = useState([])
+    const [interestLoadingIds, setInterestLoadingIds] = useState([])
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+    const [interestedUsers, setInterestedUsers] = useState([])
+    const [loadingInterestedUsers, setLoadingInterestedUsers] = useState(false)
 
     const navigate = useNavigate()
+    const toast = useToast()
 
     // Role zalogowanego użytkownika (do blokady Korepetycje/Usługi)
     const [userRoles, setUserRoles] = useState(['student'])
@@ -61,6 +68,20 @@ export default function ReWear() {
         loadUserRoles()
     }, [])
 
+    useEffect(() => {
+        if (!myUserId) return
+        fetchMyInterestedPosts(myUserId)
+    }, [myUserId])
+
+    useEffect(() => {
+        if (!selectedItem || selectedItem.seller_id !== myUserId) {
+            setInterestedUsers([])
+            return
+        }
+
+        fetchInterestedUsers(selectedItem.id)
+    }, [selectedItem, myUserId])
+
     async function loadUserRoles() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) return
@@ -72,11 +93,111 @@ export default function ReWear() {
         }
     }
 
+    async function fetchMyInterestedPosts(userId) {
+        const { data, error } = await supabase
+            .from('rewear_interests')
+            .select('post_id')
+            .eq('user_id', userId)
+
+        if (error) {
+            console.warn('Failed to load ReWear interests:', error)
+            return
+        }
+
+        setInterestedPostIds((data || []).map(row => row.post_id))
+    }
+
+    async function fetchInterestedUsers(postId) {
+        setLoadingInterestedUsers(true)
+
+        try {
+            const { data, error } = await supabase
+                .from('rewear_interests')
+                .select('user_id, created_at')
+                .eq('post_id', postId)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+
+            const userIds = [...new Set((data || []).map(row => row.user_id).filter(Boolean))]
+            if (!userIds.length) {
+                setInterestedUsers([])
+                return
+            }
+
+            const { data: profiles, error: profilesError } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url, role')
+                .in('id', userIds)
+
+            if (profilesError) throw profilesError
+
+            const profilesMap = new Map((profiles || []).map(profile => [profile.id, profile]))
+            setInterestedUsers(
+                (data || [])
+                    .map(row => ({
+                        ...row,
+                        profile: profilesMap.get(row.user_id) || null
+                    }))
+                    .filter(row => row.profile)
+            )
+        } catch (error) {
+            console.error('Failed to load interested users:', error)
+            toast.error('Nie udało się pobrać listy zainteresowanych.')
+        } finally {
+            setLoadingInterestedUsers(false)
+        }
+    }
+
+    function isInterested(postId) {
+        return interestedPostIds.includes(postId)
+    }
+
+    async function toggleInterest(item, explicitState = null) {
+        if (!myUserId) {
+            toast.error('Zaloguj się, aby zapisywać oferty.')
+            return
+        }
+
+        if (!item?.id || item.seller_id === myUserId) return
+
+        const shouldAdd = explicitState ?? !isInterested(item.id)
+        setInterestLoadingIds(prev => prev.includes(item.id) ? prev : [...prev, item.id])
+
+        try {
+            let error = null
+            if (shouldAdd) {
+                ({ error } = await supabase.from('rewear_interests').insert([{ post_id: item.id, user_id: myUserId }]))
+                if (!error) {
+                    setInterestedPostIds(prev => prev.includes(item.id) ? prev : [...prev, item.id])
+                    toast.success('Oferta dodana do ulubionych.')
+                }
+            } else {
+                ({ error } = await supabase.from('rewear_interests').delete().eq('post_id', item.id).eq('user_id', myUserId))
+                if (!error) {
+                    setInterestedPostIds(prev => prev.filter(postId => postId !== item.id))
+                    toast.info('Oferta usunięta z ulubionych.')
+                }
+            }
+
+            if (error) throw error
+        } catch (error) {
+            console.error('Failed to toggle ReWear interest:', error)
+            toast.error(error?.message || 'Nie udało się zmienić ulubionych.')
+        } finally {
+            setInterestLoadingIds(prev => prev.filter(id => id !== item.id))
+        }
+    }
+
+    function openReWearConversation(item) {
+        navigate(`/rewear/inbox?post=${item.id}`)
+    }
+
     async function handleDeleteItem(itemId) {
-        if (!confirm('Czy na pewno chcesz usunąć to ogłoszenie?')) return
+        if (!confirm('Czy na pewno chcesz trwale usunąć to ogłoszenie? Powiązane rozmowy ReWear zostaną usunięte razem z nim.')) return
         const { error } = await supabase
             .from('rewear_posts')
-            .update({ status: 'archived' })
+            .delete()
             .eq('id', itemId)
             .eq('seller_id', myUserId)
         if (error) {
@@ -208,6 +329,7 @@ export default function ReWear() {
 
     // Aplikacja Filtrów
     const filteredItems = items.filter(item => {
+        if (showFavoritesOnly && !interestedPostIds.includes(item.id)) return false
         if (activeFilter === 'Wszystko') return true;
         const meta = parseDescription(item.description)
         return meta.category === activeFilter;
@@ -217,7 +339,23 @@ export default function ReWear() {
         <div className="relative min-h-[80vh] pb-10">
             <div className="flex justify-between items-center mb-4 px-2">
                 <h2 className="text-2xl font-bold text-white tracking-tight">Re-Wear</h2>
-                <div className="bg-surface border border-gray-700 p-2 rounded-full flex gap-2">
+                <div className="bg-surface border border-gray-700 p-2 rounded-full flex gap-2 items-center">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/rewear/inbox')}
+                        className="w-9 h-9 rounded-full bg-background border border-gray-800 flex items-center justify-center text-primary hover:text-white transition"
+                        title="Skrzynka ReWear"
+                    >
+                        <Inbox size={18} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowFavoritesOnly(prev => !prev)}
+                        className={`w-9 h-9 rounded-full border flex items-center justify-center transition ${showFavoritesOnly ? 'border-primary bg-primary/20 text-primary' : 'border-gray-800 bg-background text-gray-400 hover:text-white'}`}
+                        title="Pokaż ulubione"
+                    >
+                        <Heart size={18} fill={showFavoritesOnly ? 'currentColor' : 'none'} />
+                    </button>
                     <Search className="text-gray-400" size={20} />
                     <Filter className="text-primary" size={20} />
                 </div>
@@ -274,6 +412,20 @@ export default function ReWear() {
                                         <div className="absolute bottom-2 left-2 bg-primary/90 px-2 py-1 rounded text-[10px] text-white font-bold border border-primary/50 uppercase">
                                             {meta.subject}
                                         </div>
+                                    )}
+                                    {!myUserId || item.seller_id === myUserId ? null : (
+                                        <button
+                                            type="button"
+                                            onClick={(event) => {
+                                                event.stopPropagation()
+                                                toggleInterest(item)
+                                            }}
+                                            disabled={interestLoadingIds.includes(item.id)}
+                                            className={`absolute bottom-2 right-2 w-9 h-9 rounded-full border flex items-center justify-center transition ${isInterested(item.id) ? 'border-primary bg-primary text-white' : 'border-gray-700 bg-black/70 text-gray-300 hover:text-white'}`}
+                                            title={isInterested(item.id) ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+                                        >
+                                            <Heart size={14} fill={isInterested(item.id) ? 'currentColor' : 'none'} />
+                                        </button>
                                     )}
                                 </div>
                                 <div className="p-3 flex flex-col grow justify-between">
@@ -392,29 +544,77 @@ export default function ReWear() {
                                         </div>
                                     </div>
                                     {!isOwner && (
-                                        <button
-                                            onClick={() => navigate(`/tebtalk?chat=${selectedItem.seller_id}`, {
-                                                state: {
-                                                    openChatWith: {
-                                                        id: selectedItem.seller_id,
-                                                        full_name: selectedItem.profiles?.full_name || 'Sprzedawca',
-                                                        avatar_url: selectedItem.profiles?.avatar_url || null,
-                                                        role: selectedItem.profiles?.role || 'student',
-                                                    }
-                                                }
-                                            })}
-                                            className="w-full py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)] mt-1"
-                                        >
-                                            <MessageCircle size={16} /> Napisz do sprzedawcy
-                                        </button>
+                                        <div className="grid grid-cols-2 gap-3 mt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleInterest(selectedItem)}
+                                                disabled={interestLoadingIds.includes(selectedItem.id)}
+                                                className={`py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 border ${isInterested(selectedItem.id) ? 'bg-primary/15 text-primary border-primary/30' : 'bg-background text-gray-200 border-gray-700 hover:border-primary/40'}`}
+                                            >
+                                                <Heart size={16} fill={isInterested(selectedItem.id) ? 'currentColor' : 'none'} />
+                                                {isInterested(selectedItem.id) ? 'W ulubionych' : 'Dodaj do ulubionych'}
+                                            </button>
+                                            <button
+                                                onClick={() => openReWearConversation(selectedItem)}
+                                                className="py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)]"
+                                            >
+                                                <MessageCircle size={16} /> Napisz w ReWear
+                                            </button>
+                                        </div>
                                     )}
                                     {isOwner && (
-                                        <button
-                                            onClick={() => handleDeleteItem(selectedItem.id)}
-                                            className="w-full py-3 bg-red-900/20 text-red-500 border border-red-900/30 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-900/40 transition mt-1"
-                                        >
-                                            <Trash2 size={16} /> Usuń ogłoszenie
-                                        </button>
+                                        <>
+                                            <div className="mt-2 rounded-2xl border border-gray-800 bg-background/70 p-4">
+                                                <div className="flex items-center justify-between gap-3 mb-3">
+                                                    <div>
+                                                        <div className="text-sm font-bold text-white">Zainteresowani</div>
+                                                        <div className="text-[11px] text-gray-500">Tylko Ty widzisz tę listę.</div>
+                                                    </div>
+                                                    <div className="text-sm font-black text-primary">{interestedUsers.length}</div>
+                                                </div>
+                                                {loadingInterestedUsers ? (
+                                                    <div className="text-xs text-gray-500">Ładowanie listy zainteresowanych...</div>
+                                                ) : interestedUsers.length === 0 ? (
+                                                    <div className="text-xs text-gray-500">Na razie nikt nie dodał tej oferty do ulubionych.</div>
+                                                ) : (
+                                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                                        {interestedUsers.map(entry => (
+                                                            <button
+                                                                key={entry.user_id}
+                                                                type="button"
+                                                                onClick={() => navigate(`/profile/${entry.user_id}`)}
+                                                                className="w-full flex items-center justify-between gap-3 bg-surface border border-gray-800 rounded-xl px-3 py-2 text-left hover:border-gray-700 transition"
+                                                            >
+                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                    <div className="w-10 h-10 rounded-full bg-[#1a1a1a] overflow-hidden shrink-0 border border-gray-800">
+                                                                        {entry.profile?.avatar_url ? (
+                                                                            <img src={ImageKitService.getOptimizedUrl(entry.profile.avatar_url)} alt={entry.profile.full_name} className="w-full h-full object-cover" />
+                                                                        ) : (
+                                                                            <div className="w-full h-full flex items-center justify-center text-gray-500 font-black text-xs">
+                                                                                {(entry.profile?.full_name || 'U').slice(0, 1).toUpperCase()}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <div className="text-sm font-bold text-white truncate">{entry.profile?.full_name || 'Użytkownik'}</div>
+                                                                        <div className="text-[11px] text-gray-500 truncate">{getRoleLabel(entry.profile?.role || 'student')}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-[10px] text-gray-500 whitespace-nowrap">
+                                                                    {new Date(entry.created_at).toLocaleDateString('pl-PL')}
+                                                                </div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => handleDeleteItem(selectedItem.id)}
+                                                className="w-full py-3 bg-red-900/20 text-red-500 border border-red-900/30 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-900/40 transition mt-3"
+                                            >
+                                                <Trash2 size={16} /> Usuń ogłoszenie
+                                            </button>
+                                        </>
                                     )}
                                 </div>
                             </div>
