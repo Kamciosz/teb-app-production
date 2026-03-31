@@ -15,6 +15,8 @@ export default function TEBtalk() {
     const MAX_CHAT_GROUP_NAME = 120
     const RECENT_DM_SCAN_LIMIT = 300
     const INITIAL_MESSAGES_FETCH_LIMIT = 120
+    const LOAD_OLDER_MESSAGES_LIMIT = 80
+    const MAX_MESSAGES_IN_MEMORY = 300
     const CHAT_CACHE_TTL_MS = 30 * 60 * 1000
     const STATE_CACHE_TTL_MS = 10 * 60 * 1000
 
@@ -28,6 +30,8 @@ export default function TEBtalk() {
     const [myId, setMyId] = useState(null)
     const [loading, setLoading] = useState(true)
     const [chatLoading, setChatLoading] = useState(false)
+    const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+    const [hasOlderMessages, setHasOlderMessages] = useState(false)
     const [isCreatingGroup, setIsCreatingGroup] = useState(false)
     const [groupName, setGroupName] = useState('')
     const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false)
@@ -243,13 +247,13 @@ export default function TEBtalk() {
                     const msg = payload.new
                     if (isGroup) {
                         if (msg.group_id === activeChatUser.id) {
-                            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+                            setMessages(prev => appendIncomingMessage(prev, msg))
                             scrollToBottom()
                         }
                     } else {
                         if ((msg.sender_id === myId && msg.receiver_id === activeChatUser.id) ||
                             (msg.sender_id === activeChatUser.id && msg.receiver_id === myId)) {
-                            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+                            setMessages(prev => appendIncomingMessage(prev, msg))
                             scrollToBottom()
                         }
                     }
@@ -269,6 +273,12 @@ export default function TEBtalk() {
         setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
         }, 100)
+    }
+
+    const appendIncomingMessage = (prevMessages, incomingMessage) => {
+        if (prevMessages.some(m => m.id === incomingMessage.id)) return prevMessages
+        const merged = [...prevMessages, incomingMessage]
+        return merged.slice(-MAX_MESSAGES_IN_MEMORY)
     }
 
     function isBlockedRelationship(userId) {
@@ -544,10 +554,54 @@ export default function TEBtalk() {
             }
         } else if (data) {
             const chronologicalMessages = [...data].reverse()
-            setMessages(chronologicalMessages)
+            setMessages(chronologicalMessages.slice(-MAX_MESSAGES_IN_MEMORY))
+            setHasOlderMessages(data.length >= INITIAL_MESSAGES_FETCH_LIMIT)
             persistMessagesCache(partnerId, isGroup, chronologicalMessages)
             scrollToBottom()
         }
+    }
+
+    async function loadOlderMessages() {
+        if (!activeChatUser?.id || !messages.length || loadingOlderMessages) return
+
+        const oldestMessage = messages[0]
+        if (!oldestMessage?.created_at) return
+
+        const isGroup = activeChatUser.type === 'group'
+        setLoadingOlderMessages(true)
+
+        let query = supabase.from(isGroup ? 'chat_group_messages' : 'direct_messages').select('*')
+        if (isGroup) {
+            query = query.eq('group_id', activeChatUser.id)
+        } else {
+            query = query.or(`and(sender_id.eq.${myId},receiver_id.eq.${activeChatUser.id}),and(sender_id.eq.${activeChatUser.id},receiver_id.eq.${myId})`)
+        }
+
+        const { data, error } = await query
+            .lt('created_at', oldestMessage.created_at)
+            .order('created_at', { ascending: false })
+            .limit(LOAD_OLDER_MESSAGES_LIMIT)
+
+        if (error) {
+            console.error('Błąd pobierania starszych wiadomości:', error)
+            setChatError('Nie udało się pobrać starszych wiadomości.')
+            setLoadingOlderMessages(false)
+            return
+        }
+
+        const olderChronological = [...(data || [])].reverse()
+        if (!olderChronological.length) {
+            setHasOlderMessages(false)
+            setLoadingOlderMessages(false)
+            return
+        }
+
+        setMessages(prev => {
+            const merged = [...olderChronological, ...prev]
+            return merged.slice(-MAX_MESSAGES_IN_MEMORY)
+        })
+        setHasOlderMessages(olderChronological.length >= LOAD_OLDER_MESSAGES_LIMIT)
+        setLoadingOlderMessages(false)
     }
 
     async function sendMessage(e) {
@@ -818,6 +872,16 @@ export default function TEBtalk() {
 
                 {/* Pole Wiadomości */}
                 <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scrollbar-none">
+                    {!chatLoading && hasOlderMessages && messages.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={loadOlderMessages}
+                            disabled={loadingOlderMessages}
+                            className="self-center mb-2 px-4 py-1.5 text-xs font-bold rounded-full border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50"
+                        >
+                            {loadingOlderMessages ? 'Ładowanie starszych...' : 'Załaduj starsze wiadomości'}
+                        </button>
+                    )}
                     {chatError ? (
                         <div className="m-auto max-w-xs rounded-2xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-center text-sm text-red-200">
                             {chatError}
