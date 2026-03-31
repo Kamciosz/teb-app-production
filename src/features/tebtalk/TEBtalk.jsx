@@ -13,6 +13,8 @@ import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
 export default function TEBtalk() {
     const MAX_CHAT_MESSAGE = 2000
     const MAX_CHAT_GROUP_NAME = 120
+    const RECENT_DM_SCAN_LIMIT = 300
+    const INITIAL_MESSAGES_FETCH_LIMIT = 120
     const CHAT_CACHE_TTL_MS = 30 * 60 * 1000
     const STATE_CACHE_TTL_MS = 10 * 60 * 1000
 
@@ -153,6 +155,11 @@ export default function TEBtalk() {
 
             try {
                 const fallbackTarget = normalizePrivateTarget(routeChat)
+                if (fallbackTarget?.id) {
+                    setActiveChatUser(fallbackTarget)
+                    setGroupMembers([])
+                    setView('chat')
+                }
 
                 const { data, error } = await supabase
                     .from('profiles')
@@ -386,8 +393,20 @@ export default function TEBtalk() {
         const blocked = new Set(blockState?.blocked || myBlockedIds)
         const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
         // 1. Prywatne wiadomości
-        const { data: sentMsg } = await supabase.from('direct_messages').select('receiver_id').eq('sender_id', userId)
-        const { data: recvMsg } = await supabase.from('direct_messages').select('sender_id').eq('receiver_id', userId)
+        const [{ data: sentMsg }, { data: recvMsg }] = await Promise.all([
+            supabase
+                .from('direct_messages')
+                .select('receiver_id')
+                .eq('sender_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(RECENT_DM_SCAN_LIMIT),
+            supabase
+                .from('direct_messages')
+                .select('sender_id')
+                .eq('receiver_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(RECENT_DM_SCAN_LIMIT)
+        ])
 
         const userIds = new Set([
             ...(sentMsg || []).map(m => m.receiver_id).filter(id => id && id.length > 20),
@@ -511,7 +530,9 @@ export default function TEBtalk() {
             query = query.or(`and(sender_id.eq.${myId},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${myId})`)
         }
 
-        const { data, error } = await query.order('created_at', { ascending: true })
+        const { data, error } = await query
+            .order('created_at', { ascending: false })
+            .limit(INITIAL_MESSAGES_FETCH_LIMIT)
 
         if (error) {
             console.error("Błąd pobierania wiadomości:", error)
@@ -522,8 +543,9 @@ export default function TEBtalk() {
                 setChatError('Nie udało się odświeżyć rozmowy. Wyświetlam ostatnio zapisane wiadomości.')
             }
         } else if (data) {
-            setMessages(data)
-            persistMessagesCache(partnerId, isGroup, data)
+            const chronologicalMessages = [...data].reverse()
+            setMessages(chronologicalMessages)
+            persistMessagesCache(partnerId, isGroup, chronologicalMessages)
             scrollToBottom()
         }
     }
