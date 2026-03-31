@@ -395,7 +395,8 @@ function App() {
                         {/* Header z logo TEB */}
                         <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
                             <div className="flex items-center gap-2">
-                                <h1 className="text-xl font-bold text-primary">📱 TEB-App</h1>
+                                <img src="/pwa-192x192.png" alt="TEB-App logo" className="w-7 h-7 rounded-full object-cover" />
+                                <h1 className="text-xl font-bold text-primary">TEB-App</h1>
                                 <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                                     release-0.1
                                 </span>
