@@ -13,6 +13,8 @@ import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
 export default function TEBtalk() {
     const MAX_CHAT_MESSAGE = 2000
     const MAX_CHAT_GROUP_NAME = 120
+    const CHAT_CACHE_TTL_MS = 30 * 60 * 1000
+    const STATE_CACHE_TTL_MS = 10 * 60 * 1000
 
     const [view, setView] = useState('list') // 'list', 'chat', 'search', 'friends'
     const [recentChats, setRecentChats] = useState([])
@@ -36,11 +38,65 @@ export default function TEBtalk() {
     
     const toast = useToast()
     const messagesEndRef = useRef(null)
+    const chatMessagesCacheRef = useRef(new Map())
     const location = useLocation()
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const routeChat = location.state?.openChatWith
     const routeChatId = searchParams.get('chat') || routeChat?.id || null
+
+    const getMessagesCacheKey = (userId, chatId, isGroup) => `${userId}:${isGroup ? 'group' : 'private'}:${chatId}`
+
+    const readCachedSessionEntry = (key, ttlMs) => {
+        try {
+            const raw = sessionStorage.getItem(key)
+            if (!raw) return null
+            const parsed = JSON.parse(raw)
+            if (!parsed?.ts || !('data' in parsed)) return null
+            if ((Date.now() - parsed.ts) > ttlMs) {
+                sessionStorage.removeItem(key)
+                return null
+            }
+            return parsed.data
+        } catch {
+            return null
+        }
+    }
+
+    const writeCachedSessionEntry = (key, data) => {
+        try {
+            sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }))
+        } catch {
+            // Ignore cache write failures (quota/private mode).
+        }
+    }
+
+    const hydrateMessagesCache = (chatId, isGroup) => {
+        if (!myId || !chatId) return false
+        const cacheKey = getMessagesCacheKey(myId, chatId, isGroup)
+        const inMemory = chatMessagesCacheRef.current.get(cacheKey)
+        if (Array.isArray(inMemory) && inMemory.length) {
+            setMessages(inMemory)
+            return true
+        }
+
+        const fromSession = readCachedSessionEntry(`tebtalk_messages_${cacheKey}`, CHAT_CACHE_TTL_MS)
+        if (Array.isArray(fromSession) && fromSession.length) {
+            chatMessagesCacheRef.current.set(cacheKey, fromSession)
+            setMessages(fromSession)
+            return true
+        }
+
+        return false
+    }
+
+    const persistMessagesCache = (chatId, isGroup, list) => {
+        if (!myId || !chatId || !Array.isArray(list)) return
+        const trimmed = list.slice(-250)
+        const cacheKey = getMessagesCacheKey(myId, chatId, isGroup)
+        chatMessagesCacheRef.current.set(cacheKey, trimmed)
+        writeCachedSessionEntry(`tebtalk_messages_${cacheKey}`, trimmed)
+    }
 
     const normalizePrivateTarget = (target) => {
         if (!target?.id) return null
@@ -93,7 +149,6 @@ export default function TEBtalk() {
         let cancelled = false
 
         async function openRouteChat() {
-            setChatLoading(true)
             setChatError('')
 
             try {
@@ -125,7 +180,6 @@ export default function TEBtalk() {
 
                 setActiveChatUser(target)
                 setGroupMembers([])
-                setMessages([])
                 setView('chat')
             } catch (error) {
                 if (cancelled) return
@@ -152,6 +206,11 @@ export default function TEBtalk() {
     }, [view, activeChatUser])
 
     useEffect(() => {
+        if (view !== 'chat' || !activeChatUser?.id) return
+        persistMessagesCache(activeChatUser.id, activeChatUser.type === 'group', messages)
+    }, [messages, view, activeChatUser, myId])
+
+    useEffect(() => {
         if (view === 'chat' && activeChatUser && myId) {
             const isGroup = activeChatUser.type === 'group'
             const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
@@ -159,11 +218,12 @@ export default function TEBtalk() {
             setChatError('')
 
             const loadChat = async () => {
-                setChatLoading(true)
+                const hadCachedMessages = hydrateMessagesCache(activeChatUser.id, isGroup)
+                setChatLoading(!hadCachedMessages)
                 try {
                     if (isGroup) await fetchGroupMembers(activeChatUser.id)
                     else setGroupMembers([])
-                    await fetchMessages(activeChatUser.id, isGroup)
+                    await fetchMessages(activeChatUser.id, isGroup, { hadCachedMessages })
                 } finally {
                     setChatLoading(false)
                 }
@@ -228,11 +288,22 @@ export default function TEBtalk() {
     }
 
     async function loadCommunicationState(userId) {
+        const cachedState = readCachedSessionEntry(`tebtalk_state_${userId}`, STATE_CACHE_TTL_MS)
+        if (cachedState?.recentChats) setRecentChats(cachedState.recentChats)
+        if (cachedState?.friends) setFriends(cachedState.friends)
+        setLoading(!cachedState)
+
         const blockState = await fetchBlocks(userId)
-        await Promise.all([
+        const [chats, friendsList] = await Promise.all([
             fetchRecentChats(userId, blockState),
             fetchFriends(userId, blockState)
         ])
+
+        writeCachedSessionEntry(`tebtalk_state_${userId}`, {
+            recentChats: chats || [],
+            friends: friendsList || []
+        })
+        setLoading(false)
     }
 
     async function fetchFriends(userId, blockState = null) {
@@ -248,12 +319,12 @@ export default function TEBtalk() {
             .eq('status', 'accepted')
 
         if (data) {
-            setFriends(
+            const normalizedFriends =
                 data
                     .map(f => f.profiles)
                     .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
-            )
-            return
+            setFriends(normalizedFriends)
+            return normalizedFriends
         }
 
         const { data: fallbackFriends } = await supabase
@@ -265,7 +336,7 @@ export default function TEBtalk() {
         const friendIds = (fallbackFriends || []).map(friend => friend.friend_id).filter(Boolean)
         if (friendIds.length === 0) {
             setFriends([])
-            return
+            return []
         }
 
         const { data: fallbackProfiles } = await supabase
@@ -273,11 +344,12 @@ export default function TEBtalk() {
             .select('id, full_name, avatar_url, role')
             .in('id', friendIds)
 
-        setFriends(
+        const normalizedFallbackFriends =
             (fallbackProfiles || [])
                 .map(friend => ({ ...friend, dm_friends_only: false }))
                 .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
-        )
+        setFriends(normalizedFallbackFriends)
+        return normalizedFallbackFriends
     }
 
     async function fetchGroupMembers(groupId) {
@@ -311,7 +383,6 @@ export default function TEBtalk() {
     }
 
     async function fetchRecentChats(userId, blockState = null) {
-        setLoading(true)
         const blocked = new Set(blockState?.blocked || myBlockedIds)
         const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
         // 1. Prywatne wiadomości
@@ -353,7 +424,7 @@ export default function TEBtalk() {
         }
 
         setRecentChats(chats)
-        setLoading(false)
+        return chats
     }
 
     async function handleSearch(e) {
@@ -430,7 +501,8 @@ export default function TEBtalk() {
         setSearchResults(prev => prev.filter(user => !isBlockedRelationship(user.id) && user.id !== userId))
     }
 
-    async function fetchMessages(partnerId, isGroup = false) {
+    async function fetchMessages(partnerId, isGroup = false, options = {}) {
+        const { hadCachedMessages = false } = options
         let query = supabase.from(isGroup ? 'chat_group_messages' : 'direct_messages').select('*')
         
         if (isGroup) {
@@ -443,10 +515,15 @@ export default function TEBtalk() {
 
         if (error) {
             console.error("Błąd pobierania wiadomości:", error)
-            setMessages([])
-            setChatError('Nie udało się pobrać wiadomości.')
+            if (!hadCachedMessages) {
+                setMessages([])
+                setChatError('Nie udało się pobrać wiadomości.')
+            } else {
+                setChatError('Nie udało się odświeżyć rozmowy. Wyświetlam ostatnio zapisane wiadomości.')
+            }
         } else if (data) {
             setMessages(data)
+            persistMessagesCache(partnerId, isGroup, data)
             scrollToBottom()
         }
     }
@@ -645,7 +722,6 @@ export default function TEBtalk() {
 
         setChatError('')
         setActiveChatUser(normalizedTarget)
-        setMessages([])
         setView('chat')
     }
 
