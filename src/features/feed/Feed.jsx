@@ -16,6 +16,7 @@ export default function Feed() {
     const MAX_ARTICLE_TITLE = 200
     const MAX_ARTICLE_HTML = 12000
     const MAX_COMMENT_LEN = 2000
+    const COMMENTS_PAGE_SIZE = 15
 
     const [posts, setPosts] = useState([])
     const [loading, setLoading] = useState(true)
@@ -30,6 +31,9 @@ export default function Feed() {
     const [comments, setComments] = useState([])
     const [newComment, setNewComment] = useState('')
     const [commentsLoading, setCommentsLoading] = useState(false)
+    const [commentsPaginating, setCommentsPaginating] = useState(false)
+    const [commentsPage, setCommentsPage] = useState(0)
+    const [commentsHasMore, setCommentsHasMore] = useState(false)
     const [editingCommentId, setEditingCommentId] = useState(null)
     const [editingCommentText, setEditingCommentText] = useState('')
     const [commentActionBusyId, setCommentActionBusyId] = useState(null)
@@ -194,21 +198,40 @@ export default function Feed() {
         }
     }
 
-    async function fetchComments(postId) {
-        setCommentsLoading(true)
-        const { data, error } = await supabase
+    async function fetchComments(postId, page = 0) {
+        if (page === 0) setCommentsLoading(true)
+        else setCommentsPaginating(true)
+
+        const from = page * COMMENTS_PAGE_SIZE
+        const to = from + COMMENTS_PAGE_SIZE - 1
+
+        const { data, error, count } = await supabase
             .from('feed_comments')
-            .select('*, profiles(full_name, role)')
+            .select('*, profiles(full_name, role)', { count: 'exact' })
             .eq('post_id', postId)
             .order('created_at', { ascending: true })
+            .range(from, to)
 
         if (error) {
             console.error('Failed to load comments', error)
             alert('Nie udało się pobrać komentarzy.')
         }
 
-        if (data) setComments(data)
+        if (data) {
+            if (page === 0) setComments(data)
+            else setComments(prev => [...prev, ...data])
+
+            setCommentsPage(page)
+            setCommentsHasMore((count || 0) > (page + 1) * COMMENTS_PAGE_SIZE)
+        }
+
         setCommentsLoading(false)
+        setCommentsPaginating(false)
+    }
+
+    async function handleLoadMoreComments() {
+        if (!selectedPost || commentsPaginating || !commentsHasMore) return
+        await fetchComments(selectedPost.id, commentsPage + 1)
     }
 
     async function handleAddComment(e) {
@@ -341,7 +364,9 @@ export default function Feed() {
 
     const openPost = (post) => {
         setSelectedPost(post)
-        fetchComments(post.id)
+        setCommentsPage(0)
+        setCommentsHasMore(false)
+        fetchComments(post.id, 0)
     }
 
     function resetArticleForm() {
@@ -630,7 +655,7 @@ export default function Feed() {
             {/* Modal Pełnego Artykułu */}
             {selectedPost && (
                 <div className="fixed inset-0 bg-black/95 z-[60] flex flex-col overflow-y-auto pt-10 px-4 md:px-10 animate-fade-in">
-                    <button onClick={() => setSelectedPost(null)} className="fixed top-4 right-4 bg-surface p-2 rounded-full text-white z-[70] shadow-xl border border-gray-700">
+                    <button onClick={() => { setSelectedPost(null); setComments([]); setCommentsPage(0); setCommentsHasMore(false) }} className="fixed top-4 right-4 bg-surface p-2 rounded-full text-white z-[70] shadow-xl border border-gray-700">
                         <X size={24} />
                     </button>
                     <div className="w-full max-w-3xl mx-auto pb-20">
@@ -704,8 +729,9 @@ export default function Feed() {
                                 ) : comments.length === 0 ? (
                                     <div className="text-center text-gray-500 text-sm py-4">Brak komentarzy. Bądź pierwszy!</div>
                                 ) : (
-                                    comments.map(comment => (
-                                        <div key={comment.id} className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col gap-2">
+                                    <>
+                                        {comments.map(comment => (
+                                            <div key={comment.id} className="bg-[#1a1a1a] p-4 rounded-2xl border border-gray-800 flex flex-col gap-2">
                                             <div className="flex justify-between items-center">
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-400">
@@ -771,8 +797,19 @@ export default function Feed() {
                                             ) : (
                                                 <p className="text-sm text-gray-400 leading-relaxed">{comment.content}</p>
                                             )}
-                                        </div>
-                                    ))
+                                            </div>
+                                        ))}
+                                        {commentsHasMore && (
+                                            <button
+                                                type="button"
+                                                onClick={handleLoadMoreComments}
+                                                disabled={commentsPaginating}
+                                                className="w-full py-3 text-sm font-bold text-primary hover:text-primary/80 transition disabled:opacity-50 border border-gray-800 rounded-xl"
+                                            >
+                                                {commentsPaginating ? 'Ładowanie...' : 'Załaduj więcej komentarzy'}
+                                            </button>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>

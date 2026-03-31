@@ -15,9 +15,13 @@ export default function ReWear() {
     const MAX_REWEAR_TITLE = 200
     const MAX_REWEAR_DESC = 2000
     const CATEGORY_OPTIONS = ['Ubrania', 'Elektronika', 'Książki', 'Korepetycje', 'Usługi', 'Inne']
+    const ITEMS_PER_PAGE = 16
 
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(true)
+    const [loadingMore, setLoadingMore] = useState(false)
+    const [itemsOffset, setItemsOffset] = useState(0)
+    const [itemsHasMore, setItemsHasMore] = useState(false)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [selectedItem, setSelectedItem] = useState(null)
     const [myUserId, setMyUserId] = useState(null)
@@ -85,7 +89,7 @@ export default function ReWear() {
     }
 
     useEffect(() => {
-        fetchItems()
+        fetchItems({ reset: true })
         loadUserRoles()
     }, [])
 
@@ -226,7 +230,7 @@ export default function ReWear() {
             alert('Błąd usuwania: ' + error.message)
         } else {
             setSelectedItem(null)
-            fetchItems()
+            fetchItems({ reset: true })
         }
     }
 
@@ -259,8 +263,11 @@ export default function ReWear() {
         toast.success(nextStatus === 'archived' ? 'Ogłoszenie oznaczone jako nieaktualne.' : 'Ogłoszenie ponownie aktywne.')
     }
 
-    async function fetchItems() {
-        setLoading(true)
+    async function fetchItems(options = {}) {
+        const { reset = false } = options
+        const offset = reset ? 0 : itemsOffset
+        if (reset) setLoading(true)
+        else setLoadingMore(true)
 
         try {
             const { data: posts, error: postsError } = await supabase
@@ -268,6 +275,7 @@ export default function ReWear() {
                 .select('*')
                 .eq('status', 'active')
                 .order('created_at', { ascending: false })
+                .range(offset, offset + ITEMS_PER_PAGE - 1)
 
             if (postsError) throw postsError
 
@@ -289,14 +297,30 @@ export default function ReWear() {
                 profiles: profilesMap.get(item.seller_id) || null
             }))
 
-            setItems(hydratedItems)
+            setItems(prev => {
+                if (reset) return hydratedItems
+                const existing = new Set(prev.map(item => item.id))
+                const merged = [...prev]
+                for (const item of hydratedItems) {
+                    if (!existing.has(item.id)) merged.push(item)
+                }
+                return merged
+            })
+            setItemsHasMore((posts || []).length >= ITEMS_PER_PAGE)
+            setItemsOffset(offset + (posts || []).length)
         } catch (error) {
             console.error('Failed to fetch ReWear posts:', error)
-            setItems([])
+            if (reset) setItems([])
             toast.error('Nie udało się pobrać ofert ReWear. Odśwież widok.')
         } finally {
             setLoading(false)
+            setLoadingMore(false)
         }
+    }
+
+    async function handleLoadMoreItems() {
+        if (loadingMore || !itemsHasMore) return
+        await fetchItems({ reset: false })
     }
 
     async function handleAddItem(e) {
@@ -380,7 +404,7 @@ export default function ReWear() {
                 setNewItemPrice('')
                 setNewItemDesc('')
                 clearFiles()
-                fetchItems()
+                fetchItems({ reset: true })
             }
         } catch (err) {
             console.error('Submit error:', err)
@@ -546,6 +570,19 @@ export default function ReWear() {
                     })}
 
                     {filteredItems.length === 0 && <div className="col-span-2 text-center text-gray-500 mt-10 p-8 border border-gray-800 rounded-2xl border-dashed">Brak ofert dla wybranych filtrów lub frazy wyszukiwania.</div>}
+                </div>
+            )}
+
+            {!loading && itemsHasMore && (
+                <div className="mt-4 px-2">
+                    <button
+                        type="button"
+                        onClick={handleLoadMoreItems}
+                        disabled={loadingMore}
+                        className="w-full py-3 text-sm font-bold text-primary hover:text-primary/80 transition disabled:opacity-50 border border-gray-800 rounded-xl"
+                    >
+                        {loadingMore ? 'Ładowanie ofert...' : 'Załaduj więcej ofert'}
+                    </button>
                 </div>
             )}
 

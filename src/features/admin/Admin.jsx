@@ -59,6 +59,7 @@ export default function Admin() {
                 .from('profiles')
                 .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
                 .order('created_at', { ascending: false })
+                .limit(100)
 
             if (primaryUsers.data) {
                 setUsers(primaryUsers.data)
@@ -67,6 +68,7 @@ export default function Admin() {
                     .from('profiles')
                     .select('id, full_name, roles, role, is_banned, banned_until, created_at')
                     .order('created_at', { ascending: false })
+                    .limit(100)
 
                 if (fallbackUsers.data) {
                     setUsers(fallbackUsers.data.map(user => ({ ...user, ban_reason: null })))
@@ -79,6 +81,7 @@ export default function Admin() {
                 .select('*, reporter:profiles!reporter_id(full_name)')
                 .eq('status', 'pending')
                 .order('created_at', { ascending: false })
+                .limit(50)
             if (data) setReports(data)
         }
 
@@ -87,6 +90,7 @@ export default function Admin() {
                 .select('*, creator:profiles!creator_id(full_name)')
                 .eq('is_approved', false)
                 .order('created_at', { ascending: false })
+                .limit(100)
             if (data) setPendingGroups(data)
         }
 
@@ -95,6 +99,7 @@ export default function Admin() {
                 .select('id, status, punishment_type, message, resolution_note, created_at, appellant:profiles!appellant_user_id(full_name), audit:moderation_audit_log!audit_log_id(action_type, reason, metadata, created_at)')
                 .eq('status', 'pending')
                 .order('created_at', { ascending: false })
+                .limit(50)
 
             setAppeals(data || [])
         }
