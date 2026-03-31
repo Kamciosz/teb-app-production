@@ -263,7 +263,12 @@ function App() {
         }
     }
 
-    if (loading) return <div className="min-h-screen bg-[#121212] flex items-center justify-center text-primary">Autoryzacja SU...</div>
+    if (loading) return (
+        <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center gap-3">
+            <img src="/pwa-192x192.png" alt="logo" className="w-14 h-14 rounded-2xl opacity-80" />
+            <span className="text-gray-500 text-sm">Autoryzacja...</span>
+        </div>
+    )
 
     // Widok ekranu logowania tradycyjnego
     if (!session) {
@@ -272,16 +277,12 @@ function App() {
                 <Routes>
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="*" element={
-                        <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center p-4">
-                            <div className="flex items-center gap-2 mb-4">
-                                <h1 className="text-4xl font-bold text-primary">TEB-APP</h1>
-                                <span className="bg-red-500/20 text-red-500 border border-red-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
-                                    release-0.2
-                                </span>
+                        <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center px-6 py-10">
+                            <div className="flex flex-col items-center mb-8">
+                                <img src="/pwa-512x512.png" alt="TEB-App" className="w-20 h-20 rounded-3xl mb-4 shadow-lg" />
+                                <h1 className="text-2xl font-bold text-white tracking-tight">TEB-App</h1>
+                                <p className="text-gray-500 text-xs mt-1">Portal szkolny &middot; tylko @teb.edu.pl</p>
                             </div>
-                            <p className="text-gray-400 text-center mb-6 max-w-sm text-sm">
-                                Aplikacja jest bezpieczna. Zamknięty obieg autoryzacji pozwala na rejestrację WYŁĄCZNIE dla domen <strong>@teb.edu.pl</strong>
-                            </p>
 
                             <form onSubmit={handleAuth} className="w-full max-w-xs flex flex-col gap-3">
                                 {isRegister && (
@@ -333,22 +334,22 @@ function App() {
                                 <button 
                                     type="submit" 
                                     disabled={isLoading}
-                                    className={`mt-2 px-6 py-3 rounded-xl font-bold w-full transition transform ${
+                                    className={`mt-2 px-6 py-3 rounded-xl font-bold w-full transition-all ${
                                         isLoading 
-                                            ? 'bg-gray-600 text-white cursor-not-allowed' 
-                                            : 'bg-primary text-white shadow-[0_0_15px_rgba(59,130,246,0.3)] hover:scale-105'
+                                            ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+                                            : 'bg-primary text-white shadow-[0_4px_20px_rgba(200,16,46,0.35)] active:scale-95'
                                     }`}
                                 >
-                                    {isLoading ? '⏳ Proszę czekać...' : (isRegister ? 'Załóż Konto' : 'Zaloguj się')}
+                                    {isLoading ? 'Proszę czekać...' : (isRegister ? 'Załóż konto' : 'Zaloguj się')}
                                 </button>
 
                                 {retryCount > 0 && authError && authError.includes('Timeout') && (
                                     <button 
                                         type="button" 
                                         onClick={handleAuth}
-                                        className="text-xs bg-yellow-900/50 text-yellow-300 border border-yellow-700 px-3 py-2 rounded font-semibold hover:bg-yellow-900/70 transition"
+                                        className="text-xs bg-yellow-900/40 text-yellow-300 border border-yellow-800 px-3 py-2 rounded-lg font-semibold transition"
                                     >
-                                        🔄 Spróbuj ponownie ({retryCount}/3)
+                                        Spróbuj ponownie ({retryCount}/3)
                                     </button>
                                 )}
 
@@ -363,9 +364,9 @@ function App() {
                                         type="button"
                                         onClick={handleResendConfirmation}
                                         disabled={isLoading || isResendingConfirmation}
-                                        className="text-xs bg-blue-900/40 text-blue-200 border border-blue-700 px-3 py-2 rounded font-semibold hover:bg-blue-900/60 transition disabled:opacity-50"
+                                        className="text-xs bg-secondary/10 text-blue-300 border border-secondary/30 px-3 py-2 rounded-lg font-semibold transition disabled:opacity-50"
                                     >
-                                        {isResendingConfirmation ? '⏳ Wysyłanie...' : 'Wyślij ponownie e-mail potwierdzający'}
+                                        {isResendingConfirmation ? 'Wysyłanie...' : 'Wyślij ponownie e-mail potwierdzający'}
                                     </button>
                                 )}
                             </form>
@@ -391,15 +392,15 @@ function App() {
         <ToastProvider>
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <div className="min-h-[100dvh] bg-black flex justify-center">
-                    <div className="w-full max-w-md bg-[#121212] text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
+                    <div className="w-full max-w-md bg-[#121212] app-bg text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
                         {/* Header z logo TEB */}
-                        <header className="px-6 py-4 flex justify-between items-center bg-[#1e1e1e]/90 backdrop-blur-xl border-b border-gray-800 fixed top-0 w-full max-w-md z-50">
-                            <div className="flex items-center gap-2">
-                                <img src="/pwa-192x192.png" alt="TEB-App logo" className="w-7 h-7 rounded-full object-cover" />
-                                <h1 className="text-xl font-bold text-primary">TEB-App</h1>
-                                <span className="bg-orange-500/20 text-orange-500 border border-orange-500/50 text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                    release-0.2
-                                </span>
+                        <header className="px-5 py-3.5 flex justify-between items-center bg-[#181818]/95 backdrop-blur-xl border-b border-white/5 fixed top-0 w-full max-w-md z-50">
+                            <div className="flex items-center gap-2.5">
+                                <img src="/pwa-192x192.png" alt="TEB-App logo" className="w-8 h-8 rounded-xl object-cover" />
+                                <div className="flex items-baseline gap-1.5">
+                                    <h1 className="text-[17px] font-bold text-white leading-none">TEB-App</h1>
+                                    <span className="text-[10px] font-medium text-gray-600 leading-none">v0.2</span>
+                                </div>
                             </div>
                         </header>
 
@@ -428,7 +429,7 @@ function App() {
                         <ReloadPrompt />
 
                         {/* Bottom Navigation (Apple / Instagram Style) */}
-                        <nav className="absolute bottom-0 w-full max-w-md bg-[#1e1e1e]/90 backdrop-blur-xl border-t border-gray-800 pb-[env(safe-area-inset-bottom,24px)] pt-2 px-6 flex justify-between z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+                        <nav className="absolute bottom-0 w-full max-w-md bg-[#181818]/95 backdrop-blur-xl border-t border-white/5 pb-[env(safe-area-inset-bottom,20px)] pt-1 px-8 flex justify-between z-50">
                             <NavLink to="/" icon={<Home />} />
                             <NavLink to="/features" icon={<LayoutGrid />} />
                             <NavLink to="/profile" icon={<User />} />
@@ -445,8 +446,9 @@ function NavLink({ to, icon, alert }) {
     const location = useLocation();
     const isActive = location.pathname === to;
     return (
-        <Link to={to} className={`p-2 transition-all duration-200 ${isActive ? 'text-primary -translate-y-1' : 'text-gray-500'}`}>
-            {React.cloneElement(icon, { className: `w-7 h-7 ${alert ? 'text-red-500/50' : ''}` })}
+        <Link to={to} className="flex flex-col items-center gap-0.5 py-2 px-3 transition-all duration-150">
+            {React.cloneElement(icon, { className: `w-6 h-6 transition-colors duration-150 ${isActive ? 'text-primary' : alert ? 'text-red-500/50' : 'text-gray-500'}` })}
+            <span className={`h-1 w-1 rounded-full transition-all duration-200 ${isActive ? 'bg-primary scale-100' : 'scale-0 bg-transparent'}`} />
         </Link>
     )
 }

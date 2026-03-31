@@ -7,11 +7,14 @@ export default {
     theme: {
         extend: {
             colors: {
-                primary: '#3b82f6', // Niebieski akcent (zamiast zielonego)
-                secondary: '#ef4444', // Czerwony akcent
+                primary: '#C8102E',   // TEB czerwony (brand)
+                secondary: '#006DAE', // TEB niebieski (brand)
                 surface: '#1e1e1e',
                 background: '#121212',
-            }
+            },
+            fontFamily: {
+                sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            },
         },
     },
     plugins: [
