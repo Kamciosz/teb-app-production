@@ -479,12 +479,13 @@ export default function ReWear() {
                 <div className="grid grid-cols-2 gap-3 px-1">
                     {filteredItems.map(item => {
                         const meta = parseDescription(item.description)
+                        const cardImageUrl = item.image_url || (Array.isArray(meta.photos) && meta.photos.length > 0 ? meta.photos[0] : null)
                         return (
                             <div key={item.id} onClick={() => setSelectedItem(item)} className="bg-surface border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col w-full cursor-pointer hover:border-gray-600 transition">
                                 <div className="h-40 bg-[#1a1a1a] flex flex-col items-center justify-center relative overflow-hidden group">
-                                    {item.image_url ? (
+                                    {cardImageUrl ? (
                                         <img
-                                            src={ImageKitService.getOptimizedUrl(item.image_url)}
+                                            src={ImageKitService.getOptimizedUrl(cardImageUrl)}
                                             alt={item.title}
                                             loading="lazy"
                                             className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"

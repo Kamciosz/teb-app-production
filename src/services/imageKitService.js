@@ -1,23 +1,6 @@
 import { supabase } from './supabase';
 
 const IMAGEKIT_ENDPOINT = import.meta.env.IMAGEKIT_URL_ENDPOINT || import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || '';
-const IMAGEKIT_HOST = IMAGEKIT_ENDPOINT ? (() => {
-    try {
-        return new URL(IMAGEKIT_ENDPOINT).host;
-    } catch {
-        return '';
-    }
-})() : '';
-
-function isImageKitAbsoluteUrl(urlString) {
-    try {
-        const url = new URL(urlString);
-        return (IMAGEKIT_HOST && url.host === IMAGEKIT_HOST) || url.host.endsWith('imagekit.io');
-    } catch {
-        return false;
-    }
-}
-
 export const ImageKitService = {
     upload: async (file, fileName, folder = '') => {
         if (!file) throw new Error('No file provided');
@@ -88,11 +71,10 @@ export const ImageKitService = {
         const cleanPath = String(path).trim();
         if (!cleanPath) return '';
 
-        // Keep external/signed URLs untouched to avoid breaking signature validation.
+        // Keep any absolute URL untouched to avoid breaking signature validation
+        // or custom query params used by upstream services.
         if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
-            if (!isImageKitAbsoluteUrl(cleanPath)) return cleanPath;
-            const q = cleanPath.includes('?') ? '&' : '?';
-            return `${cleanPath}${q}tr=w-auto,q-auto,f-auto`;
+            return cleanPath;
         }
 
         if (!IMAGEKIT_ENDPOINT) return cleanPath;
