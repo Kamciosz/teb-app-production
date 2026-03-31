@@ -9,6 +9,13 @@ import { getRoleLabel, getUserInitial } from '../profile/profileMeta'
 import { sanitizePlainText } from '../../utils/safeContent'
 
 const MAX_REWEAR_MESSAGE = 2000
+const REWEAR_MESSAGES_PAGE_SIZE = 30
+const MAX_REWEAR_MESSAGES_IN_MEMORY = 150
+
+function capRecentMessages(list) {
+  if (list.length <= MAX_REWEAR_MESSAGES_IN_MEMORY) return list
+  return list.slice(-MAX_REWEAR_MESSAGES_IN_MEMORY)
+}
 
 function ProfileAvatar({ profile }) {
   if (profile?.avatar_url) {
@@ -40,11 +47,15 @@ export default function ReWearInbox() {
   const [conversations, setConversations] = useState([])
   const [activeConversation, setActiveConversation] = useState(null)
   const [messages, setMessages] = useState([])
+  const [messagesOffset, setMessagesOffset] = useState(0)
+  const [hasOlderMessages, setHasOlderMessages] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [newMessage, setNewMessage] = useState('')
   const [chatError, setChatError] = useState('')
   const [sending, setSending] = useState(false)
   const [purchaseLoading, setPurchaseLoading] = useState(false)
   const messagesEndRef = useRef(null)
+  const shouldAutoScrollRef = useRef(true)
 
   const activePartner = activeConversation?.partner || null
   const activePost = activeConversation?.post || null
@@ -150,15 +161,21 @@ export default function ReWearInbox() {
     if (!activeConversation?.id) return
 
     let cancelled = false
+    setMessages([])
+    setMessagesOffset(0)
+    setHasOlderMessages(false)
 
     async function loadMessages() {
       setChatLoading(true)
 
       try {
-        const nextMessages = await fetchMessages(activeConversation.id)
+        const { items, totalCount } = await fetchMessagesPage(activeConversation.id, { offset: 0 })
         if (!cancelled) {
-          setMessages(nextMessages)
+          setMessages(items)
+          setMessagesOffset(items.length)
+          setHasOlderMessages(totalCount > items.length)
           setChatError('')
+          shouldAutoScrollRef.current = true
         }
       } catch (error) {
         console.error('Failed to fetch ReWear messages:', error)
@@ -181,10 +198,14 @@ export default function ReWearInbox() {
       }, async payload => {
         if (payload.new.conversation_id !== activeConversation.id) return
         const hydratedMessage = await hydrateMessages([payload.new])
-        setMessages(prev => prev.some(message => message.id === payload.new.id) ? prev : [...prev, ...(hydratedMessage || [])])
+        setMessages(prev => {
+          if (prev.some(message => message.id === payload.new.id)) return prev
+          return capRecentMessages([...prev, ...(hydratedMessage || [])])
+        })
         fetchConversations(myId).catch(error => {
           console.warn('Failed to refresh ReWear conversations after realtime event:', error)
         })
+        shouldAutoScrollRef.current = true
         scrollToBottom()
       })
       .subscribe(status => {
@@ -200,6 +221,10 @@ export default function ReWearInbox() {
   }, [activeConversation?.id, myId])
 
   useEffect(() => {
+    if (!shouldAutoScrollRef.current) {
+      shouldAutoScrollRef.current = true
+      return
+    }
     scrollToBottom()
   }, [messages.length])
 
@@ -283,15 +308,47 @@ export default function ReWearInbox() {
     }))
   }
 
-  async function fetchMessages(conversationId) {
-    const { data, error } = await supabase
+  async function fetchMessagesPage(conversationId, { offset = 0 } = {}) {
+    const { data, error, count } = await supabase
       .from('rewear_messages')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + REWEAR_MESSAGES_PAGE_SIZE - 1)
 
     if (error) throw error
-    return hydrateMessages(data || [])
+    const hydrated = await hydrateMessages((data || []).reverse())
+    return {
+      items: hydrated,
+      totalCount: count || 0
+    }
+  }
+
+  async function handleLoadOlderMessages() {
+    if (!activeConversation?.id || loadingOlderMessages || !hasOlderMessages) return
+
+    setLoadingOlderMessages(true)
+    try {
+      const { items, totalCount } = await fetchMessagesPage(activeConversation.id, { offset: messagesOffset })
+      if (items.length === 0) {
+        setHasOlderMessages(false)
+        return
+      }
+
+      shouldAutoScrollRef.current = false
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(message => message.id))
+        const older = items.filter(message => !existingIds.has(message.id))
+        return capRecentMessages([...older, ...prev])
+      })
+      setMessagesOffset(prev => prev + items.length)
+      setHasOlderMessages(messagesOffset + items.length < totalCount)
+    } catch (error) {
+      console.error('Failed to load older ReWear messages:', error)
+      toast.error('Nie udało się załadować starszych wiadomości.')
+    } finally {
+      setLoadingOlderMessages(false)
+    }
   }
 
   async function handleOpenConversation(conversation) {
@@ -331,11 +388,15 @@ export default function ReWearInbox() {
 
       if (data) {
         const hydrated = await hydrateMessages([data])
-        setMessages(prev => prev.some(message => message.id === data.id) ? prev : [...prev, ...(hydrated || [])])
+        setMessages(prev => {
+          if (prev.some(message => message.id === data.id)) return prev
+          return capRecentMessages([...prev, ...(hydrated || [])])
+        })
       }
 
       setNewMessage('')
       await fetchConversations(myId)
+      shouldAutoScrollRef.current = true
       scrollToBottom()
     } catch (error) {
       console.error('Failed to send ReWear message:', error)
@@ -362,8 +423,10 @@ export default function ReWearInbox() {
 
       toast.success(`Przekazano ${data?.transferred_tg || amount} TG. Ogłoszenie oznaczone jako sprzedane.`)
       await fetchConversations(myId)
-      const nextMessages = await fetchMessages(activeConversation.id)
-      setMessages(nextMessages)
+      const { items, totalCount } = await fetchMessagesPage(activeConversation.id, { offset: 0 })
+      setMessages(items)
+      setMessagesOffset(items.length)
+      setHasOlderMessages(totalCount > items.length)
     } catch (error) {
       console.error('Failed to complete ReWear purchase:', error)
       toast.error(error?.message || 'Nie udało się przekazać TebGąbek.')
@@ -545,25 +608,39 @@ export default function ReWearInbox() {
                 ) : messages.length === 0 ? (
                   <div className="text-center text-sm text-gray-500 py-12">Brak wiadomości w tej rozmowie. Możesz zacząć od krótkiego pytania o ofertę.</div>
                 ) : (
-                  messages.map(message => {
-                    const isMine = message.sender_id === myId
-                    return (
-                      <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] rounded-3xl px-4 py-3 border ${isMine ? 'bg-primary/20 border-primary/30 text-white' : 'bg-background border-gray-800 text-gray-100'}`}>
-                          <div className="flex items-start justify-between gap-3 mb-1">
-                            <div className="text-[11px] font-bold text-gray-400">
-                              {message.profile?.full_name || 'Użytkownik'}
+                  <>
+                    {hasOlderMessages && (
+                      <div className="flex justify-center pb-2">
+                        <button
+                          type="button"
+                          onClick={handleLoadOlderMessages}
+                          disabled={loadingOlderMessages}
+                          className="px-3 py-1.5 rounded-full text-xs font-bold border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50"
+                        >
+                          {loadingOlderMessages ? 'Ładowanie starszych...' : 'Załaduj starsze wiadomości'}
+                        </button>
+                      </div>
+                    )}
+                    {messages.map(message => {
+                      const isMine = message.sender_id === myId
+                      return (
+                        <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[85%] rounded-3xl px-4 py-3 border ${isMine ? 'bg-primary/20 border-primary/30 text-white' : 'bg-background border-gray-800 text-gray-100'}`}>
+                            <div className="flex items-start justify-between gap-3 mb-1">
+                              <div className="text-[11px] font-bold text-gray-400">
+                                {message.profile?.full_name || 'Użytkownik'}
+                              </div>
+                              <ReportButton entityType="rewear_message" entityId={message.id} subtle={true} />
                             </div>
-                            <ReportButton entityType="rewear_message" entityId={message.id} subtle={true} />
-                          </div>
-                          <div className="text-sm whitespace-pre-wrap break-words">{message.content}</div>
-                          <div className="text-[10px] text-gray-500 mt-2 text-right">
-                            {new Date(message.created_at).toLocaleString('pl-PL')}
+                            <div className="text-sm whitespace-pre-wrap break-words">{message.content}</div>
+                            <div className="text-[10px] text-gray-500 mt-2 text-right">
+                              {new Date(message.created_at).toLocaleString('pl-PL')}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })
+                      )
+                    })}
+                  </>
                 )}
                 <div ref={messagesEndRef} />
               </div>

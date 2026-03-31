@@ -9,12 +9,22 @@ export default function Groups() {
     const MAX_GROUP_NAME = 120
     const MAX_GROUP_DESC = 1000
     const MAX_GROUP_MESSAGE = 2000
+    const GROUP_MESSAGES_PAGE_SIZE = 40
+    const MAX_GROUP_MESSAGES_IN_MEMORY = 200
+
+    const capRecentMessages = (list) => {
+        if (list.length <= MAX_GROUP_MESSAGES_IN_MEMORY) return list
+        return list.slice(-MAX_GROUP_MESSAGES_IN_MEMORY)
+    }
 
     const [view, setView] = useState('list') // 'list', 'new', 'chat'
     const [groups, setGroups] = useState([])
     const [userGroups, setUserGroups] = useState([]) // ID grup do których należę
     const [activeGroup, setActiveGroup] = useState(null)
     const [messages, setMessages] = useState([])
+    const [messagesCursor, setMessagesCursor] = useState(null)
+    const [hasOlderMessages, setHasOlderMessages] = useState(false)
+    const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
     const [newMessage, setNewMessage] = useState('')
     const [myId, setMyId] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -37,6 +47,9 @@ export default function Groups() {
 
     useEffect(() => {
         if (view === 'chat' && activeGroup && myId) {
+            setMessages([])
+            setMessagesCursor(null)
+            setHasOlderMessages(false)
             fetchMessages(activeGroup.id)
             fetchMembersCount(activeGroup.id)
             const channel = supabase.channel(`group_${activeGroup.id}`)
@@ -47,7 +60,7 @@ export default function Groups() {
                             // Fetch user info for new message
                             supabase.from('profiles').select('full_name, role').eq('id', msg.sender_id).single()
                                 .then(({ data }) => {
-                                    setMessages(current => [...current, { ...msg, profiles: data }])
+                                    setMessages(current => capRecentMessages([...current, { ...msg, profiles: data }]))
                                     scrollToBottom()
                                 })
                                 .catch(err => console.warn('Failed to fetch message sender info:', err))
@@ -125,20 +138,56 @@ export default function Groups() {
         }
     }
 
-    async function fetchMessages(groupId) {
+    async function fetchMessages(groupId, { before = null, appendOlder = false } = {}) {
         setLoading(true)
-        const { data, error } = await supabase.from('group_messages')
+        let query = supabase.from('group_messages')
             .select('*, profiles(full_name, role)')
             .eq('group_id', groupId)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false })
+            .limit(GROUP_MESSAGES_PAGE_SIZE)
+
+        if (before) {
+            query = query.lt('created_at', before)
+        }
+
+        const { data, error } = await query
 
         if (error) {
             console.error("Błąd pobierania wiadomości grupowych:", error)
         } else if (data) {
-            setMessages(data)
-            scrollToBottom()
+            const ordered = [...data].reverse()
+            const oldestLoaded = ordered[0]?.created_at || null
+            setMessages(prev => {
+                if (!appendOlder) {
+                    return capRecentMessages(ordered)
+                }
+
+                const existingIds = new Set(prev.map(item => item.id))
+                const older = ordered.filter(item => !existingIds.has(item.id))
+                return capRecentMessages([...older, ...prev])
+            })
+
+            if (oldestLoaded) {
+                setMessagesCursor(oldestLoaded)
+            }
+            setHasOlderMessages(data.length === GROUP_MESSAGES_PAGE_SIZE)
+
+            if (!appendOlder) {
+                scrollToBottom()
+            }
         }
         setLoading(false)
+    }
+
+    async function loadOlderMessages() {
+        if (!activeGroup?.id || !messagesCursor || loadingOlderMessages || !hasOlderMessages) return
+
+        setLoadingOlderMessages(true)
+        try {
+            await fetchMessages(activeGroup.id, { before: messagesCursor, appendOlder: true })
+        } finally {
+            setLoadingOlderMessages(false)
+        }
     }
 
     async function sendMessage(e) {
@@ -164,7 +213,7 @@ export default function Groups() {
             profiles: { full_name: 'Ty', role: 'student' } // Tymczasowy profil
         }
 
-        setMessages(prev => [...prev, optimisticMsg])
+        setMessages(prev => capRecentMessages([...prev, optimisticMsg]))
         setNewMessage('')
         scrollToBottom()
 
@@ -242,6 +291,18 @@ export default function Groups() {
                         </div>
                     ) : (
                         <>
+                            {hasOlderMessages && (
+                                <div className="flex justify-center">
+                                    <button
+                                        type="button"
+                                        onClick={loadOlderMessages}
+                                        disabled={loadingOlderMessages}
+                                        className="px-3 py-1.5 rounded-full text-xs font-bold border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 disabled:opacity-50"
+                                    >
+                                        {loadingOlderMessages ? 'Ładowanie starszych...' : 'Załaduj starsze wiadomości'}
+                                    </button>
+                                </div>
+                            )}
                             {messages.length === 0 ? (
                                 <div className="text-center text-gray-500 my-auto text-sm">Rozpocznij dyskusję z innymi...</div>
                             ) : (
