@@ -4,10 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-    // Inject R2 public URL into the service worker at build time.
-    // Set VITE_R2_PUBLIC_URL (or NEXT_PUBLIC_R2_PUBLIC_URL) in your environment before building.
+    // Inject ImageKit URL endpoint into the service worker at build time.
+    // Set VITE_IMAGEKIT_URL_ENDPOINT (or IMAGEKIT_URL_ENDPOINT) in your environment before building.
     define: {
-        'self.__R2_PUBLIC_URL': JSON.stringify(process.env.VITE_R2_PUBLIC_URL || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || ''),
+        'self.__IMAGEKIT_URL_ENDPOINT': JSON.stringify(process.env.VITE_IMAGEKIT_URL_ENDPOINT || process.env.IMAGEKIT_URL_ENDPOINT || ''),
     },
     plugins: [
         react(),

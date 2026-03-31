@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Simple local server to serve the built `dist/` and mock presigned R2 uploads.
+// Simple local server to serve the built `dist/` and mock local upload endpoints.
 // Usage: node dev-server.js
 
 const http = require('http');
@@ -90,7 +90,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // API: presign
+    // API: local upload ticket
     if (u.pathname === '/api/generate-upload' && req.method === 'POST') {
       let body = '';
       for await (const chunk of req) body += chunk;
@@ -103,7 +103,7 @@ const server = http.createServer(async (req, res) => {
       const uploadUrl = `${host}/api/local-upload/${encodeURIComponent(key)}`;
       const publicUrl = `${host}/uploads/${encodeURIComponent(key)}`;
 
-      // Return structure compatible with real presigner
+      // Return structure compatible with legacy local uploader
       return sendJSON(req, res, { uploadUrl, publicUrl, key, expiresIn: 60 });
     }
 
@@ -153,5 +153,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`Dev server running: http://localhost:${PORT}`);
-  console.log('Serves dist/ and mocks /api/generate-upload and /api/local-upload/:key');
+  console.log('Serves dist/ and mocks local upload endpoints');
 });

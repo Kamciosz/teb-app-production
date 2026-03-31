@@ -230,6 +230,35 @@ export default function ReWear() {
         }
     }
 
+    async function handleUpdateItemStatus(itemId, nextStatus) {
+        if (!['active', 'archived'].includes(nextStatus)) return
+
+        const confirmationText = nextStatus === 'archived'
+            ? 'Oznaczyć ogłoszenie jako nieaktualne/zarezerwowane? Czaty ReWear pozostaną dostępne.'
+            : 'Przywrócić ogłoszenie jako aktywne?'
+
+        if (!confirm(confirmationText)) return
+
+        const { error } = await supabase
+            .from('rewear_posts')
+            .update({ status: nextStatus })
+            .eq('id', itemId)
+            .eq('seller_id', myUserId)
+
+        if (error) {
+            console.error('Failed to update ReWear status:', error)
+            toast.error(error.message || 'Nie udało się zmienić statusu ogłoszenia.')
+            return
+        }
+
+        setSelectedItem(prev => prev && prev.id === itemId ? { ...prev, status: nextStatus } : prev)
+        setItems(prev => {
+            const updated = prev.map(item => item.id === itemId ? { ...item, status: nextStatus } : item)
+            return nextStatus === 'archived' ? updated.filter(item => item.id !== itemId) : updated
+        })
+        toast.success(nextStatus === 'archived' ? 'Ogłoszenie oznaczone jako nieaktualne.' : 'Ogłoszenie ponownie aktywne.')
+    }
+
     async function fetchItems() {
         setLoading(true)
 
@@ -501,8 +530,8 @@ export default function ReWear() {
                                 </div>
                                 <div className="p-3 flex flex-col grow justify-between">
                                     <div>
-                                        <div className="text-lg font-bold text-white leading-tight mb-1 truncate">{item.title}</div>
-                                        <div className="text-xs text-gray-400 mb-2 truncate">{cleanDescription(item.description)}</div>
+                                        <div className="text-lg font-bold text-white leading-tight mb-1 break-words line-clamp-2">{item.title}</div>
+                                        <div className="text-xs text-gray-400 mb-2 break-words line-clamp-2">{cleanDescription(item.description)}</div>
                                     </div>
                                     <div className="flex justify-between items-end mt-2">
                                         <div className="text-xl font-bold text-primary">
@@ -520,8 +549,8 @@ export default function ReWear() {
             )}
 
             {isFilterModalOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end sm:items-center p-0 sm:p-4">
-                    <div className="bg-surface border border-gray-700 w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden">
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center px-3 pt-16 pb-24 sm:p-4">
+                    <div className="bg-surface border border-gray-700 w-full sm:max-w-md rounded-3xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
                         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between bg-[#1a1a1a]">
                             <h3 className="text-base font-bold text-white">Filtry ofert</h3>
                             <button
@@ -533,7 +562,7 @@ export default function ReWear() {
                             </button>
                         </div>
 
-                        <div className="p-5 space-y-4">
+                        <div className="p-5 space-y-4 overflow-y-auto min-h-0">
                             <div>
                                 <div className="text-xs text-gray-500 font-bold mb-2">KATEGORIE</div>
                                 <div className="grid grid-cols-2 gap-2">
@@ -568,7 +597,7 @@ export default function ReWear() {
                             </div>
                         </div>
 
-                        <div className="p-5 pt-0 grid grid-cols-2 gap-3">
+                        <div className="p-5 pt-0 grid grid-cols-2 gap-3 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
                             <button
                                 type="button"
                                 onClick={clearAllFilters}
@@ -653,7 +682,7 @@ export default function ReWear() {
                                 })()}
                                 <div className="p-5 flex flex-col gap-3">
                                     <div className="flex items-start justify-between gap-2">
-                                        <h3 className="text-xl font-bold text-white leading-tight">{selectedItem.title}</h3>
+                                        <h3 className="text-xl font-bold text-white leading-tight break-words max-w-[72%]">{selectedItem.title}</h3>
                                         <div className="text-2xl font-bold text-primary whitespace-nowrap">
                                             {selectedItem.price_teb_gabki > 0 ? `${selectedItem.price_teb_gabki} TG` : `${selectedItem.price_pln} ZŁ`}
                                         </div>
@@ -666,7 +695,7 @@ export default function ReWear() {
                                         {meta.size && <span className="px-3 py-1 bg-background border border-gray-700 rounded-full text-xs font-bold text-gray-300">Rozmiar: {meta.size}</span>}
                                         {meta.subject && <span className="px-3 py-1 bg-primary/20 border border-primary/30 rounded-full text-xs font-bold text-primary">{meta.subject}</span>}
                                     </div>
-                                    <p className="text-sm text-gray-300 leading-relaxed">{cleanDescription(selectedItem.description)}</p>
+                                    <p className="text-sm text-gray-300 leading-relaxed break-words">{cleanDescription(selectedItem.description)}</p>
                                     <div className="pt-3 border-t border-gray-800 flex items-center justify-between">
                                         <div className="text-xs text-gray-500">
                                             Wystawil:{' '}
@@ -683,6 +712,23 @@ export default function ReWear() {
                                             {new Date(selectedItem.created_at).toLocaleDateString('pl-PL')}
                                         </div>
                                     </div>
+                                    {isOwner && (
+                                        <div className="rounded-xl border border-gray-800 bg-background p-3 flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-xs text-gray-500">Status ogłoszenia</div>
+                                                <div className="text-sm font-bold text-white">
+                                                    {selectedItem.status === 'active' ? 'Aktywne' : 'Nieaktualne / zarezerwowane'}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleUpdateItemStatus(selectedItem.id, selectedItem.status === 'active' ? 'archived' : 'active')}
+                                                className="px-3 py-2 rounded-lg border border-primary/40 bg-primary/15 text-primary text-xs font-bold"
+                                            >
+                                                {selectedItem.status === 'active' ? 'Oznacz nieaktualne' : 'Przywróć aktywne'}
+                                            </button>
+                                        </div>
+                                    )}
                                     {!isOwner && (
                                         <div className="grid grid-cols-2 gap-3 mt-1">
                                             <button
