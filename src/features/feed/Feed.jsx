@@ -18,6 +18,7 @@ export default function Feed() {
     const MAX_COMMENT_LEN = 2000
     const COMMENTS_PAGE_SIZE = 15
     const FEED_POSTS_CACHE_TTL_MS = 10 * 60 * 1000
+    const FEED_COMMENTS_CACHE_TTL_MS = 8 * 60 * 1000
 
     const readCachedSessionEntry = (key, ttlMs) => {
         try {
@@ -68,6 +69,31 @@ export default function Feed() {
     const [articleCategory, setArticleCategory] = useState('News')
     const [articleHtml, setArticleHtml] = useState('')
     const feedPostsCacheKey = 'feed_posts_index'
+    const getCommentsCacheKey = (postId) => `feed_comments_${postId}`
+
+    const readCachedCommentsState = (postId) => {
+        const cached = readCachedSessionEntry(getCommentsCacheKey(postId), FEED_COMMENTS_CACHE_TTL_MS)
+        if (!cached || typeof cached !== 'object') return null
+
+        const list = Array.isArray(cached.comments)
+            ? cached.comments.filter(comment => comment && typeof comment === 'object' && typeof comment.id !== 'undefined' && typeof comment.content === 'string').slice(0, 200)
+            : []
+
+        return {
+            comments: list,
+            page: Number.isFinite(cached.page) ? cached.page : 0,
+            hasMore: Boolean(cached.hasMore)
+        }
+    }
+
+    const persistCommentsCache = (postId, nextComments, page = 0, hasMore = false) => {
+        if (!postId || !Array.isArray(nextComments)) return
+        writeCachedSessionEntry(getCommentsCacheKey(postId), {
+            comments: nextComments.slice(0, 200),
+            page,
+            hasMore
+        })
+    }
 
     useEffect(() => {
         const cachedPosts = readCachedSessionEntry(feedPostsCacheKey, FEED_POSTS_CACHE_TTL_MS)
@@ -249,11 +275,20 @@ export default function Feed() {
         }
 
         if (data) {
-            if (page === 0) setComments(data)
-            else setComments(prev => [...prev, ...data])
+            const nextHasMore = (count || 0) > (page + 1) * COMMENTS_PAGE_SIZE
+            if (page === 0) {
+                setComments(data)
+                persistCommentsCache(postId, data, page, nextHasMore)
+            } else {
+                setComments(prev => {
+                    const nextComments = [...prev, ...data]
+                    persistCommentsCache(postId, nextComments, page, nextHasMore)
+                    return nextComments
+                })
+            }
 
             setCommentsPage(page)
-            setCommentsHasMore((count || 0) > (page + 1) * COMMENTS_PAGE_SIZE)
+            setCommentsHasMore(nextHasMore)
         }
 
         setCommentsLoading(false)
@@ -294,7 +329,11 @@ export default function Feed() {
         }
 
         if (data) {
-            setComments(prev => [...prev, data])
+            setComments(prev => {
+                const nextComments = [...prev, data]
+                persistCommentsCache(selectedPost.id, nextComments, commentsPage, commentsHasMore)
+                return nextComments
+            })
             setNewComment('')
         }
     }
@@ -340,7 +379,11 @@ export default function Feed() {
             console.error('Failed to update comment', error)
             alert('Nie udało się edytować komentarza: ' + error.message)
         } else if (data) {
-            setComments(prev => prev.map(c => c.id === commentId ? data : c))
+            setComments(prev => {
+                const nextComments = prev.map(c => c.id === commentId ? data : c)
+                persistCommentsCache(selectedPost.id, nextComments, commentsPage, commentsHasMore)
+                return nextComments
+            })
             handleCancelEditComment()
         }
 
@@ -360,7 +403,11 @@ export default function Feed() {
             console.error('Failed to delete comment', error)
             alert('Nie udało się usunąć komentarza: ' + error.message)
         } else {
-            setComments(prev => prev.filter(c => c.id !== commentId))
+            setComments(prev => {
+                const nextComments = prev.filter(c => c.id !== commentId)
+                persistCommentsCache(selectedPost.id, nextComments, commentsPage, commentsHasMore)
+                return nextComments
+            })
         }
 
         setCommentActionBusyId(null)
@@ -395,8 +442,16 @@ export default function Feed() {
 
     const openPost = (post) => {
         setSelectedPost(post)
-        setCommentsPage(0)
-        setCommentsHasMore(false)
+        const cachedComments = readCachedCommentsState(post.id)
+        if (cachedComments) {
+            setComments(cachedComments.comments)
+            setCommentsPage(cachedComments.page)
+            setCommentsHasMore(cachedComments.hasMore)
+        } else {
+            setCommentsPage(0)
+            setCommentsHasMore(false)
+            setComments([])
+        }
         fetchComments(post.id, 0)
     }
 
