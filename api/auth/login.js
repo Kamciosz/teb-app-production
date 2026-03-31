@@ -7,6 +7,45 @@ import {
   setSessionCookies
 } from '../../lib/serverAuth.js';
 
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS_PER_IP = 10;
+const loginRateStore = globalThis.__tebLoginRateStore || new Map();
+if (!globalThis.__tebLoginRateStore) {
+  globalThis.__tebLoginRateStore = loginRateStore;
+}
+
+function getClientIp(req) {
+  const xRealIp = req.headers['x-real-ip'];
+  if (typeof xRealIp === 'string' && xRealIp.trim()) return xRealIp.trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (Array.isArray(xff) && xff.length > 0) return String(xff[0]).split(',')[0].trim();
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function pruneRateStore(now) {
+  for (const [key, state] of loginRateStore.entries()) {
+    if (!state || state.resetAt <= now) loginRateStore.delete(key);
+  }
+}
+
+function registerAttemptAndCheck(key, limit, now) {
+  const existing = loginRateStore.get(key);
+  if (!existing || existing.resetAt <= now) {
+    const state = { count: 1, resetAt: now + RATE_WINDOW_MS };
+    loginRateStore.set(key, state);
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+
+  existing.count += 1;
+  loginRateStore.set(key, existing);
+  if (existing.count > limit) {
+    return { blocked: true, retryAfterSeconds: Math.max(Math.ceil((existing.resetAt - now) / 1000), 1) };
+  }
+
+  return { blocked: false, retryAfterSeconds: 0 };
+}
+
 export default async function handler(req, res) {
   applyNoStore(res);
 
@@ -18,9 +57,25 @@ export default async function handler(req, res) {
     return;
   }
 
-  const body = await readJsonBody(req);
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    if (error?.statusCode === 413) {
+      return res.status(413).json({ error: 'Payload too large' });
+    }
+    return res.status(500).json({ error: 'Internal server error' });
+  }
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  const now = Date.now();
+
+  pruneRateStore(now);
+  const rateState = registerAttemptAndCheck(`ip:${getClientIp(req)}`, MAX_ATTEMPTS_PER_IP, now);
+  if (rateState.blocked) {
+    res.setHeader('Retry-After', String(rateState.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many login attempts. Please try again later.' });
+  }
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });

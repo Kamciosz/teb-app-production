@@ -4,7 +4,46 @@ import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed } f
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUBJECT_MAX_LENGTH = 200;
 const BODY_MAX_LENGTH = 50000;
+const RATE_WINDOW_MS = 60 * 60 * 1000;
+const MAX_ATTEMPTS_PER_IP = 20;
+const MAX_ATTEMPTS_PER_RECIPIENT = 8;
 const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const emailRateStore = globalThis.__tebSendEmailRateStore || new Map();
+if (!globalThis.__tebSendEmailRateStore) {
+  globalThis.__tebSendEmailRateStore = emailRateStore;
+}
+
+function getClientIp(req) {
+  const xRealIp = req.headers['x-real-ip'];
+  if (typeof xRealIp === 'string' && xRealIp.trim()) return xRealIp.trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (Array.isArray(xff) && xff.length > 0) return String(xff[0]).split(',')[0].trim();
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function pruneRateStore(now) {
+  for (const [key, state] of emailRateStore.entries()) {
+    if (!state || state.resetAt <= now) emailRateStore.delete(key);
+  }
+}
+
+function registerAttemptAndCheck(key, limit, now) {
+  const existing = emailRateStore.get(key);
+  if (!existing || existing.resetAt <= now) {
+    const state = { count: 1, resetAt: now + RATE_WINDOW_MS };
+    emailRateStore.set(key, state);
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+
+  existing.count += 1;
+  emailRateStore.set(key, existing);
+  if (existing.count > limit) {
+    return { blocked: true, retryAfterSeconds: Math.max(Math.ceil((existing.resetAt - now) / 1000), 1) };
+  }
+
+  return { blocked: false, retryAfterSeconds: 0 };
+}
 
 function resolveProviderOrder() {
   const configured = String(process.env.EMAIL_PROVIDER || 'auto').trim().toLowerCase();
@@ -92,15 +131,39 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: 'Email provider not configured' });
   }
 
-  const body = await readJsonBody(req);
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    if (error?.statusCode === 413) {
+      return res.status(413).json({ error: 'Payload too large' });
+    }
+    return res.status(500).json({ error: 'Internal server error' });
+  }
   const recipients = normalizeRecipients(body?.to).map((email) => email.trim().toLowerCase());
   const subject = typeof body?.subject === 'string' ? body.subject.trim() : '';
   const html = typeof body?.html === 'string' ? body.html : '';
   const text = typeof body?.text === 'string' ? body.text : '';
+  const now = Date.now();
+
+  pruneRateStore(now);
+  const ipRate = registerAttemptAndCheck(`ip:${getClientIp(req)}`, MAX_ATTEMPTS_PER_IP, now);
+  if (ipRate.blocked) {
+    res.setHeader('Retry-After', String(ipRate.retryAfterSeconds));
+    return res.status(429).json({ error: 'Too many email requests. Please try again later.' });
+  }
 
   const recipientError = validateRecipients(recipients);
   if (recipientError) {
     return res.status(400).json({ error: recipientError });
+  }
+
+  for (const recipient of recipients) {
+    const recipientRate = registerAttemptAndCheck(`recipient:${recipient}`, MAX_ATTEMPTS_PER_RECIPIENT, now);
+    if (recipientRate.blocked) {
+      res.setHeader('Retry-After', String(recipientRate.retryAfterSeconds));
+      return res.status(429).json({ error: 'Too many messages to this recipient. Please try again later.' });
+    }
   }
 
   if (!subject) {

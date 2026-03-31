@@ -11,6 +11,27 @@ const RATE_LIMIT_MAX = 5;
 
 const rateLimit = new Map();
 
+function getClientIp(req) {
+  const xRealIp = req.headers['x-real-ip'];
+  if (typeof xRealIp === 'string' && xRealIp.trim()) return xRealIp.trim();
+  const xVercelForwardedFor = req.headers['x-vercel-forwarded-for'];
+  if (typeof xVercelForwardedFor === 'string' && xVercelForwardedFor.trim()) {
+    return xVercelForwardedFor.trim();
+  }
+  const xff = req.headers['x-forwarded-for'];
+  if (Array.isArray(xff) && xff.length > 0) return String(xff[0]).split(',')[0].trim();
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function pruneRateStore(now) {
+  for (const [key, state] of rateLimit.entries()) {
+    if (!state || state.ts + RATE_LIMIT_WINDOW_MS <= now) {
+      rateLimit.delete(key);
+    }
+  }
+}
+
 export default async function handler(req, res) {
   applyNoStore(res);
 
@@ -34,8 +55,9 @@ export default async function handler(req, res) {
   }
 
   // Basic per-IP rate limiting
-  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const ip = getClientIp(req);
   const now = Date.now();
+  pruneRateStore(now);
   const entry = rateLimit.get(ip) || { count: 0, ts: now };
   if (entry.ts + RATE_LIMIT_WINDOW_MS > now) {
     if (entry.count >= RATE_LIMIT_MAX) {

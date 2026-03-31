@@ -110,7 +110,15 @@ export default async function handler(req, res) {
     return;
   }
 
-  const body = await readJsonBody(req);
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    if (error?.statusCode === 413) {
+      return res.status(413).json({ error: 'Payload too large' });
+    }
+    return res.status(500).json({ error: 'Internal server error' });
+  }
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : '';
