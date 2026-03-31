@@ -4,13 +4,13 @@ import { Link } from 'react-router-dom'
 
 export default function Features() {
     return (
-        <div className="pb-10 pt-2">
+        <div className="pb-10 pt-2 lg:min-h-full lg:pb-0">
             <div className="mb-6">
                 <h2 className="text-xl font-bold text-primary">Szkolne Funkcje</h2>
                 <span className="text-xs text-gray-500">Wszystkie usługi SU w jednym miejscu</span>
             </div>
 
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 xl:grid-cols-4">
                 <Link to="/rewear" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition hover:border-primary">
                     <div className="flex items-center gap-4">
                         <div className="bg-primary/20 p-3 rounded-full text-primary">

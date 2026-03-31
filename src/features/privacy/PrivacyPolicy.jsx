@@ -6,7 +6,7 @@ export default function PrivacyPolicy() {
     const navigate = useNavigate();
 
     return (
-        <div className="pb-20 pt-4 px-2 fade-in">
+        <div className="pb-20 pt-4 px-2 fade-in lg:min-h-full lg:pb-0 lg:px-0">
             <div className="flex items-center gap-3 mb-8">
                 <button 
                     onClick={() => navigate(-1)} 

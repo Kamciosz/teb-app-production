@@ -257,7 +257,7 @@ export default function Profile() {
     const isBioDirty = normalizedBioDraft !== savedBio
 
     return (
-        <div className="pb-10 pt-2">
+        <div className="pb-10 pt-2 lg:min-h-full lg:pb-0">
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-primary">Twój Profil</h2>
                 <button onClick={signOut} className="text-gray-500 hover:text-secondary"><LogOut size={24} /></button>

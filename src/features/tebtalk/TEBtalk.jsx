@@ -852,7 +852,7 @@ export default function TEBtalk() {
         const activeChatAvatarUrl = sanitizeImageUrl(activeChatUser.avatar_url)
 
         return (
-            <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10">
+            <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10 lg:h-full lg:min-h-[calc(100vh-7rem)] lg:mx-0 lg:mt-0">
                 {/* Header Czatu */}
                 <div className="bg-[#1a1a1a] px-4 py-3 border-b border-gray-800 flex items-center gap-3 shrink-0">
                     <button onClick={closeChat} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
@@ -1100,7 +1100,7 @@ export default function TEBtalk() {
     }
 
     return (
-        <div className="pb-10">
+        <div className="pb-10 lg:min-h-full lg:pb-0">
             {chatError && view !== 'chat' ? (
                 <div className="mb-4 rounded-2xl border border-red-900/40 bg-red-950/20 px-4 py-3 text-sm text-red-200">
                     {chatError}

@@ -318,7 +318,7 @@ export default function Librus() {
 
     // Ekran logowania
     if (!isLoggedIn) return (
-        <div className="pb-10 pt-4 flex flex-col items-center">
+        <div className="pb-10 pt-4 flex flex-col items-center lg:min-h-full lg:justify-center lg:pb-0">
             {/* Disclaimer modal */}
             {showDisclaimer && (
                 <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -387,7 +387,7 @@ export default function Librus() {
 
     // ═══════════════ GŁÓWNY WIDOK ══════════════════════════════════════
     return (
-        <div className="pb-20 pt-4 max-w-lg mx-auto w-full">
+        <div className="pb-20 pt-4 max-w-lg mx-auto w-full lg:max-w-none lg:mx-0 lg:min-h-full lg:pb-0">
             {/* Header */}
             <div className="flex justify-between items-center mb-6 px-1 relative">
                 <div>

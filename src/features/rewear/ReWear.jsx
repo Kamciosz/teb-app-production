@@ -460,7 +460,7 @@ export default function ReWear() {
     })
 
     return (
-        <div className="relative min-h-[80vh] pb-10">
+        <div className="relative min-h-[80vh] pb-10 lg:min-h-full lg:pb-0">
             <div className="flex justify-between items-center mb-4 px-2">
                 <h2 className="text-2xl font-bold text-white tracking-tight">Re-Wear</h2>
                 <div className="bg-surface border border-gray-700 p-2 rounded-full flex gap-2 items-center">
@@ -507,7 +507,7 @@ export default function ReWear() {
             {loading ? (
                 <div className="text-center text-gray-500 mt-10 animate-pulse">Przeszukiwanie szkolnych ofert...</div>
             ) : (
-                <div className="grid grid-cols-2 gap-3 px-1">
+                <div className="grid grid-cols-2 gap-3 px-1 lg:grid-cols-3 xl:grid-cols-4 lg:px-0">
                     {filteredItems.map(item => {
                         const meta = parseDescription(item.description)
                         const cardImageUrl = item.image_url || (Array.isArray(meta.photos) && meta.photos.length > 0 ? meta.photos[0] : null)
@@ -594,8 +594,8 @@ export default function ReWear() {
             )}
 
             {isFilterModalOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center px-3 pt-16 pb-24 sm:p-4">
-                    <div className="bg-surface border border-gray-700 w-full sm:max-w-md rounded-3xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col">
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center px-3 pt-16 pb-24 sm:p-4 lg:p-0">
+                    <div className="bg-surface border border-gray-700 w-full sm:max-w-md rounded-3xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[80vh] flex flex-col lg:max-w-xl lg:max-h-[85vh]">
                         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between bg-[#1a1a1a]">
                             <h3 className="text-base font-bold text-white">Filtry ofert</h3>
                             <button
@@ -667,8 +667,8 @@ export default function ReWear() {
                 const meta = parseDescription(selectedItem.description)
                 const isOwner = selectedItem.seller_id === myUserId
                 return (
-                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end sm:items-center p-0">
-                        <div className="bg-surface border border-gray-700 w-full h-full sm:h-auto sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden">
+                    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end sm:items-center p-0 lg:p-6">
+                        <div className="bg-surface border border-gray-700 w-full h-full sm:h-auto sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl relative flex flex-col overflow-hidden lg:w-[min(1100px,100%)] lg:max-w-none lg:h-[min(860px,100%)] lg:rounded-3xl lg:grid lg:grid-cols-[1.05fr_0.95fr]">
                             <div className="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-3xl sm:rounded-t-2xl">
                                 <button onClick={() => setSelectedItem(null)} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                                     <ArrowLeft size={20} />
@@ -686,7 +686,7 @@ export default function ReWear() {
                                     )}
                                 </div>
                             </div>
-                            <div className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+2rem)]">
+                            <div className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+2rem)] lg:pb-0 lg:min-h-0 lg:border-r lg:border-gray-800">
                                 {(() => {
                                     const allPhotos = meta.photos?.length > 0 ? meta.photos : (selectedItem.image_url ? [selectedItem.image_url] : [])
                                     return allPhotos.length > 0 ? (

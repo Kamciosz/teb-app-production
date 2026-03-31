@@ -70,7 +70,7 @@ export default function PublicProfile() {
     const primaryRole = getPrimaryRole(profile)
 
     return (
-        <div className="pb-10 pt-2 space-y-5">
+        <div className="pb-10 pt-2 space-y-5 lg:min-h-full lg:pb-0">
             <div className="flex items-center justify-between gap-3">
                 <button onClick={() => navigate(-1)} className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition">
                     <ArrowLeft size={18} /> Powrot
