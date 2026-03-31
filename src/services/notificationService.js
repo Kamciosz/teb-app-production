@@ -13,6 +13,15 @@ export const NotificationService = {
             return false;
         }
 
+        // Do not re-prompt when browser already blocked/denied notifications.
+        if (Notification.permission === 'denied') {
+            return false;
+        }
+
+        if (Notification.permission === 'granted') {
+            return true;
+        }
+
         const permission = await Notification.requestPermission();
         return permission === 'granted';
     },
