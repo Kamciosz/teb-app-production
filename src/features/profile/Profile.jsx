@@ -4,7 +4,6 @@ import { Link } from 'react-router-dom'
 import { supabase, signOut } from '../../services/supabase'
 import { ImageKitService } from '../../services/imageKitService'
 import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
-import AvatarEditorModal from './AvatarEditorModal'
 import TebGabkiRanking from './TebGabkiRanking'
 import {
     AVAILABLE_BADGES,
@@ -14,6 +13,8 @@ import {
     normalizeRoles,
     PROFILE_BIO_LIMIT
 } from './profileMeta'
+
+const AvatarEditorModal = React.lazy(() => import('./AvatarEditorModal'))
 
 export default function Profile() {
     const MIN_APPEAL_LEN = 20
@@ -545,12 +546,16 @@ export default function Profile() {
                 </div>
             )}
 
-            <AvatarEditorModal
-                isOpen={isAvatarEditorOpen}
-                onClose={() => setIsAvatarEditorOpen(false)}
-                currentAvatarUrl={profile.avatar_url}
-                onSaved={updateAvatar}
-            />
+            {isAvatarEditorOpen && (
+                <React.Suspense fallback={<div className="text-center text-gray-500 text-sm">Ładowanie edytora avatara...</div>}>
+                    <AvatarEditorModal
+                        isOpen={isAvatarEditorOpen}
+                        onClose={() => setIsAvatarEditorOpen(false)}
+                        currentAvatarUrl={profile.avatar_url}
+                        onSaved={updateAvatar}
+                    />
+                </React.Suspense>
+            )}
 
             <TebGabkiRanking />
         </div>

@@ -1,26 +1,34 @@
-import React, { useEffect, useState } from 'react'
+import React, { Suspense, lazy, useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Home, LayoutGrid, User, ShieldAlert } from 'lucide-react'
 import { supabase, signInWithEmail, signUpWithEmail, resendConfirmationEmail } from './services/supabase'
 import { NotificationService } from './services/notificationService'
 import { ToastProvider } from './context/ToastContext'
 
-import Feed from './features/feed/Feed'
-import ReWear from './features/rewear/ReWear'
-import ReWearInbox from './features/rewear/ReWearInbox'
-import Librus from './features/librus/Librus'
-import Admin from './features/admin/Admin'
-import Features from './features/features/Features'
-import Profile from './features/profile/Profile'
-import PublicProfile from './features/profile/PublicProfile'
-import TEBtalk from './features/tebtalk/TEBtalk'
-import Groups from './features/groups/Groups'
-import PrivacyPolicy from './features/privacy/PrivacyPolicy'
+const Feed = lazy(() => import('./features/feed/Feed'))
+const ReWear = lazy(() => import('./features/rewear/ReWear'))
+const ReWearInbox = lazy(() => import('./features/rewear/ReWearInbox'))
+const Librus = lazy(() => import('./features/librus/Librus'))
+const Admin = lazy(() => import('./features/admin/Admin'))
+const Features = lazy(() => import('./features/features/Features'))
+const Profile = lazy(() => import('./features/profile/Profile'))
+const PublicProfile = lazy(() => import('./features/profile/PublicProfile'))
+const TEBtalk = lazy(() => import('./features/tebtalk/TEBtalk'))
+const Groups = lazy(() => import('./features/groups/Groups'))
+const PrivacyPolicy = lazy(() => import('./features/privacy/PrivacyPolicy'))
 
 import InstallPrompt from './components/InstallPrompt'
 import ReloadPrompt from './components/ReloadPrompt'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import { APP_NAME, APP_VERSION, APP_SUBTITLE, LOGO_SMALL, LOGO_LARGE } from './app.config'
+
+function RouteLoading() {
+    return (
+        <div className="min-h-[40vh] flex items-center justify-center">
+            <span className="text-gray-500 text-sm">Ładowanie modułu...</span>
+        </div>
+    )
+}
 
 function App() {
     const [session, setSession] = useState(null)
@@ -276,10 +284,11 @@ function App() {
     if (!session) {
         return (
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <Routes>
-                    <Route path="/privacy" element={<PrivacyPolicy />} />
-                    <Route path="*" element={
-                        <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center px-6 py-10">
+                <Suspense fallback={<RouteLoading />}>
+                    <Routes>
+                        <Route path="/privacy" element={<PrivacyPolicy />} />
+                        <Route path="*" element={
+                            <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center px-6 py-10">
                             <div className="flex flex-col items-center mb-8">
                                 <img src={LOGO_LARGE} alt={APP_NAME} className="w-20 h-20 rounded-3xl mb-4 shadow-lg" />
                                 <h1 className="text-2xl font-bold text-white tracking-tight">{APP_NAME}</h1>
@@ -382,9 +391,10 @@ function App() {
                                     Polityka Prywatności & Regulamin
                                 </Link>
                             </div>
-                        </div>
-                    } />
-                </Routes>
+                            </div>
+                        } />
+                    </Routes>
+                </Suspense>
             </Router>
         )
     }
@@ -409,19 +419,21 @@ function App() {
                         {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
                         <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
                             <AppErrorBoundary>
-                                <Routes>
-                                    <Route path="/" element={<Feed />} />
-                                    <Route path="/features" element={<Features />} />
-                                    <Route path="/profile" element={<Profile />} />
-                                    <Route path="/profile/:userId" element={<PublicProfile />} />
-                                    <Route path="/rewear" element={<ReWear />} />
-                                    <Route path="/rewear/inbox" element={<ReWearInbox />} />
-                                    <Route path="/librus" element={<Librus />} />
-                                    <Route path="/tebtalk" element={<TEBtalk />} />
-                                    <Route path="/groups" element={<Groups />} />
-                                    <Route path="/admin" element={<Admin />} />
-                                    <Route path="/privacy" element={<PrivacyPolicy />} />
-                                </Routes>
+                                <Suspense fallback={<RouteLoading />}>
+                                    <Routes>
+                                        <Route path="/" element={<Feed />} />
+                                        <Route path="/features" element={<Features />} />
+                                        <Route path="/profile" element={<Profile />} />
+                                        <Route path="/profile/:userId" element={<PublicProfile />} />
+                                        <Route path="/rewear" element={<ReWear />} />
+                                        <Route path="/rewear/inbox" element={<ReWearInbox />} />
+                                        <Route path="/librus" element={<Librus />} />
+                                        <Route path="/tebtalk" element={<TEBtalk />} />
+                                        <Route path="/groups" element={<Groups />} />
+                                        <Route path="/admin" element={<Admin />} />
+                                        <Route path="/privacy" element={<PrivacyPolicy />} />
+                                    </Routes>
+                                </Suspense>
                             </AppErrorBoundary>
                         </main>
 

@@ -4,6 +4,7 @@ import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed } f
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUBJECT_MAX_LENGTH = 200;
 const BODY_MAX_LENGTH = 50000;
+const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 function resolveProviderOrder() {
   const configured = String(process.env.EMAIL_PROVIDER || 'auto').trim().toLowerCase();
@@ -47,8 +48,7 @@ async function sendWithBrevo({ recipients, subject, html, text }) {
 }
 
 async function sendWithResend({ recipients, subject, html, text }) {
-  const resend = new Resend(process.env.RESEND_API_KEY);
-  return resend.emails.send({
+  return resendClient.emails.send({
     from: process.env.RESEND_FROM,
     to: recipients,
     subject,

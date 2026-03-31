@@ -71,9 +71,19 @@ export const ImageKitService = {
         const cleanPath = String(path).trim();
         if (!cleanPath) return '';
 
-        // Keep any absolute URL untouched to avoid breaking signature validation
-        // or custom query params used by upstream services.
         if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+            try {
+                const parsed = new URL(cleanPath)
+                const host = parsed.hostname.toLowerCase()
+                const isImageKitHost = host.endsWith('imagekit.io')
+                const hasTransform = parsed.searchParams.has('tr')
+                if (isImageKitHost && !hasTransform) {
+                    parsed.searchParams.set('tr', 'w-auto,q-auto,f-auto')
+                    return parsed.toString()
+                }
+            } catch {
+                return cleanPath
+            }
             return cleanPath;
         }
 

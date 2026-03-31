@@ -43,5 +43,17 @@ export default defineConfig({
                 ]
             }
         })
-    ]
+    ],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['react', 'react-dom', 'react-router-dom', 'lucide-react'],
+                    supabase: ['@supabase/supabase-js'],
+                    quill: ['react-quill'],
+                    crop: ['react-easy-crop'],
+                },
+            },
+        },
+    },
 });

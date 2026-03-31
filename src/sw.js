@@ -46,6 +46,40 @@ if (IMAGEKIT_URL_ENDPOINT) {
     );
 }
 
+// Keep app shell available offline and prefer fresh content when online.
+registerRoute(
+    ({ request }) => request.mode === 'navigate',
+    new NetworkFirst({
+        cacheName: 'app-shell-cache',
+        networkTimeoutSeconds: 3,
+        plugins: [
+            new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 7 * 24 * 60 * 60 }),
+            new CacheableResponsePlugin({ statuses: [0, 200] })
+        ]
+    })
+);
+
+// Cache only non-sensitive, same-origin GET API responses for short offline fallback.
+registerRoute(
+    ({ url, request }) => {
+        if (request.method !== 'GET') return false;
+        if (url.origin !== self.location.origin) return false;
+        if (!url.pathname.startsWith('/api/')) return false;
+        if (url.pathname.startsWith('/api/auth/')) return false;
+        if (url.pathname === '/api/imagekit-auth') return false;
+        if (url.pathname === '/api/send-email') return false;
+        return true;
+    },
+    new NetworkFirst({
+        cacheName: 'safe-api-read-cache',
+        networkTimeoutSeconds: 2,
+        plugins: [
+            new ExpirationPlugin({ maxEntries: 50, maxAgeSeconds: 10 * 60 }),
+            new CacheableResponsePlugin({ statuses: [0, 200] })
+        ]
+    })
+);
+
 // --- OBSŁUGA POWIADOMIEŃ PUSH ---
 
 self.addEventListener('push', (event) => {

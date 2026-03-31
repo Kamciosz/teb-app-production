@@ -684,7 +684,7 @@ export default function TEBtalk() {
                                 <Users size={20} className="text-secondary" />
                             ) : activeChatAvatarUrl ? (
                                 <button type="button" onClick={(event) => openProfile(activeChatUser.id, event)} className="w-full h-full">
-                                    <img src={ImageKitService.getOptimizedUrl(activeChatAvatarUrl)} alt="Av" className="w-full h-full object-cover" />
+                                    <img src={ImageKitService.getOptimizedUrl(activeChatAvatarUrl)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                 </button>
                             ) : (
                                 <button type="button" onClick={(event) => openProfile(activeChatUser.id, event)} className="w-full h-full flex items-center justify-center">
@@ -772,6 +772,7 @@ export default function TEBtalk() {
                                                     className="rounded-lg cursor-pointer hover:opacity-90 transition"
                                                     onClick={() => window.open(safeMessageImageUrl, '_blank', 'noopener,noreferrer')}
                                                     loading="lazy"
+                                                    decoding="async"
                                                 />
                                             ) : (
                                                 sanitizePlainText(msg.content, { maxLength: MAX_CHAT_MESSAGE, preserveLineBreaks: true })
@@ -852,7 +853,7 @@ export default function TEBtalk() {
                                             <div key={m.user_id} className="flex items-center gap-3 p-2 bg-background border border-gray-800 rounded-xl">
                                                 <div className="w-8 h-8 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center font-bold text-xs">
                                                     {m.profiles.avatar_url ? (
-                                                        <img src={ImageKitService.getOptimizedUrl(m.profiles.avatar_url, 80)} alt="Av" className="w-full h-full object-cover" />
+                                                        <img src={ImageKitService.getOptimizedUrl(m.profiles.avatar_url, 80)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                                     ) : m.profiles.full_name.charAt(0)}
                                                 </div>
                                                 <div className="flex-1">
@@ -892,7 +893,7 @@ export default function TEBtalk() {
                                                     className="flex items-center gap-3 p-3 bg-background border border-gray-800 rounded-xl cursor-pointer hover:border-secondary transition"
                                                 >
                                                     <div className="w-8 h-8 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center font-bold text-xs">
-                                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url, 80)} alt="Av" className="w-full h-full object-cover" /> : friend.full_name.charAt(0)}
+                                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url, 80)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" /> : friend.full_name.charAt(0)}
                                                     </div>
                                                     <div className="text-sm font-bold text-white">{friend.full_name}</div>
                                                 </div>
@@ -952,7 +953,7 @@ export default function TEBtalk() {
                             friends.map(friend => (
                                 <div key={friend.id} onClick={() => openChat({ ...friend, type: 'private' })} className="bg-surface border border-gray-800 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-primary transition group">
                                     <button type="button" onClick={(event) => openProfile(friend.id, event)} className="w-12 h-12 rounded-full bg-gray-800 border border-gray-700 overflow-hidden flex items-center justify-center font-bold text-lg shrink-0">
-                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url)} alt="Av" className="w-full h-full object-cover" /> : getUserInitial(friend.full_name)}
+                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" /> : getUserInitial(friend.full_name)}
                                     </button>
                                     <div className="flex-1 text-left min-w-0">
                                         <div className="font-bold text-white group-hover:text-primary transition truncate">{friend.full_name}</div>
@@ -994,7 +995,7 @@ export default function TEBtalk() {
                                 <div key={user.id} onClick={() => openChat({ ...user, type: 'private' })} className="bg-surface border border-gray-800 p-3 rounded-2xl flex items-center gap-3 transition cursor-pointer hover:border-primary/40">
                                     <button type="button" onClick={(event) => openProfile(user.id, event)} className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center font-bold overflow-hidden shrink-0">
                                         {user.avatar_url ? (
-                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="Av" className="w-full h-full object-cover" />
+                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                         ) : (
                                             getUserInitial(user.full_name)
                                         )}
@@ -1059,7 +1060,7 @@ export default function TEBtalk() {
                                         {user.type === 'group' ? (
                                             <Users size={24} className="text-secondary" />
                                         ) : user.avatar_url ? (
-                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="Av" className="w-full h-full object-cover" />
+                                            <img src={ImageKitService.getOptimizedUrl(user.avatar_url)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                         ) : (
                                             getUserInitial(user.full_name)
                                         )}

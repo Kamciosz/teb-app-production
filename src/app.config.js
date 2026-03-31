@@ -6,7 +6,7 @@
 
 // ─── INFORMACJE O APLIKACJI ──────────────────────────────────
 export const APP_NAME        = 'TEB-App'
-export const APP_VERSION     = 'v0.2'
+export const APP_VERSION     = 'v0.3'
 export const APP_SUBTITLE    = 'Portal szkolny · tylko @teb.edu.pl'
 
 // ─── LOGO ────────────────────────────────────────────────────

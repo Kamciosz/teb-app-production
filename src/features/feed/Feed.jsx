@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { ArrowUp, ArrowDown, X, FileText, Maximize2, MessageCircle, Send, Pencil, Trash2 } from 'lucide-react'
 import { supabase } from '../../services/supabase'
-import ReactQuill from 'react-quill'
-import 'react-quill/dist/quill.snow.css'
 import DOMPurify from 'dompurify'
 import ReportButton from '../../components/ReportButton'
 import { ImageKitService } from '../../services/imageKitService'
 import { useToast } from '../../context/ToastContext'
-import imageCompression from 'browser-image-compression'
 import { WordFilter } from '../../services/wordFilter'
+
+const ReactQuill = React.lazy(async () => {
+    await import('react-quill/dist/quill.snow.css')
+    return import('react-quill')
+})
 
 export default function Feed() {
     const MAX_ARTICLE_TITLE = 200
@@ -492,6 +494,8 @@ export default function Feed() {
             if (!file) return;
 
             try {
+                const { default: imageCompression } = await import('browser-image-compression')
+
                 // Kompresja przed CDN (Pracuj mądrze!)
                 const options = {
                     maxSizeMB: 0.3,
@@ -814,7 +818,9 @@ export default function Feed() {
                             <div>
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Treść (obsługa YouTube auto-embed + CDN zdjęć)*</label>
                                 <div className="bg-white rounded-xl overflow-hidden text-black border-2 border-transparent focus-within:border-primary transition p-0">
-                                    <ReactQuill ref={quillRef} theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-64" placeholder="Opisz temat..." />
+                                    <React.Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-500 text-sm">Ładowanie edytora...</div>}>
+                                        <ReactQuill ref={quillRef} theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-64" placeholder="Opisz temat..." />
+                                    </React.Suspense>
                                 </div>
                             </div>
                             <div className="mt-8 pt-4 border-t border-gray-800 flex justify-end gap-3">
