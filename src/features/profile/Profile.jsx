@@ -255,6 +255,7 @@ export default function Profile() {
     const savedBio = sanitizePlainText(profile.bio, { maxLength: PROFILE_BIO_LIMIT, preserveLineBreaks: true })
     const normalizedBioDraft = sanitizePlainText(bioDraft, { maxLength: PROFILE_BIO_LIMIT, preserveLineBreaks: true })
     const isBioDirty = normalizedBioDraft !== savedBio
+    const schoolEmail = sanitizePlainText(profile.email, { maxLength: 120 })
 
     return (
         <div className="pb-10 pt-2 lg:min-h-full lg:pb-0">
@@ -304,7 +305,7 @@ export default function Profile() {
                     </h3>
                 )}
 
-                <p className="text-sm text-gray-400 mb-3">{profile.email}</p>
+                {schoolEmail ? <p className="text-xs text-gray-500 mb-3">({schoolEmail})</p> : null}
                 <div className="flex flex-wrap gap-2 justify-center">
                     {roles.map(role => (
                         <span key={role} className={`text-[10px] px-3 py-1 rounded-full font-bold ${getRoleBadgeClass(role)}`}>

@@ -30,7 +30,7 @@ export default function PublicProfile() {
 
         const { data, error: queryError } = await supabase
             .from('profiles')
-            .select('id, full_name, avatar_url, role, roles, teb_gabki, bio, is_private, dm_friends_only, created_at')
+            .select('id, full_name, email, avatar_url, role, roles, teb_gabki, bio, is_private, dm_friends_only, created_at')
             .eq('id', userId)
             .single()
 
@@ -68,6 +68,7 @@ export default function PublicProfile() {
     const avatarUrl = sanitizeImageUrl(profile.avatar_url)
     const isOwnProfile = currentUserId && currentUserId === profile.id
     const primaryRole = getPrimaryRole(profile)
+    const schoolEmail = sanitizePlainText(profile.email, { maxLength: 120 })
 
     return (
         <div className="pb-10 pt-2 space-y-5 lg:min-h-full lg:pb-0">
@@ -91,6 +92,7 @@ export default function PublicProfile() {
                 </div>
 
                 <h2 className="font-bold text-2xl text-white text-center">{sanitizePlainText(profile.full_name, { maxLength: 80 })}</h2>
+                {schoolEmail ? <p className="text-xs text-gray-500 mt-1">({schoolEmail})</p> : null}
                 <p className="text-sm text-gray-400 mt-2">{getRoleLabel(primaryRole)}</p>
 
                 <div className="flex flex-wrap gap-2 justify-center mt-4">
