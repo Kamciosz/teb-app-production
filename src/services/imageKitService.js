@@ -1,6 +1,18 @@
 import { supabase } from './supabase';
 
 const IMAGEKIT_ENDPOINT = import.meta.env.IMAGEKIT_URL_ENDPOINT || import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || '';
+const OPTIMIZED_URL_CACHE_LIMIT = 1000;
+const optimizedUrlCache = new Map();
+
+function rememberOptimizedUrl(cacheKey, value) {
+    if (optimizedUrlCache.size >= OPTIMIZED_URL_CACHE_LIMIT) {
+        const oldestKey = optimizedUrlCache.keys().next().value;
+        if (oldestKey) optimizedUrlCache.delete(oldestKey);
+    }
+    optimizedUrlCache.set(cacheKey, value);
+    return value;
+}
+
 export const ImageKitService = {
     upload: async (file, fileName, folder = '') => {
         if (!file) throw new Error('No file provided');
@@ -66,10 +78,17 @@ export const ImageKitService = {
         return body.url || `${auth.urlEndpoint.replace(/\/+$/, '')}${body.filePath}`;
     },
 
-    getOptimizedUrl: (path) => {
+    getOptimizedUrl: (path, width = null) => {
         if (!path) return '';
         const cleanPath = String(path).trim();
         if (!cleanPath) return '';
+        const normalizedWidth = Number.isFinite(Number(width)) && Number(width) > 0 ? Math.round(Number(width)) : null;
+        const transformValue = normalizedWidth ? `w-${normalizedWidth},q-auto,f-auto` : 'w-auto,q-auto,f-auto';
+        const cacheKey = `${cleanPath}::${transformValue}`;
+
+        if (optimizedUrlCache.has(cacheKey)) {
+            return optimizedUrlCache.get(cacheKey);
+        }
 
         if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
             try {
@@ -78,19 +97,19 @@ export const ImageKitService = {
                 const isImageKitHost = host.endsWith('imagekit.io')
                 const hasTransform = parsed.searchParams.has('tr')
                 if (isImageKitHost && !hasTransform) {
-                    parsed.searchParams.set('tr', 'w-auto,q-auto,f-auto')
-                    return parsed.toString()
+                    parsed.searchParams.set('tr', transformValue)
+                    return rememberOptimizedUrl(cacheKey, parsed.toString())
                 }
             } catch {
-                return cleanPath
+                return rememberOptimizedUrl(cacheKey, cleanPath)
             }
-            return cleanPath;
+            return rememberOptimizedUrl(cacheKey, cleanPath);
         }
 
-        if (!IMAGEKIT_ENDPOINT) return cleanPath;
+        if (!IMAGEKIT_ENDPOINT) return rememberOptimizedUrl(cacheKey, cleanPath);
         const base = IMAGEKIT_ENDPOINT.replace(/\/+$/, '');
         const normalizedPath = cleanPath.replace(/^\/+/, '');
         const q = normalizedPath.includes('?') ? '&' : '?';
-        return `${base}/${normalizedPath}${q}tr=w-auto,q-auto,f-auto`;
+        return rememberOptimizedUrl(cacheKey, `${base}/${normalizedPath}${q}tr=${transformValue}`);
     }
 };

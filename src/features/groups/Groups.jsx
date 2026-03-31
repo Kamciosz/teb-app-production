@@ -12,6 +12,7 @@ export default function Groups() {
     const GROUP_MESSAGES_PAGE_SIZE = 40
     const MAX_GROUP_MESSAGES_IN_MEMORY = 200
     const GROUP_MESSAGES_CACHE_TTL_MS = 8 * 60 * 1000
+    const GROUP_STATE_CACHE_TTL_MS = 10 * 60 * 1000
 
     const capRecentMessages = (list) => {
         if (list.length <= MAX_GROUP_MESSAGES_IN_MEMORY) return list
@@ -61,6 +62,7 @@ export default function Groups() {
 
     const messagesEndRef = useRef(null)
     const getGroupMessagesCacheKey = (userId, groupId) => `groups_messages_${userId}_${groupId}`
+    const getGroupsStateCacheKey = (userId) => `groups_state_${userId}`
 
     const readCachedGroupMessages = (userId, groupId) => {
         const cached = readCachedSessionEntry(getGroupMessagesCacheKey(userId, groupId), GROUP_MESSAGES_CACHE_TTL_MS)
@@ -75,10 +77,39 @@ export default function Groups() {
         writeCachedSessionEntry(getGroupMessagesCacheKey(userId, groupId), capRecentMessages(list))
     }
 
+    const readCachedGroupsState = (userId) => {
+        const cached = readCachedSessionEntry(getGroupsStateCacheKey(userId), GROUP_STATE_CACHE_TTL_MS)
+        if (!cached || typeof cached !== 'object') return null
+
+        const groupsList = Array.isArray(cached.groups)
+            ? cached.groups.filter(group => group && typeof group === 'object' && typeof group.id !== 'undefined').slice(0, 300)
+            : []
+
+        const memberships = Array.isArray(cached.userGroups)
+            ? cached.userGroups.filter(groupId => typeof groupId === 'number' || typeof groupId === 'string').slice(0, 500)
+            : []
+
+        return { groups: groupsList, userGroups: memberships }
+    }
+
+    const persistGroupsStateCache = (userId, nextGroups, nextUserGroups) => {
+        if (!userId) return
+        writeCachedSessionEntry(getGroupsStateCacheKey(userId), {
+            groups: Array.isArray(nextGroups) ? nextGroups.slice(0, 300) : [],
+            userGroups: Array.isArray(nextUserGroups) ? nextUserGroups.slice(0, 500) : []
+        })
+    }
+
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
                 setMyId(session.user.id)
+                const cachedState = readCachedGroupsState(session.user.id)
+                if (cachedState) {
+                    setGroups(cachedState.groups)
+                    setUserGroups(cachedState.userGroups)
+                    setLoading(false)
+                }
                 fetchGroupsAndMemberships(session.user.id)
             }
         })
@@ -135,8 +166,12 @@ export default function Groups() {
         const { data: allGroups } = await supabase.from('groups').select('*').order('created_at', { ascending: false })
         const { data: myMemberships } = await supabase.from('group_members').select('group_id').eq('user_id', userId)
 
-        if (allGroups) setGroups(allGroups)
-        if (myMemberships) setUserGroups(myMemberships.map(m => m.group_id))
+        const nextGroups = allGroups || []
+        const nextMemberships = (myMemberships || []).map(m => m.group_id)
+
+        if (allGroups) setGroups(nextGroups)
+        if (myMemberships) setUserGroups(nextMemberships)
+        persistGroupsStateCache(userId, nextGroups, nextMemberships)
         setLoading(false)
     }
 
@@ -179,11 +214,19 @@ export default function Groups() {
     async function toggleMembership(groupId, isLeaving = false) {
         if (isLeaving) {
             await supabase.from('group_members').delete().eq('user_id', myId).eq('group_id', groupId)
-            setUserGroups(prev => prev.filter(id => id !== groupId))
+            setUserGroups(prev => {
+                const nextMemberships = prev.filter(id => id !== groupId)
+                persistGroupsStateCache(myId, groups, nextMemberships)
+                return nextMemberships
+            })
             setView('list')
         } else {
             await supabase.from('group_members').insert([{ user_id: myId, group_id: groupId }])
-            setUserGroups(prev => [...prev, groupId])
+            setUserGroups(prev => {
+                const nextMemberships = prev.includes(groupId) ? prev : [...prev, groupId]
+                persistGroupsStateCache(myId, groups, nextMemberships)
+                return nextMemberships
+            })
         }
     }
 

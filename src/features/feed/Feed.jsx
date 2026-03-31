@@ -17,6 +17,31 @@ export default function Feed() {
     const MAX_ARTICLE_HTML = 12000
     const MAX_COMMENT_LEN = 2000
     const COMMENTS_PAGE_SIZE = 15
+    const FEED_POSTS_CACHE_TTL_MS = 10 * 60 * 1000
+
+    const readCachedSessionEntry = (key, ttlMs) => {
+        try {
+            const raw = sessionStorage.getItem(key)
+            if (!raw) return null
+            const parsed = JSON.parse(raw)
+            if (!parsed?.ts || !('data' in parsed)) return null
+            if ((Date.now() - parsed.ts) > ttlMs) {
+                sessionStorage.removeItem(key)
+                return null
+            }
+            return parsed.data
+        } catch {
+            return null
+        }
+    }
+
+    const writeCachedSessionEntry = (key, data) => {
+        try {
+            sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }))
+        } catch {
+            // Ignore cache write failures (quota/private mode).
+        }
+    }
 
     const [posts, setPosts] = useState([])
     const [loading, setLoading] = useState(true)
@@ -42,8 +67,14 @@ export default function Feed() {
     const [articleTitle, setArticleTitle] = useState('')
     const [articleCategory, setArticleCategory] = useState('News')
     const [articleHtml, setArticleHtml] = useState('')
+    const feedPostsCacheKey = 'feed_posts_index'
 
     useEffect(() => {
+        const cachedPosts = readCachedSessionEntry(feedPostsCacheKey, FEED_POSTS_CACHE_TTL_MS)
+        if (Array.isArray(cachedPosts) && cachedPosts.length) {
+            setPosts(cachedPosts)
+            setLoading(false)
+        }
         checkUser()
         fetchPosts()
     }, [])
@@ -404,7 +435,10 @@ export default function Feed() {
             alert('Nie udało się pobrać artykułów.')
         }
 
-        if (data) setPosts(data)
+        if (data) {
+            setPosts(data)
+            writeCachedSessionEntry(feedPostsCacheKey, data.slice(0, 200))
+        }
         setLoading(false)
         return data || []
     }
