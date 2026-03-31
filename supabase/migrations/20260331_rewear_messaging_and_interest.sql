@@ -6,7 +6,7 @@
 -- ============================================================
 
 create table if not exists public.rewear_interests (
-  post_id uuid not null references public.rewear_posts(id) on delete cascade,
+  post_id bigint not null references public.rewear_posts(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default timezone('utc', now()),
   primary key (post_id, user_id)
@@ -14,7 +14,7 @@ create table if not exists public.rewear_interests (
 
 create table if not exists public.rewear_conversations (
   id uuid primary key default gen_random_uuid(),
-  post_id uuid not null references public.rewear_posts(id) on delete cascade,
+  post_id bigint not null references public.rewear_posts(id) on delete cascade,
   seller_id uuid not null references public.profiles(id) on delete cascade,
   buyer_id uuid not null references public.profiles(id) on delete cascade,
   status text not null default 'active',
@@ -101,7 +101,7 @@ as $$
   );
 $$;
 
-create or replace function public.start_rewear_conversation(p_post_id uuid, p_initial_message text default null)
+create or replace function public.start_rewear_conversation(p_post_id bigint, p_initial_message text default null)
 returns uuid
 language plpgsql
 security definer
@@ -259,7 +259,7 @@ begin
 end;
 $$;
 
-grant execute on function public.start_rewear_conversation(uuid, text) to authenticated;
+grant execute on function public.start_rewear_conversation(bigint, text) to authenticated;
 grant execute on function public.complete_rewear_purchase(uuid) to authenticated;
 
 drop policy if exists rewear_interests_select_owner_or_seller on public.rewear_interests;
@@ -456,11 +456,11 @@ begin
         raise exception 'Nieprawidłowe zgłoszenie: komentarz Feed nie istnieje.';
       end if;
     when 'rewear_post' then
-      if not exists (select 1 from public.rewear_posts rp where rp.id = new.reported_entity_id) then
+      if not exists (select 1 from public.rewear_posts rp where rp.id::text = new.reported_entity_id) then
         raise exception 'Nieprawidłowe zgłoszenie: wpis ReWear nie istnieje.';
       end if;
     when 'rewear_message' then
-      if not exists (select 1 from public.rewear_messages rm where rm.id = new.reported_entity_id) then
+      if not exists (select 1 from public.rewear_messages rm where rm.id::text = new.reported_entity_id) then
         raise exception 'Nieprawidłowe zgłoszenie: wiadomość ReWear nie istnieje.';
       end if;
     when 'group_message' then
@@ -468,7 +468,7 @@ begin
         raise exception 'Nieprawidłowe zgłoszenie: wiadomość grupowa nie istnieje.';
       end if;
     when 'direct_message' then
-      if not exists (select 1 from public.direct_messages dm where dm.id = new.reported_entity_id) then
+      if not exists (select 1 from public.direct_messages dm where dm.id::text = new.reported_entity_id) then
         raise exception 'Nieprawidłowe zgłoszenie: wiadomość prywatna nie istnieje.';
       end if;
     when 'chat_group_message' then

@@ -99,8 +99,13 @@ export default function ReWearInbox() {
         let resolvedConversationId = routeConversationId
 
         if (routePostId) {
+          const numericPostId = Number(routePostId)
+          if (!Number.isFinite(numericPostId) || numericPostId <= 0) {
+            throw new Error('Nieprawidłowy identyfikator ogłoszenia ReWear.')
+          }
+
           const { data, error } = await supabase.rpc('start_rewear_conversation', {
-            p_post_id: routePostId
+            p_post_id: numericPostId
           })
 
           if (error) throw error

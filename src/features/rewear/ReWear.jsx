@@ -14,6 +14,7 @@ import { sanitizePlainText } from '../../utils/safeContent'
 export default function ReWear() {
     const MAX_REWEAR_TITLE = 200
     const MAX_REWEAR_DESC = 2000
+    const CATEGORY_OPTIONS = ['Ubrania', 'Elektronika', 'Książki', 'Korepetycje', 'Usługi', 'Inne']
 
     const [items, setItems] = useState([])
     const [loading, setLoading] = useState(true)
@@ -24,6 +25,9 @@ export default function ReWear() {
     const [interestedPostIds, setInterestedPostIds] = useState([])
     const [interestLoadingIds, setInterestLoadingIds] = useState([])
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
+    const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
+    const [selectedCategories, setSelectedCategories] = useState([])
     const [interestedUsers, setInterestedUsers] = useState([])
     const [loadingInterestedUsers, setLoadingInterestedUsers] = useState(false)
 
@@ -57,11 +61,28 @@ export default function ReWear() {
     const clearFiles = () =>
         setNewItemFiles(prev => { prev.forEach(e => URL.revokeObjectURL(e.preview)); return [] })
 
-    // Filtrowanie
-    const [activeFilter, setActiveFilter] = useState('Wszystko')
-
     const canTutor = userRoles.some(r => ['tutor', 'admin'].includes(r))
     const canService = userRoles.some(r => ['freelancer', 'admin'].includes(r))
+
+    function normalizeText(value) {
+        return String(value || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+    }
+
+    function toggleCategory(category) {
+        setSelectedCategories(prev => prev.includes(category)
+            ? prev.filter(item => item !== category)
+            : [...prev, category]
+        )
+    }
+
+    function clearAllFilters() {
+        setSelectedCategories([])
+        setShowFavoritesOnly(false)
+    }
 
     useEffect(() => {
         fetchItems()
@@ -329,10 +350,24 @@ export default function ReWear() {
 
     // Aplikacja Filtrów
     const filteredItems = items.filter(item => {
-        if (showFavoritesOnly && !interestedPostIds.includes(item.id)) return false
-        if (activeFilter === 'Wszystko') return true;
         const meta = parseDescription(item.description)
-        return meta.category === activeFilter;
+        const category = meta.category || 'Inne'
+
+        if (showFavoritesOnly && !interestedPostIds.includes(item.id)) return false
+        if (selectedCategories.length > 0 && !selectedCategories.includes(category)) return false
+
+        const query = normalizeText(searchQuery)
+        if (!query) return true
+
+        const searchableText = normalizeText([
+            item.title,
+            cleanDescription(item.description),
+            category,
+            item.profiles?.full_name,
+            meta.subject
+        ].filter(Boolean).join(' '))
+
+        return searchableText.includes(query)
     })
 
     return (
@@ -356,21 +391,28 @@ export default function ReWear() {
                     >
                         <Heart size={18} fill={showFavoritesOnly ? 'currentColor' : 'none'} />
                     </button>
-                    <Search className="text-gray-400" size={20} />
-                    <Filter className="text-primary" size={20} />
+                    <button
+                        type="button"
+                        onClick={() => setIsFilterModalOpen(true)}
+                        className={`w-9 h-9 rounded-full border flex items-center justify-center transition ${selectedCategories.length > 0 ? 'border-primary bg-primary/20 text-primary' : 'border-gray-800 bg-background text-gray-400 hover:text-white'}`}
+                        title="Filtry"
+                    >
+                        <Filter size={18} />
+                    </button>
                 </div>
             </div>
 
-            {/* Pasek Filtrów */}
-            <div className="flex overflow-x-auto gap-2 pb-4 px-2 scrollbar-none mb-2">
-                {['Wszystko', 'Ubrania', 'Elektronika', 'Książki', 'Korepetycje', 'Usługi', 'Inne'].map(cat => (
-                    <button
-                        key={cat} onClick={() => setActiveFilter(cat)}
-                        className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-bold transition ${activeFilter === cat ? 'bg-primary text-white shadow-[0_4px_10px_rgba(59,130,246,0.3)]' : 'bg-surface text-gray-400 border border-gray-800'}`}
-                    >
-                        {cat}
-                    </button>
-                ))}
+            <div className="mb-3 px-2">
+                <div className="flex items-center gap-2 bg-surface border border-gray-800 rounded-2xl px-3 py-2">
+                    <Search className="text-gray-500" size={18} />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={event => setSearchQuery(event.target.value.slice(0, 120))}
+                        placeholder="Szukaj konkretnej oferty, sprzedawcy lub kategorii..."
+                        className="w-full bg-transparent text-white placeholder:text-gray-500 text-sm outline-none"
+                    />
+                </div>
             </div>
 
             {loading ? (
@@ -444,7 +486,76 @@ export default function ReWear() {
                         )
                     })}
 
-                    {filteredItems.length === 0 && <div className="col-span-2 text-center text-gray-500 mt-10 p-8 border border-gray-800 rounded-2xl border-dashed">Brak ofert w tej kategorii. Zostań pierwszym!</div>}
+                    {filteredItems.length === 0 && <div className="col-span-2 text-center text-gray-500 mt-10 p-8 border border-gray-800 rounded-2xl border-dashed">Brak ofert dla wybranych filtrów lub frazy wyszukiwania.</div>}
+                </div>
+            )}
+
+            {isFilterModalOpen && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-end sm:items-center p-0 sm:p-4">
+                    <div className="bg-surface border border-gray-700 w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden">
+                        <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between bg-[#1a1a1a]">
+                            <h3 className="text-base font-bold text-white">Filtry ofert</h3>
+                            <button
+                                type="button"
+                                onClick={() => setIsFilterModalOpen(false)}
+                                className="w-8 h-8 rounded-full bg-background border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <div className="text-xs text-gray-500 font-bold mb-2">KATEGORIE</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {CATEGORY_OPTIONS.map(category => {
+                                        const active = selectedCategories.includes(category)
+                                        return (
+                                            <button
+                                                key={category}
+                                                type="button"
+                                                onClick={() => toggleCategory(category)}
+                                                className={`px-3 py-2 rounded-xl border text-sm font-bold transition ${active ? 'border-primary bg-primary/20 text-primary' : 'border-gray-700 bg-background text-gray-300 hover:border-gray-600'}`}
+                                            >
+                                                {category}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-800 bg-background">
+                                <div>
+                                    <div className="text-sm font-bold text-white">Tylko ulubione</div>
+                                    <div className="text-xs text-gray-500">Pokaż zapisane oferty</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowFavoritesOnly(prev => !prev)}
+                                    className={`w-11 h-7 rounded-full border flex items-center px-1 transition ${showFavoritesOnly ? 'border-primary bg-primary/20 justify-end' : 'border-gray-700 bg-surface justify-start'}`}
+                                >
+                                    <span className={`w-5 h-5 rounded-full ${showFavoritesOnly ? 'bg-primary' : 'bg-gray-600'}`} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-5 pt-0 grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={clearAllFilters}
+                                className="py-3 rounded-xl border border-gray-700 text-gray-300 font-bold"
+                            >
+                                Wyczyść
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsFilterModalOpen(false)}
+                                className="py-3 rounded-xl bg-primary text-white font-bold"
+                            >
+                                Zastosuj
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
