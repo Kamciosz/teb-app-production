@@ -656,7 +656,7 @@ export default function Feed() {
     }), []);
 
     return (
-        <div className="pb-10">
+        <div className="pb-10 lg:min-h-full lg:pb-0">
             <div className="flex justify-between items-center mb-6 px-2">
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight">Wiadomości TEB</h2>
@@ -908,8 +908,8 @@ export default function Feed() {
 
             {/* Modal dodawania/edycji Artykułu */}
             {isModalOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
-                    <div className="bg-surface border border-gray-700 w-full max-w-2xl rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 lg:p-0">
+                    <div className="bg-surface border border-gray-700 w-full max-w-2xl rounded-2xl shadow-2xl relative flex flex-col max-h-[90vh] lg:max-w-none lg:w-screen lg:h-screen lg:max-h-none lg:rounded-none lg:border-0">
                         <div className="px-6 py-4 border-b border-gray-800 flex justify-between items-center bg-[#1a1a1a] rounded-t-2xl">
                             <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="text-primary" /> {editingPostId ? 'Edycja artykułu' : 'Redaktor'}</h3>
                             <button onClick={() => { setIsModalOpen(false); resetArticleForm() }} className="text-gray-400 hover:text-white transition p-1 bg-gray-800 rounded-full">
@@ -917,39 +917,66 @@ export default function Feed() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSavePost} className="p-6 flex flex-col gap-5 overflow-y-auto">
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="col-span-2">
-                                    <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł*</label>
-                                    <input
-                                        type="text" required placeholder="Nagłówek..."
-                                        className="w-full p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-primary font-bold"
-                                        value={articleTitle} onChange={e => setArticleTitle(e.target.value.slice(0, MAX_ARTICLE_TITLE))}
-                                        maxLength={MAX_ARTICLE_TITLE}
-                                    />
+                        <form onSubmit={handleSavePost} className="p-6 flex flex-col gap-5 overflow-y-auto lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-8 lg:p-8 lg:flex-1 lg:overflow-hidden">
+                            <div className="flex flex-col gap-5 lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+                                <div className="grid grid-cols-3 gap-4 lg:grid-cols-1">
+                                    <div className="col-span-2 lg:col-span-1">
+                                        <label className="text-xs text-gray-400 font-bold mb-1 block">Tytuł*</label>
+                                        <input
+                                            type="text" required placeholder="Nagłówek..."
+                                            className="w-full p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-primary font-bold"
+                                            value={articleTitle} onChange={e => setArticleTitle(e.target.value.slice(0, MAX_ARTICLE_TITLE))}
+                                            maxLength={MAX_ARTICLE_TITLE}
+                                        />
+                                    </div>
+                                    <div className="col-span-1">
+                                        <label className="text-xs text-gray-400 font-bold mb-1 block">Kategoria</label>
+                                        <select
+                                            className="w-full p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-primary appearance-none cursor-pointer"
+                                            value={articleCategory} onChange={e => setArticleCategory(e.target.value)}
+                                        >
+                                            <option>News</option>
+                                            <option>Wydarzenia</option>
+                                            <option>Pilne</option>
+                                            <option>Sport</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div className="col-span-1">
-                                    <label className="text-xs text-gray-400 font-bold mb-1 block">Kategoria</label>
-                                    <select
-                                        className="w-full p-3 bg-background border border-gray-700 rounded-xl text-white outline-none focus:border-primary appearance-none cursor-pointer"
-                                        value={articleCategory} onChange={e => setArticleCategory(e.target.value)}
-                                    >
-                                        <option>News</option>
-                                        <option>Wydarzenia</option>
-                                        <option>Pilne</option>
-                                        <option>Sport</option>
-                                    </select>
+
+                                <div className="hidden lg:block rounded-2xl border border-gray-800 bg-[#171717] p-5">
+                                    <div className="text-xs font-bold uppercase tracking-[0.24em] text-gray-500">Panel redaktora</div>
+                                    <div className="mt-3 text-2xl font-black text-white leading-tight">Układ desktopowy</div>
+                                    <p className="mt-3 text-sm leading-relaxed text-gray-400">
+                                        Po lewej stronie masz metadane i akcje publikacji, a po prawej pełny edytor na wysokość ekranu.
+                                    </p>
+                                    <div className="mt-4 grid grid-cols-2 gap-3 text-center">
+                                        <div className="rounded-xl border border-gray-800 bg-black/20 p-3">
+                                            <div className="text-[10px] uppercase text-gray-500 font-bold">Limit tytułu</div>
+                                            <div className="mt-1 text-lg font-black text-white">{articleTitle.length}/{MAX_ARTICLE_TITLE}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-gray-800 bg-black/20 p-3">
+                                            <div className="text-[10px] uppercase text-gray-500 font-bold">Limit treści</div>
+                                            <div className="mt-1 text-lg font-black text-white">{articleHtml.length}/{MAX_ARTICLE_HTML}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-auto hidden lg:flex lg:gap-3 lg:pt-4">
+                                    <button type="button" onClick={() => { setIsModalOpen(false); resetArticleForm() }} className="flex-1 px-5 py-3 rounded-xl border border-gray-700 text-gray-400 hover:text-white font-bold transition">Anuluj</button>
+                                    <button type="submit" className="flex-1 bg-primary text-white font-bold px-8 py-3 rounded-xl transition active:scale-95 shadow-lg">{editingPostId ? 'Zapisz zmiany' : 'Publikuj'}</button>
                                 </div>
                             </div>
-                            <div>
+
+                            <div className="lg:min-h-0 lg:flex lg:flex-col">
                                 <label className="text-xs text-gray-400 font-bold mb-1 block">Treść (obsługa YouTube auto-embed + CDN zdjęć)*</label>
-                                <div className="bg-white rounded-xl overflow-hidden text-black border-2 border-transparent focus-within:border-primary transition p-0">
-                                    <React.Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-500 text-sm">Ładowanie edytora...</div>}>
-                                        <ReactQuill ref={quillRef} theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-64" placeholder="Opisz temat..." />
+                                <div className="bg-white rounded-xl overflow-hidden text-black border-2 border-transparent focus-within:border-primary transition p-0 lg:flex-1 lg:min-h-0">
+                                    <React.Suspense fallback={<div className="h-64 lg:h-full flex items-center justify-center text-gray-500 text-sm">Ładowanie edytora...</div>}>
+                                        <ReactQuill ref={quillRef} theme="snow" value={articleHtml} onChange={setArticleHtml} modules={modules} className="h-64 lg:h-[calc(100vh-15rem)]" placeholder="Opisz temat..." />
                                     </React.Suspense>
                                 </div>
                             </div>
-                            <div className="mt-8 pt-4 border-t border-gray-800 flex justify-end gap-3">
+
+                            <div className="mt-8 pt-4 border-t border-gray-800 flex justify-end gap-3 lg:hidden">
                                 <button type="button" onClick={() => { setIsModalOpen(false); resetArticleForm() }} className="px-5 py-2.5 rounded-xl text-gray-400 hover:text-white font-bold transition">Anuluj</button>
                                 <button type="submit" className="bg-primary text-white font-bold px-8 py-2.5 rounded-xl transition active:scale-95 shadow-lg">{editingPostId ? 'Zapisz zmiany' : 'Publikuj'}</button>
                             </div>

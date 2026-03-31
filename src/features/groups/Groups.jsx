@@ -372,7 +372,7 @@ export default function Groups() {
         const isMember = userGroups.includes(activeGroup.id)
 
         return (
-            <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10">
+            <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10 lg:h-full lg:min-h-[calc(100vh-7rem)] lg:mx-0 lg:mt-0">
                 <div className="bg-[#1a1a1a] px-4 py-3 border-b border-gray-800 flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-3">
                         <button onClick={() => setView('list')} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
@@ -484,7 +484,7 @@ export default function Groups() {
     }
 
     return (
-        <div className="pb-10">
+        <div className="pb-10 lg:min-h-full lg:pb-0">
             <div className="flex justify-between items-center mb-6 px-2">
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-tight">Kółka i Grupy</h2>
@@ -529,7 +529,7 @@ export default function Groups() {
                             {groups.map(group => {
                                 const isMember = userGroups.includes(group.id)
                                 return (
-                                    <div key={group.id} onClick={() => setActiveGroup(group)} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:border-secondary transition relative overflow-hidden">
+                                    <div key={group.id} onClick={() => { setActiveGroup(group); setView('chat') }} className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center gap-4 cursor-pointer hover:border-secondary transition relative overflow-hidden">
                                         {/* Status Tag for Creator/Admin view if not approved */}
                                         {!group.is_approved && (
                                             <div className="absolute top-0 right-0 bg-yellow-500 text-black text-[9px] font-bold px-2 py-0.5 rounded-bl-lg">Weryfikacja</div>

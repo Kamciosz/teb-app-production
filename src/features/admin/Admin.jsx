@@ -296,8 +296,17 @@ export default function Admin() {
         )
     }
 
+    const adminTabs = [
+        { id: 'reports', label: 'Tickety', icon: AlertOctagon, disabled: false },
+        { id: 'users', label: 'Uczniowie', icon: UserCheck, disabled: myRole === 'moderator_content' },
+        { id: 'groups', label: 'Grupy', icon: Hash, disabled: myRole === 'moderator_content' },
+        { id: 'appeals', label: 'Apelacje', icon: Scale, disabled: myRole === 'moderator_content' },
+        { id: 'audit', label: 'Audit', icon: ScrollText, disabled: false },
+        { id: 'system', label: 'System', icon: Trash2, disabled: false }
+    ]
+
     return (
-        <div className="pb-10 fade-in max-w-4xl mx-auto">
+        <div className="pb-10 fade-in max-w-4xl mx-auto lg:max-w-none lg:min-h-full lg:pb-0">
             <div className="flex justify-between items-center mb-6 px-1">
                 <div>
                     <h2 className="text-2xl font-bold text-red-500 tracking-tight flex items-center gap-2">
@@ -313,47 +322,53 @@ export default function Admin() {
                 </div>
             )}
 
+            <div className="lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-6 lg:items-start lg:min-h-[calc(100vh-11rem)]">
+                <aside className="hidden lg:flex lg:flex-col lg:gap-2 lg:rounded-3xl lg:border lg:border-gray-800 lg:bg-[#171717] lg:p-3 lg:sticky lg:top-0">
+                    <div className="px-3 pt-2 pb-3 border-b border-gray-800/80">
+                        <div className="text-[10px] uppercase tracking-[0.26em] font-bold text-gray-500">Panel desktop</div>
+                        <div className="mt-2 text-xl font-black text-white">Zarządzanie szkołą</div>
+                        <div className="mt-2 text-sm text-gray-400 leading-relaxed">Na komputerze panel działa jako pełnoekranowy workspace z boczną nawigacją i szeroką przestrzenią roboczą.</div>
+                    </div>
+
+                    {adminTabs.map(tab => {
+                        const Icon = tab.icon
+                        const active = view === tab.id
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setView(tab.id)}
+                                disabled={tab.disabled}
+                                className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition border ${active ? 'bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/10' : tab.disabled ? 'opacity-30 cursor-not-allowed border-transparent text-gray-600' : 'border-transparent text-gray-400 hover:text-white hover:bg-white/[0.04]'}`}
+                            >
+                                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? 'bg-white/10' : 'bg-black/20'}`}>
+                                    <Icon size={18} />
+                                </div>
+                                <div>
+                                    <div className="text-sm font-bold leading-tight">{tab.label}</div>
+                                    <div className={`text-[11px] mt-0.5 ${active ? 'text-red-100' : 'text-gray-500'}`}>{tab.id === 'system' ? 'Utrzymanie i cleanup' : tab.id === 'audit' ? 'Historia działań' : 'Sekcja operacyjna'}</div>
+                                </div>
+                            </button>
+                        )
+                    })}
+                </aside>
+
+                <div className="min-w-0">
+
             {/* Pasek Zakładek RBAC */}
-            <div className="grid grid-cols-3 md:grid-cols-6 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1">
-                <button
-                    onClick={() => setView('reports')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'reports' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                >
-                    <AlertOctagon size={14} /> Tickety
-                </button>
-                <button
-                    onClick={() => setView('users')}
-                    disabled={myRole === 'moderator_content'}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'users' ? 'bg-red-500 text-white shadow-lg' : myRole === 'moderator_content' ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
-                >
-                    <UserCheck size={14} /> Uczniowie
-                </button>
-                <button
-                    onClick={() => setView('groups')}
-                    disabled={myRole === 'moderator_content'}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'groups' ? 'bg-red-500 text-white shadow-lg' : myRole === 'moderator_content' ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
-                >
-                    <Hash size={14} /> Grupy
-                </button>
-                <button
-                    onClick={() => setView('appeals')}
-                    disabled={myRole === 'moderator_content'}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'appeals' ? 'bg-red-500 text-white shadow-lg' : myRole === 'moderator_content' ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
-                >
-                    <Scale size={14} /> Apelacje
-                </button>
-                <button
-                    onClick={() => setView('audit')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'audit' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                >
-                    <ScrollText size={14} /> Audit
-                </button>
-                <button
-                    onClick={() => setView('system')}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === 'system' ? 'bg-red-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                >
-                    <Trash2 size={14} /> System
-                </button>
+            <div className="grid grid-cols-3 md:grid-cols-6 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1 lg:hidden">
+                {adminTabs.map(tab => {
+                    const Icon = tab.icon
+                    return (
+                        <button
+                            key={tab.id}
+                            onClick={() => setView(tab.id)}
+                            disabled={tab.disabled}
+                            className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex justify-center items-center gap-1 ${view === tab.id ? 'bg-red-500 text-white shadow-lg' : tab.disabled ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            <Icon size={14} /> {tab.label}
+                        </button>
+                    )
+                })}
             </div>
 
             {/* Widok: System / Śmieciarka */}
@@ -797,6 +812,8 @@ export default function Admin() {
                     )}
                 </div>
             )}
+                </div>
+            </div>
         </div>
     )
 }

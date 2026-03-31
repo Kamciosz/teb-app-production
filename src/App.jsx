@@ -403,10 +403,35 @@ function App() {
     return (
         <ToastProvider>
             <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <div className="min-h-[100dvh] bg-black flex justify-center">
-                    <div className="w-full max-w-md bg-[#121212] app-bg text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10">
+                <div className="min-h-[100dvh] bg-black lg:h-screen lg:overflow-hidden">
+                    <div className="w-full max-w-md bg-[#121212] app-bg text-white flex flex-col font-sans h-[100dvh] relative overflow-hidden shadow-2xl shadow-primary/10 lg:max-w-none lg:w-screen lg:h-screen lg:flex-row lg:bg-[#0f0f10] lg:shadow-none">
+                        <aside className="hidden lg:flex lg:w-72 lg:shrink-0 lg:flex-col lg:border-r lg:border-white/5 lg:bg-[#151515]">
+                            <div className="px-6 py-7 border-b border-white/5">
+                                <div className="flex items-center gap-3">
+                                    <img src={LOGO_SMALL} alt={`${APP_NAME} logo`} className="w-11 h-11 rounded-2xl object-cover shadow-lg shadow-primary/20" />
+                                    <div>
+                                        <h1 className="text-lg font-bold text-white leading-tight">{APP_NAME}</h1>
+                                        <div className="text-xs text-gray-500 mt-1">{APP_SUBTITLE}</div>
+                                    </div>
+                                </div>
+                                <div className="mt-4 inline-flex rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] font-semibold text-gray-400">
+                                    Wersja {APP_VERSION}
+                                </div>
+                            </div>
+
+                            <nav className="flex-1 px-4 py-5 space-y-2 overflow-y-auto">
+                                <DesktopNavLink to="/" label="Aktualności" icon={<Home />} />
+                                <DesktopNavLink to="/features" label="Moduły" icon={<LayoutGrid />} />
+                                <DesktopNavLink to="/profile" label="Profil" icon={<User />} />
+                                {userRoles.some(role => ['admin', 'moderator_users', 'moderator_content'].includes(role)) && (
+                                    <DesktopNavLink to="/admin" label="Zarząd" icon={<ShieldAlert />} alert />
+                                )}
+                            </nav>
+                        </aside>
+
+                        <div className="flex min-h-0 flex-1 flex-col lg:min-w-0 lg:h-screen">
                         {/* Header z logo TEB */}
-                        <header className="px-5 py-3.5 flex justify-between items-center bg-[#181818]/95 backdrop-blur-xl border-b border-white/5 fixed top-0 w-full max-w-md z-50">
+                        <header className="px-5 py-3.5 flex justify-between items-center bg-[#181818]/95 backdrop-blur-xl border-b border-white/5 fixed top-0 w-full max-w-md z-50 lg:hidden">
                             <div className="flex items-center gap-2.5">
                                 <img src={LOGO_SMALL} alt={`${APP_NAME} logo`} className="w-8 h-8 rounded-xl object-cover" />
                                 <div className="flex items-baseline gap-1.5">
@@ -416,8 +441,18 @@ function App() {
                             </div>
                         </header>
 
+                        <div className="hidden lg:flex items-center justify-between px-8 py-5 border-b border-white/5 bg-[#181818]/85 backdrop-blur-xl">
+                            <div>
+                                <div className="text-xl font-bold text-white">{APP_NAME}</div>
+                                <div className="text-xs uppercase tracking-[0.24em] text-gray-500 mt-1">Desktop workspace</div>
+                            </div>
+                            <div className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs font-semibold text-gray-400">
+                                {APP_VERSION}
+                            </div>
+                        </div>
+
                         {/* Zmienna zawartość z routingiem opartym na pod-modułach z folderu 'features' */}
-                        <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4">
+                        <main className="flex-1 overflow-y-auto mt-16 mb-20 px-4 pt-4 lg:mt-0 lg:mb-0 lg:px-8 lg:py-8 lg:min-h-0">
                             <AppErrorBoundary>
                                 <Suspense fallback={<RouteLoading />}>
                                     <Routes>
@@ -444,12 +479,13 @@ function App() {
                         <ReloadPrompt />
 
                         {/* Bottom Navigation (Apple / Instagram Style) */}
-                        <nav className="absolute bottom-0 w-full max-w-md bg-[#181818]/95 backdrop-blur-xl border-t border-white/5 pb-[env(safe-area-inset-bottom,20px)] pt-1 px-8 flex justify-between z-50">
+                        <nav className="absolute bottom-0 w-full max-w-md bg-[#181818]/95 backdrop-blur-xl border-t border-white/5 pb-[env(safe-area-inset-bottom,20px)] pt-1 px-8 flex justify-between z-50 lg:hidden">
                             <NavLink to="/" icon={<Home />} />
                             <NavLink to="/features" icon={<LayoutGrid />} />
                             <NavLink to="/profile" icon={<User />} />
                             {userRoles.some(role => ['admin', 'moderator_users', 'moderator_content'].includes(role)) && <NavLink to="/admin" icon={<ShieldAlert />} alert />}
                         </nav>
+                        </div>
                     </div>
                 </div>
             </Router>
@@ -464,6 +500,25 @@ function NavLink({ to, icon, alert }) {
         <Link to={to} className="flex flex-col items-center gap-0.5 py-2 px-3 transition-all duration-150">
             {React.cloneElement(icon, { className: `w-6 h-6 transition-colors duration-150 ${isActive ? 'text-primary' : alert ? 'text-red-500/50' : 'text-gray-500'}` })}
             <span className={`h-1 w-1 rounded-full transition-all duration-200 ${isActive ? 'bg-primary scale-100' : 'scale-0 bg-transparent'}`} />
+        </Link>
+    )
+}
+
+function DesktopNavLink({ to, icon, label, alert }) {
+    const location = useLocation();
+    const isActive = location.pathname === to;
+    return (
+        <Link
+            to={to}
+            className={`flex items-center gap-3 rounded-2xl px-4 py-3 transition-all duration-150 border ${isActive ? 'border-primary/30 bg-primary/12 text-white shadow-lg shadow-primary/10' : 'border-transparent text-gray-400 hover:text-white hover:bg-white/[0.04]'}`}
+        >
+            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${isActive ? 'bg-primary/20 text-primary' : alert ? 'bg-red-500/10 text-red-400' : 'bg-white/[0.04] text-gray-500'}`}>
+                {React.cloneElement(icon, { className: 'w-5 h-5' })}
+            </div>
+            <div className="min-w-0">
+                <div className="text-sm font-semibold leading-tight">{label}</div>
+                <div className="text-[11px] text-gray-500 leading-tight mt-0.5">{to === '/' ? 'Start aplikacji' : to === '/features' ? 'Wszystkie sekcje' : to === '/profile' ? 'Konto i ustawienia' : 'Moderacja i zarządzanie'}</div>
+            </div>
         </Link>
     )
 }
