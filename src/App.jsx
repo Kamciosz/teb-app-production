@@ -19,6 +19,7 @@ import PrivacyPolicy from './features/privacy/PrivacyPolicy'
 import InstallPrompt from './components/InstallPrompt'
 import ReloadPrompt from './components/ReloadPrompt'
 import AppErrorBoundary from './components/AppErrorBoundary'
+import { APP_NAME, APP_VERSION, APP_SUBTITLE, LOGO_SMALL, LOGO_LARGE } from './app.config'
 
 function App() {
     const [session, setSession] = useState(null)
@@ -265,7 +266,7 @@ function App() {
 
     if (loading) return (
         <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center gap-3">
-            <img src="/pwa-192x192.png" alt="logo" className="w-14 h-14 rounded-2xl opacity-80" />
+            <img src={LOGO_SMALL} alt="logo" className="w-14 h-14 rounded-2xl opacity-80" />
             <span className="text-gray-500 text-sm">Autoryzacja...</span>
         </div>
     )
@@ -279,9 +280,9 @@ function App() {
                     <Route path="*" element={
                         <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center px-6 py-10">
                             <div className="flex flex-col items-center mb-8">
-                                <img src="/pwa-512x512.png" alt="TEB-App" className="w-20 h-20 rounded-3xl mb-4 shadow-lg" />
-                                <h1 className="text-2xl font-bold text-white tracking-tight">TEB-App</h1>
-                                <p className="text-gray-500 text-xs mt-1">Portal szkolny &middot; tylko @teb.edu.pl</p>
+                                <img src={LOGO_LARGE} alt={APP_NAME} className="w-20 h-20 rounded-3xl mb-4 shadow-lg" />
+                                <h1 className="text-2xl font-bold text-white tracking-tight">{APP_NAME}</h1>
+                                <p className="text-gray-500 text-xs mt-1">{APP_SUBTITLE}</p>
                             </div>
 
                             <form onSubmit={handleAuth} className="w-full max-w-xs flex flex-col gap-3">
@@ -396,10 +397,10 @@ function App() {
                         {/* Header z logo TEB */}
                         <header className="px-5 py-3.5 flex justify-between items-center bg-[#181818]/95 backdrop-blur-xl border-b border-white/5 fixed top-0 w-full max-w-md z-50">
                             <div className="flex items-center gap-2.5">
-                                <img src="/pwa-192x192.png" alt="TEB-App logo" className="w-8 h-8 rounded-xl object-cover" />
+                                <img src={LOGO_SMALL} alt={`${APP_NAME} logo`} className="w-8 h-8 rounded-xl object-cover" />
                                 <div className="flex items-baseline gap-1.5">
-                                    <h1 className="text-[17px] font-bold text-white leading-none">TEB-App</h1>
-                                    <span className="text-[10px] font-medium text-gray-600 leading-none">v0.2</span>
+                                    <h1 className="text-[17px] font-bold text-white leading-none">{APP_NAME}</h1>
+                                    <span className="text-[10px] font-medium text-gray-600 leading-none">{APP_VERSION}</span>
                                 </div>
                             </div>
                         </header>
