@@ -50,12 +50,12 @@ export default function TebGabkiRanking() {
 
     return (
         <div className="bg-surface border border-gray-800 rounded-xl overflow-hidden shadow-xl">
-            <div className="bg-[#1a1a1a] p-4 border-b border-gray-800 flex justify-between items-center">
+            <div className="bg-[#1a1a1a] p-4 border-b border-gray-800 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
                 <h3 className="font-bold text-white flex items-center gap-2">
                     <Award className="text-yellow-500" size={20} /> Ranking Bogactwa
                 </h3>
                 {myRank && (
-                    <div className="bg-primary/20 text-primary px-3 py-1 rounded-full text-[10px] font-bold border border-primary/30">
+                    <div className="self-start bg-primary/20 text-primary px-3 py-1 rounded-full text-[10px] font-bold border border-primary/30 sm:self-auto">
                         TWOJA POZYCJA: #{myRank}
                     </div>
                 )}
@@ -63,8 +63,8 @@ export default function TebGabkiRanking() {
 
             <div className="max-h-80 overflow-y-auto divide-y divide-gray-800/50">
                 {ranking.map((user, index) => (
-                    <button key={user.id} onClick={() => navigate(`/profile/${user.id}`)} className={`w-full p-4 flex items-center gap-4 transition text-left hover:bg-white/[0.03] ${index < 3 ? 'bg-yellow-500/5' : ''}`}>
-                        <div className="w-6 text-center">
+                    <button key={user.id} onClick={() => navigate(`/profile/${user.id}`)} className={`w-full p-4 flex items-center gap-3 transition text-left hover:bg-white/[0.03] ${index < 3 ? 'bg-yellow-500/5' : ''}`}>
+                        <div className="w-6 text-center flex-shrink-0">
                             {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : <span className="text-gray-500 text-xs font-bold">{index + 1}</span>}
                         </div>
                         
@@ -77,17 +77,21 @@ export default function TebGabkiRanking() {
                         </div>
 
                         <div className="flex-1 min-w-0">
-                            <div className="font-bold text-sm text-white truncate flex items-center gap-2">
-                                {user.full_name}
-                                <span className="text-[8px] bg-primary/15 text-primary px-1.5 py-0.5 rounded uppercase border border-primary/20">{getRoleShortLabel(user.role)}</span>
+                            <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                                <div className="min-w-0 flex-1 text-sm font-bold text-white leading-tight break-words">
+                                    {user.full_name}
+                                </div>
+                                <span className="shrink-0 text-[8px] bg-primary/15 text-primary px-1.5 py-0.5 rounded uppercase border border-primary/20">
+                                    {getRoleShortLabel(user.role)}
+                                </span>
                             </div>
                             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest flex items-center gap-1">
                                 <TrendingUp size={10} className="text-green-500" /> Aktywny Uczeń
                             </div>
                         </div>
 
-                        <div className="text-right">
-                            <div className="text-primary font-black text-sm">🪙 {user.teb_gabki || 0}</div>
+                        <div className="text-right flex-shrink-0">
+                            <div className="text-primary font-black text-sm whitespace-nowrap">🪙 {user.teb_gabki || 0}</div>
                             <div className="text-[9px] text-gray-600 font-bold uppercase">TG</div>
                         </div>
                     </button>
