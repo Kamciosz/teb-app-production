@@ -231,14 +231,43 @@ export default function ReWear() {
     }
 
     async function fetchItems() {
-        const { data, error } = await supabase
-            .from('rewear_posts')
-            .select('*, profiles(full_name, avatar_url, role)')
-            .eq('status', 'active')
-            .order('created_at', { ascending: false })
+        setLoading(true)
 
-        if (data) setItems(data)
-        setLoading(false)
+        try {
+            const { data: posts, error: postsError } = await supabase
+                .from('rewear_posts')
+                .select('*')
+                .eq('status', 'active')
+                .order('created_at', { ascending: false })
+
+            if (postsError) throw postsError
+
+            const sellerIds = [...new Set((posts || []).map(item => item.seller_id).filter(Boolean))]
+            let profilesMap = new Map()
+
+            if (sellerIds.length > 0) {
+                const { data: profiles, error: profilesError } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, avatar_url, role')
+                    .in('id', sellerIds)
+
+                if (profilesError) throw profilesError
+                profilesMap = new Map((profiles || []).map(profile => [profile.id, profile]))
+            }
+
+            const hydratedItems = (posts || []).map(item => ({
+                ...item,
+                profiles: profilesMap.get(item.seller_id) || null
+            }))
+
+            setItems(hydratedItems)
+        } catch (error) {
+            console.error('Failed to fetch ReWear posts:', error)
+            setItems([])
+            toast.error('Nie udało się pobrać ofert ReWear. Odśwież widok.')
+        } finally {
+            setLoading(false)
+        }
     }
 
     async function handleAddItem(e) {
