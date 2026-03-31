@@ -11,10 +11,35 @@ import { sanitizePlainText } from '../../utils/safeContent'
 const MAX_REWEAR_MESSAGE = 2000
 const REWEAR_MESSAGES_PAGE_SIZE = 30
 const MAX_REWEAR_MESSAGES_IN_MEMORY = 150
+const REWEAR_CACHE_TTL_MS = 10 * 60 * 1000
 
 function capRecentMessages(list) {
   if (list.length <= MAX_REWEAR_MESSAGES_IN_MEMORY) return list
   return list.slice(-MAX_REWEAR_MESSAGES_IN_MEMORY)
+}
+
+function readCachedSessionEntry(key, ttlMs) {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.ts || !('data' in parsed)) return null
+    if ((Date.now() - parsed.ts) > ttlMs) {
+      sessionStorage.removeItem(key)
+      return null
+    }
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function writeCachedSessionEntry(key, data) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }))
+  } catch {
+    // Ignore cache write failures (quota/private mode).
+  }
 }
 
 function ProfileAvatar({ profile }) {
@@ -56,6 +81,33 @@ export default function ReWearInbox() {
   const [purchaseLoading, setPurchaseLoading] = useState(false)
   const messagesEndRef = useRef(null)
   const shouldAutoScrollRef = useRef(true)
+
+  const getConversationsCacheKey = (userId) => `rewear_inbox_conversations_${userId}`
+  const getMessagesCacheKey = (userId, conversationId) => `rewear_inbox_messages_${userId}_${conversationId}`
+
+  const readCachedConversations = (userId) => {
+    const cached = readCachedSessionEntry(getConversationsCacheKey(userId), REWEAR_CACHE_TTL_MS)
+    if (!Array.isArray(cached)) return null
+    return cached.filter(item => item && typeof item === 'object' && typeof item.id === 'string').slice(0, 200)
+  }
+
+  const readCachedMessages = (userId, conversationId) => {
+    const cached = readCachedSessionEntry(getMessagesCacheKey(userId, conversationId), REWEAR_CACHE_TTL_MS)
+    if (!Array.isArray(cached)) return null
+    return capRecentMessages(
+      cached.filter(item => item && typeof item === 'object' && typeof item.id === 'string' && typeof item.content === 'string' && typeof item.created_at === 'string')
+    )
+  }
+
+  const persistConversationsCache = (userId, list) => {
+    if (!userId || !Array.isArray(list)) return
+    writeCachedSessionEntry(getConversationsCacheKey(userId), list.slice(0, 200))
+  }
+
+  const persistMessagesCache = (userId, conversationId, list) => {
+    if (!userId || !conversationId || !Array.isArray(list)) return
+    writeCachedSessionEntry(getMessagesCacheKey(userId, conversationId), capRecentMessages(list))
+  }
 
   const activePartner = activeConversation?.partner || null
   const activePost = activeConversation?.post || null
@@ -107,6 +159,20 @@ export default function ReWearInbox() {
       setChatError('')
 
       try {
+        const cachedConversations = readCachedConversations(myId)
+        if (cachedConversations?.length) {
+          setConversations(cachedConversations)
+          setLoading(false)
+
+          const cachedTargetId = routeConversationId || searchParams.get('conversation')
+          if (cachedTargetId) {
+            const cachedMatched = cachedConversations.find(item => item.id === cachedTargetId)
+            if (cachedMatched) {
+              setActiveConversation(cachedMatched)
+            }
+          }
+        }
+
         let resolvedConversationId = routeConversationId
 
         if (routePostId) {
@@ -166,7 +232,13 @@ export default function ReWearInbox() {
     setHasOlderMessages(false)
 
     async function loadMessages() {
-      setChatLoading(true)
+      const cachedMessages = readCachedMessages(myId, activeConversation.id)
+      if (cachedMessages?.length) {
+        setMessages(cachedMessages)
+        setChatLoading(false)
+      } else {
+        setChatLoading(true)
+      }
 
       try {
         const { items, totalCount } = await fetchMessagesPage(activeConversation.id, { offset: 0 })
@@ -176,6 +248,7 @@ export default function ReWearInbox() {
           setHasOlderMessages(totalCount > items.length)
           setChatError('')
           shouldAutoScrollRef.current = true
+          persistMessagesCache(myId, activeConversation.id, items)
         }
       } catch (error) {
         console.error('Failed to fetch ReWear messages:', error)
@@ -245,6 +318,7 @@ export default function ReWearInbox() {
 
     const hydrated = await hydrateConversations(data || [], userId)
     setConversations(hydrated)
+    persistConversationsCache(userId, hydrated)
 
     if (activeConversation?.id) {
       const nextActive = hydrated.find(item => item.id === activeConversation.id)
@@ -339,7 +413,9 @@ export default function ReWearInbox() {
       setMessages(prev => {
         const existingIds = new Set(prev.map(message => message.id))
         const older = items.filter(message => !existingIds.has(message.id))
-        return capRecentMessages([...older, ...prev])
+        const nextList = capRecentMessages([...older, ...prev])
+        persistMessagesCache(myId, activeConversation.id, nextList)
+        return nextList
       })
       setMessagesOffset(prev => prev + items.length)
       setHasOlderMessages(messagesOffset + items.length < totalCount)
@@ -390,7 +466,9 @@ export default function ReWearInbox() {
         const hydrated = await hydrateMessages([data])
         setMessages(prev => {
           if (prev.some(message => message.id === data.id)) return prev
-          return capRecentMessages([...prev, ...(hydrated || [])])
+          const nextList = capRecentMessages([...prev, ...(hydrated || [])])
+          persistMessagesCache(myId, activeConversation.id, nextList)
+          return nextList
         })
       }
 
@@ -427,6 +505,7 @@ export default function ReWearInbox() {
       setMessages(items)
       setMessagesOffset(items.length)
       setHasOlderMessages(totalCount > items.length)
+      persistMessagesCache(myId, activeConversation.id, items)
     } catch (error) {
       console.error('Failed to complete ReWear purchase:', error)
       toast.error(error?.message || 'Nie udało się przekazać TebGąbek.')

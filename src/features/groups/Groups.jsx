@@ -11,10 +11,35 @@ export default function Groups() {
     const MAX_GROUP_MESSAGE = 2000
     const GROUP_MESSAGES_PAGE_SIZE = 40
     const MAX_GROUP_MESSAGES_IN_MEMORY = 200
+    const GROUP_MESSAGES_CACHE_TTL_MS = 8 * 60 * 1000
 
     const capRecentMessages = (list) => {
         if (list.length <= MAX_GROUP_MESSAGES_IN_MEMORY) return list
         return list.slice(-MAX_GROUP_MESSAGES_IN_MEMORY)
+    }
+
+    const readCachedSessionEntry = (key, ttlMs) => {
+        try {
+            const raw = sessionStorage.getItem(key)
+            if (!raw) return null
+            const parsed = JSON.parse(raw)
+            if (!parsed?.ts || !('data' in parsed)) return null
+            if ((Date.now() - parsed.ts) > ttlMs) {
+                sessionStorage.removeItem(key)
+                return null
+            }
+            return parsed.data
+        } catch {
+            return null
+        }
+    }
+
+    const writeCachedSessionEntry = (key, data) => {
+        try {
+            sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }))
+        } catch {
+            // Ignore cache write failures (quota/private mode).
+        }
     }
 
     const [view, setView] = useState('list') // 'list', 'new', 'chat'
@@ -35,6 +60,20 @@ export default function Groups() {
     const [newGroupDesc, setNewGroupDesc] = useState('')
 
     const messagesEndRef = useRef(null)
+    const getGroupMessagesCacheKey = (userId, groupId) => `groups_messages_${userId}_${groupId}`
+
+    const readCachedGroupMessages = (userId, groupId) => {
+        const cached = readCachedSessionEntry(getGroupMessagesCacheKey(userId, groupId), GROUP_MESSAGES_CACHE_TTL_MS)
+        if (!Array.isArray(cached)) return null
+        return capRecentMessages(
+            cached.filter(msg => msg && typeof msg === 'object' && typeof msg.id !== 'undefined' && typeof msg.content === 'string' && typeof msg.created_at === 'string')
+        )
+    }
+
+    const persistGroupMessagesCache = (userId, groupId, list) => {
+        if (!userId || !groupId || !Array.isArray(list)) return
+        writeCachedSessionEntry(getGroupMessagesCacheKey(userId, groupId), capRecentMessages(list))
+    }
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -50,6 +89,12 @@ export default function Groups() {
             setMessages([])
             setMessagesCursor(null)
             setHasOlderMessages(false)
+
+            const cachedMessages = readCachedGroupMessages(myId, activeGroup.id)
+            if (cachedMessages?.length) {
+                setMessages(cachedMessages)
+            }
+
             fetchMessages(activeGroup.id)
             fetchMembersCount(activeGroup.id)
             const channel = supabase.channel(`group_${activeGroup.id}`)
@@ -60,7 +105,11 @@ export default function Groups() {
                             // Fetch user info for new message
                             supabase.from('profiles').select('full_name, role').eq('id', msg.sender_id).single()
                                 .then(({ data }) => {
-                                    setMessages(current => capRecentMessages([...current, { ...msg, profiles: data }]))
+                                    setMessages(current => {
+                                        const nextList = capRecentMessages([...current, { ...msg, profiles: data }])
+                                        persistGroupMessagesCache(myId, activeGroup.id, nextList)
+                                        return nextList
+                                    })
                                     scrollToBottom()
                                 })
                                 .catch(err => console.warn('Failed to fetch message sender info:', err))
@@ -159,12 +208,16 @@ export default function Groups() {
             const oldestLoaded = ordered[0]?.created_at || null
             setMessages(prev => {
                 if (!appendOlder) {
-                    return capRecentMessages(ordered)
+                    const nextList = capRecentMessages(ordered)
+                    persistGroupMessagesCache(myId, groupId, nextList)
+                    return nextList
                 }
 
                 const existingIds = new Set(prev.map(item => item.id))
                 const older = ordered.filter(item => !existingIds.has(item.id))
-                return capRecentMessages([...older, ...prev])
+                const nextList = capRecentMessages([...older, ...prev])
+                persistGroupMessagesCache(myId, groupId, nextList)
+                return nextList
             })
 
             if (oldestLoaded) {
@@ -213,7 +266,11 @@ export default function Groups() {
             profiles: { full_name: 'Ty', role: 'student' } // Tymczasowy profil
         }
 
-        setMessages(prev => capRecentMessages([...prev, optimisticMsg]))
+        setMessages(prev => {
+            const nextList = capRecentMessages([...prev, optimisticMsg])
+            persistGroupMessagesCache(myId, activeGroup.id, nextList)
+            return nextList
+        })
         setNewMessage('')
         scrollToBottom()
 
@@ -228,7 +285,11 @@ export default function Groups() {
             alert("Błąd - czat został zablokowany lub nie należysz do grupy.")
             setMessages(prev => prev.filter(m => m.id !== tempId))
         } else if (data) {
-            setMessages(prev => prev.map(m => m.id === tempId ? data : m))
+            setMessages(prev => {
+                const nextList = prev.map(m => m.id === tempId ? data : m)
+                persistGroupMessagesCache(myId, activeGroup.id, nextList)
+                return nextList
+            })
         }
     }
 
@@ -256,7 +317,11 @@ export default function Groups() {
             .eq('sender_id', myId)
 
         if (!error) {
-            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_deleted: true } : m))
+            setMessages(prev => {
+                const nextList = prev.map(m => m.id === messageId ? { ...m, is_deleted: true } : m)
+                persistGroupMessagesCache(myId, activeGroup.id, nextList)
+                return nextList
+            })
         }
     }
 
