@@ -9,7 +9,7 @@ import AppFixedLayer from '../../components/common/AppFixedLayer'
 import { ImageKitService } from '../../services/imageKitService'
 import { getRoleLabel } from '../profile/profileMeta'
 import { useToast } from '../../context/ToastContext'
-import { sanitizePlainText } from '../../utils/safeContent'
+import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
 
 export default function ReWear() {
     const MAX_REWEAR_TITLE = 200
@@ -419,7 +419,14 @@ export default function ReWear() {
         if (!desc) return { category: "Inne", condition: "?", size: null }
         if (desc.includes('|META:')) {
             try {
-                return JSON.parse(desc.split('|META:')[1])
+                const parsed = JSON.parse(desc.split('|META:')[1])
+                const safePhotos = Array.isArray(parsed?.photos)
+                    ? parsed.photos.map(photo => sanitizeImageUrl(photo)).filter(Boolean).slice(0, MAX_PHOTOS)
+                    : []
+                return {
+                    ...parsed,
+                    photos: safePhotos
+                }
             } catch { return { category: "Inne", condition: "?", size: null } }
         }
         return { category: "Inne", condition: "?", size: null }

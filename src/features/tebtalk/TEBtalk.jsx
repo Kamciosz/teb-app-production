@@ -53,6 +53,32 @@ export default function TEBtalk() {
 
     const getMessagesCacheKey = (userId, chatId, isGroup) => `${userId}:${isGroup ? 'group' : 'private'}:${chatId}`
 
+    const isValidCachedMessage = (message) => {
+        if (!message || typeof message !== 'object') return false
+        if (typeof message.id !== 'string' && typeof message.id !== 'number') return false
+        if (typeof message.sender_id !== 'string' || !message.sender_id) return false
+        if (typeof message.content !== 'string') return false
+        if (typeof message.created_at !== 'string') return false
+        return true
+    }
+
+    const sanitizeCachedMessages = (data) => {
+        if (!Array.isArray(data)) return null
+        const sanitized = data.filter(isValidCachedMessage).slice(-MAX_MESSAGES_IN_MEMORY)
+        return sanitized.length ? sanitized : null
+    }
+
+    const sanitizeCachedState = (data) => {
+        if (!data || typeof data !== 'object') return null
+        const safeRecentChats = Array.isArray(data.recentChats)
+            ? data.recentChats.filter(chat => chat && typeof chat === 'object' && typeof chat.id === 'string').slice(-200)
+            : []
+        const safeFriends = Array.isArray(data.friends)
+            ? data.friends.filter(friend => friend && typeof friend === 'object' && typeof friend.id === 'string').slice(-300)
+            : []
+        return { recentChats: safeRecentChats, friends: safeFriends }
+    }
+
     const readCachedSessionEntry = (key, ttlMs) => {
         try {
             const raw = sessionStorage.getItem(key)
@@ -63,6 +89,8 @@ export default function TEBtalk() {
                 sessionStorage.removeItem(key)
                 return null
             }
+            if (key.startsWith('tebtalk_messages_')) return sanitizeCachedMessages(parsed.data)
+            if (key.startsWith('tebtalk_state_')) return sanitizeCachedState(parsed.data)
             return parsed.data
         } catch {
             return null

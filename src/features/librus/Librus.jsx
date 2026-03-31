@@ -111,6 +111,13 @@ export default function Librus() {
         localStorage.removeItem('librus_creds');
     }, []);
 
+    useEffect(() => {
+        return () => {
+            credsRef.current = null;
+            setSavedLogin('');
+        };
+    }, []);
+
     // Automatyczne odświeżanie co 10 minut jeśli zalogowany
     useEffect(() => {
         if (!isLoggedIn) return;
