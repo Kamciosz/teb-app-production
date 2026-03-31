@@ -1,7 +1,22 @@
-import imageCompression from 'browser-image-compression';
 import { supabase } from './supabase';
 
 const IMAGEKIT_ENDPOINT = import.meta.env.IMAGEKIT_URL_ENDPOINT || import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || '';
+const IMAGEKIT_HOST = IMAGEKIT_ENDPOINT ? (() => {
+    try {
+        return new URL(IMAGEKIT_ENDPOINT).host;
+    } catch {
+        return '';
+    }
+})() : '';
+
+function isImageKitAbsoluteUrl(urlString) {
+    try {
+        const url = new URL(urlString);
+        return (IMAGEKIT_HOST && url.host === IMAGEKIT_HOST) || url.host.endsWith('imagekit.io');
+    } catch {
+        return false;
+    }
+}
 
 export const ImageKitService = {
     upload: async (file, fileName, folder = '') => {
@@ -70,16 +85,20 @@ export const ImageKitService = {
 
     getOptimizedUrl: (path) => {
         if (!path) return '';
-        try {
-            const u = new URL(path);
-            const q = u.search ? '&' : '?';
-            return `${path}${q}tr=w-auto,q-auto,f-auto`;
-        } catch (e) {
-            if (!IMAGEKIT_ENDPOINT) return path;
-            const base = IMAGEKIT_ENDPOINT.replace(/\/+$/, '');
-            const p = path.replace(/^\/+/, '');
-            const q = p.includes('?') ? '&' : '?';
-            return `${base}/${p}${q}tr=w-auto,q-auto,f-auto`;
+        const cleanPath = String(path).trim();
+        if (!cleanPath) return '';
+
+        // Keep external/signed URLs untouched to avoid breaking signature validation.
+        if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+            if (!isImageKitAbsoluteUrl(cleanPath)) return cleanPath;
+            const q = cleanPath.includes('?') ? '&' : '?';
+            return `${cleanPath}${q}tr=w-auto,q-auto,f-auto`;
         }
+
+        if (!IMAGEKIT_ENDPOINT) return cleanPath;
+        const base = IMAGEKIT_ENDPOINT.replace(/\/+$/, '');
+        const normalizedPath = cleanPath.replace(/^\/+/, '');
+        const q = normalizedPath.includes('?') ? '&' : '?';
+        return `${base}/${normalizedPath}${q}tr=w-auto,q-auto,f-auto`;
     }
 };

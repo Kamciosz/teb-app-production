@@ -735,16 +735,21 @@ export default function ReWear() {
                                                 type="button"
                                                 onClick={() => toggleInterest(selectedItem)}
                                                 disabled={interestLoadingIds.includes(selectedItem.id)}
-                                                className={`py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 border ${isInterested(selectedItem.id) ? 'bg-primary/15 text-primary border-primary/30' : 'bg-background text-gray-200 border-gray-700 hover:border-primary/40'}`}
+                                                className={`px-3 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 border text-center ${isInterested(selectedItem.id) ? 'bg-primary/15 text-primary border-primary/30' : 'bg-background text-gray-200 border-gray-700 hover:border-primary/40'}`}
                                             >
-                                                <Heart size={16} fill={isInterested(selectedItem.id) ? 'currentColor' : 'none'} />
-                                                {isInterested(selectedItem.id) ? 'W ulubionych' : 'Dodaj do ulubionych'}
+                                                <span className="shrink-0 flex items-center justify-center">
+                                                    <Heart size={16} fill={isInterested(selectedItem.id) ? 'currentColor' : 'none'} />
+                                                </span>
+                                                <span className="leading-tight">{isInterested(selectedItem.id) ? 'W ulubionych' : 'Dodaj do ulubionych'}</span>
                                             </button>
                                             <button
                                                 onClick={() => openReWearConversation(selectedItem)}
-                                                className="py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)]"
+                                                className="px-3 py-3 bg-primary text-white rounded-xl font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-[0_4px_15px_rgba(59,130,246,0.3)] text-center"
                                             >
-                                                <MessageCircle size={16} /> Napisz w ReWear
+                                                <span className="shrink-0 flex items-center justify-center">
+                                                    <MessageCircle size={16} />
+                                                </span>
+                                                <span className="leading-tight">Napisz w ReWear</span>
                                             </button>
                                         </div>
                                     )}
