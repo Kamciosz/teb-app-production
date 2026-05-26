@@ -32,17 +32,14 @@ function getClientIp(req) {
 
 function pruneRateStore(now) {
   for (const [key, state] of signupRateStore.entries()) {
-    if (!state || state.resetAt <= now) {
-      signupRateStore.delete(key);
-    }
+    if (!state || state.resetAt <= now) signupRateStore.delete(key);
   }
 }
 
 function registerAttemptAndCheck(key, limit, now) {
   const existing = signupRateStore.get(key);
   if (!existing || existing.resetAt <= now) {
-    const state = { count: 1, resetAt: now + RATE_WINDOW_MS };
-    signupRateStore.set(key, state);
+    signupRateStore.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
     return { blocked: false, retryAfterSeconds: 0 };
   }
   existing.count += 1;
@@ -75,60 +72,12 @@ function resolveBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
-async function sendConfirmationEmail(email, confirmationUrl) {
-  const apiKey = process.env.BREVO_API_KEY;
-  const fromEmail = process.env.BREVO_FROM || 'noreply@teb.edu.pl';
-  const fromName = 'TEB-App';
-
-  if (!apiKey) {
-    console.error('[EMAIL] BREVO_API_KEY not set');
-    return false;
-  }
-
-  const payload = JSON.stringify({
-    sender: { name: fromName, email: fromEmail },
-    to: [{ email }],
-    subject: 'Potwierdź rejestrację w TEB-App',
-    htmlContent: `<!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2>Witaj w TEB-App!</h2>
-  <p>Kliknij poniższy link aby potwierdzić swoją rejestrację:</p>
-  <a href="${confirmationUrl}" style="display:inline-block;padding:12px 24px;background:#c8102e;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">Potwierdź e-mail</a>
-  <p style="color:#666;margin-top:20px;">Link wygasa za 24 godziny. Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość.</p>
-</body>
-</html>`
-  });
-
-  try {
-    const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': apiKey
-      },
-      body: payload
-    });
-    if (!resp.ok) {
-      const err = await resp.text();
-      console.error(`[EMAIL] Brevo error ${resp.status}: ${err}`);
-      return false;
-    }
-    console.log(`[EMAIL] Sent confirmation to ${maskEmail(email)}, messageId: ${(await resp.json()).messageId}`);
-    return true;
-  } catch (error) {
-    console.error(`[EMAIL] Failed to send: ${error.message}`);
-    return false;
-  }
-}
-
 export default async function handler(req, res) {
   applyNoStore(res);
 
   if (req.method !== 'POST') {
     return sendMethodNotAllowed(res, ['POST']);
   }
-
   if (!requireSameOrigin(req, res)) {
     return;
   }
@@ -193,21 +142,21 @@ export default async function handler(req, res) {
       auth: { persistSession: false, autoRefreshToken: false }
     });
 
-    // Create user with email_confirm: false — they must verify email
-    const { data: createData, error: createError } = await serviceClient.auth.admin.createUser({
+    // Auto-confirm: no email needed, account is ready immediately
+    const { data, error } = await serviceClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: false,
+      email_confirm: true,
       user_metadata: { full_name: fullName || null }
     });
 
-    if (createError) {
-      console.error(`[SIGNUP ERROR] email=${maskEmail(email)}, error=${createError.message}`);
+    if (error) {
+      console.error(`[SIGNUP ERROR] email=${maskEmail(email)}, error=${error.message}`);
 
-      if (String(createError.message || '').toLowerCase().includes('confirmation email')) {
+      if (String(error.message || '').toLowerCase().includes('confirmation email')) {
         return res.status(503).json({ error: 'Rejestracja chwilowo niedostępna. Spróbuj ponownie za chwilę.' });
       }
-      const errorMsg = String(createError.message || createError.msg || '').toLowerCase();
+      const errorMsg = String(error.message || error.msg || '').toLowerCase();
       if (errorMsg.includes('already been registered') || errorMsg.includes('already registered') || errorMsg.includes('email_exists') || errorMsg.includes('user already exists')) {
         return res.status(200).json({
           user: null, session: null,
@@ -218,40 +167,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Rejestracja nie powiodła się. Sprawdź dane i spróbuj ponownie.' });
     }
 
-    const userId = createData?.user?.id;
-    if (!userId) {
-      return res.status(500).json({ error: 'Failed to create user' });
-    }
-
-    // Generate confirmation link
-    const baseUrl = resolveBaseUrl(req) || 'https://teb-app-production.vercel.app';
-    const { data: linkData, error: linkError } = await serviceClient.auth.admin.generateLink({
-      type: 'signup',
-      email,
-      options: { redirectTo: baseUrl }
-    });
-
-    if (linkError) {
-      console.error(`[SIGNUP LINK ERROR] ${maskEmail(email)}: ${linkError.message}`);
-      return res.status(200).json({
-        user: createData.user,
-        session: null,
-        note: 'Konto utworzone, ale nie udało się wysłać e-maila potwierdzającego. Skontaktuj się z administratorem.'
-      });
-    }
-
-    // Send email via Brevo
-    const confirmationUrl = linkData?.properties?.action_link || `${baseUrl}/auth/confirm?token=${userId}`;
-    const emailSent = await sendConfirmationEmail(email, confirmationUrl);
-
-    console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${userId}, emailSent=${emailSent}`);
+    console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${data?.user?.id}`);
 
     return res.status(200).json({
-      user: createData.user,
+      user: data?.user || null,
       session: null,
-      note: emailSent
-        ? 'Konto utworzone! Sprawdź e-mail aby potwierdzić rejestrację.'
-        : 'Konto utworzone! E-mail potwierdzający zostanie wysłany wkrótce.'
+      note: 'Konto utworzone pomyślnie. Możesz się zalogować.'
     });
   } catch (error) {
     console.error('[SIGNUP EXCEPTION]', error);
