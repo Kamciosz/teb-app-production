@@ -21,12 +21,8 @@ if (!globalThis.__tebSignupRateStore) {
 
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
-  if (Array.isArray(xff) && xff.length > 0) {
-    return String(xff[0]).split(',')[0].trim();
-  }
-  if (typeof xff === 'string' && xff) {
-    return xff.split(',')[0].trim();
-  }
+  if (Array.isArray(xff) && xff.length > 0) return String(xff[0]).split(',')[0].trim();
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
   return req.socket?.remoteAddress || 'unknown';
 }
 
@@ -72,23 +68,54 @@ function resolveBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+async function sendBrevoEmail(toEmail, subject, htmlContent) {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey || apiKey.includes('...')) {
+    console.error('[EMAIL] BREVO_API_KEY not set or invalid');
+    return false;
+  }
+
+  try {
+    const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey
+      },
+      body: JSON.stringify({
+        sender: { name: 'TEB-App', email: 'noreply@teb.edu.pl' },
+        to: [{ email: toEmail }],
+        subject,
+        htmlContent
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error(`[EMAIL] Brevo ${resp.status}: ${err}`);
+      return false;
+    }
+
+    const data = await resp.json();
+    console.log(`[EMAIL] Sent to ${maskEmail(toEmail)}, msgId: ${data.messageId}`);
+    return true;
+  } catch (error) {
+    console.error(`[EMAIL] Exception: ${error.message}`);
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
   applyNoStore(res);
 
-  if (req.method !== 'POST') {
-    return sendMethodNotAllowed(res, ['POST']);
-  }
-  if (!requireSameOrigin(req, res)) {
-    return;
-  }
+  if (req.method !== 'POST') return sendMethodNotAllowed(res, ['POST']);
+  if (!requireSameOrigin(req, res)) return;
 
   let body;
   try {
     body = await readJsonBody(req);
   } catch (error) {
-    if (error?.statusCode === 413) {
-      return res.status(413).json({ error: 'Payload too large' });
-    }
+    if (error?.statusCode === 413) return res.status(413).json({ error: 'Payload too large' });
     return res.status(500).json({ error: 'Internal server error' });
   }
 
@@ -99,42 +126,30 @@ export default async function handler(req, res) {
 
   pruneRateStore(now);
   const clientIp = getClientIp(req);
-  const ipRateState = registerAttemptAndCheck(`ip:${clientIp}`, MAX_ATTEMPTS_PER_IP, now);
-  if (ipRateState.blocked) {
-    res.setHeader('Retry-After', String(ipRateState.retryAfterSeconds));
+  const ipRate = registerAttemptAndCheck(`ip:${clientIp}`, MAX_ATTEMPTS_PER_IP, now);
+  if (ipRate.blocked) {
+    res.setHeader('Retry-After', String(ipRate.retryAfterSeconds));
     return res.status(429).json({ error: 'Too many signup attempts. Please try again later.' });
   }
 
   if (email) {
-    const emailRateState = registerAttemptAndCheck(`email:${email}`, MAX_ATTEMPTS_PER_EMAIL, now);
-    if (emailRateState.blocked) {
-      res.setHeader('Retry-After', String(emailRateState.retryAfterSeconds));
+    const emailRate = registerAttemptAndCheck(`email:${email}`, MAX_ATTEMPTS_PER_EMAIL, now);
+    if (emailRate.blocked) {
+      res.setHeader('Retry-After', String(emailRate.retryAfterSeconds));
       return res.status(429).json({ error: 'Too many signup attempts. Please try again later.' });
     }
   }
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-  if (!EMAIL_REGEX.test(email)) {
-    return res.status(400).json({ error: 'Invalid email address' });
-  }
-  if (!email.endsWith(ALLOWED_EMAIL_DOMAIN)) {
-    return res.status(400).json({ error: `Only ${ALLOWED_EMAIL_DOMAIN} addresses are allowed` });
-  }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
-  }
-  if (fullName.length > MAX_NAME_LENGTH) {
-    return res.status(400).json({ error: `Full name must be at most ${MAX_NAME_LENGTH} characters` });
-  }
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  if (!EMAIL_REGEX.test(email)) return res.status(400).json({ error: 'Invalid email address' });
+  if (!email.endsWith(ALLOWED_EMAIL_DOMAIN)) return res.status(400).json({ error: `Only ${ALLOWED_EMAIL_DOMAIN} addresses are allowed` });
+  if (password.length < MIN_PASSWORD_LENGTH) return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  if (fullName.length > MAX_NAME_LENGTH) return res.status(400).json({ error: `Full name must be at most ${MAX_NAME_LENGTH} characters` });
 
   try {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
     if (!supabaseUrl || !serviceRoleKey) {
-      console.error('[SIGNUP] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
@@ -142,22 +157,23 @@ export default async function handler(req, res) {
       auth: { persistSession: false, autoRefreshToken: false }
     });
 
-    // Auto-confirm: no email needed, account is ready immediately
-    const { data, error } = await serviceClient.auth.admin.createUser({
+    // Create user — NOT confirmed, must verify email
+    const { data: createData, error: createError } = await serviceClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
+      email_confirm: false,
       user_metadata: { full_name: fullName || null }
     });
 
-    if (error) {
-      console.error(`[SIGNUP ERROR] email=${maskEmail(email)}, error=${error.message}`);
+    if (createError) {
+      console.error(`[SIGNUP ERROR] email=${maskEmail(email)}, msg=${createError.message}`);
 
-      if (String(error.message || '').toLowerCase().includes('confirmation email')) {
+      if (String(createError.message || '').toLowerCase().includes('confirmation email')) {
         return res.status(503).json({ error: 'Rejestracja chwilowo niedostępna. Spróbuj ponownie za chwilę.' });
       }
-      const errorMsg = String(error.message || error.msg || '').toLowerCase();
-      if (errorMsg.includes('already been registered') || errorMsg.includes('already registered') || errorMsg.includes('email_exists') || errorMsg.includes('user already exists')) {
+      const errMsg = String(createError.message || createError.msg || '').toLowerCase();
+      if (errMsg.includes('already been registered') || errMsg.includes('already registered')
+        || errMsg.includes('email_exists') || errMsg.includes('user already exists')) {
         return res.status(200).json({
           user: null, session: null,
           note: 'Konto o tym adresie e-mail już istnieje. Zaloguj się zamiast rejestrować.',
@@ -167,13 +183,48 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Rejestracja nie powiodła się. Sprawdź dane i spróbuj ponownie.' });
     }
 
-    console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${data?.user?.id}`);
+    const userId = createData?.user?.id;
+    if (!userId) return res.status(500).json({ error: 'Failed to create user' });
+
+    // Generate confirmation link via Supabase
+    const baseUrl = resolveBaseUrl(req) || 'https://teb-app-production.vercel.app';
+    const { data: linkData, error: linkError } = await serviceClient.auth.admin.generateLink({
+      type: 'signup',
+      email,
+      options: { redirectTo: baseUrl }
+    });
+
+    const confirmationUrl = linkData?.properties?.action_link
+      || `${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL}/auth/v1/verify?token=${userId}&type=signup&redirect_to=${encodeURIComponent(baseUrl)}`;
+
+    // Send email via Brevo
+    const emailHtml = `<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;padding:20px;max-width:500px;margin:0 auto;">
+<div style="text-align:center;margin-bottom:30px;">
+  <h2 style="color:#c8102e;">TEB-App</h2>
+</div>
+<h3 style="color:#333;">Witaj${fullName ? ' ' + fullName.split(' ')[0] : ''}!</h3>
+<p>Dziękujemy za rejestrację w <strong>TEB-App</strong>. Kliknij poniższy przycisk aby potwierdzić swój adres e-mail i aktywować konto:</p>
+<div style="text-align:center;margin:30px 0;">
+  <a href="${confirmationUrl}" style="display:inline-block;padding:14px 36px;background:#c8102e;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;">Potwierdź e-mail</a>
+</div>
+<p style="color:#666;font-size:13px;">Link wygasa za 24 godziny. Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość.</p>
+<hr style="border:1px solid #eee;margin:20px 0;">
+<p style="color:#999;font-size:12px;">TEB-App — portal szkolny dla uczniów TEB Warszawa</p>
+</body></html>`;
+
+    const emailSent = await sendBrevoEmail(email, 'Potwierdź rejestrację w TEB-App', emailHtml);
+
+    console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${userId}, emailSent=${emailSent}`);
 
     return res.status(200).json({
-      user: data?.user || null,
+      user: createData.user,
       session: null,
-      note: 'Konto utworzone pomyślnie. Możesz się zalogować.'
+      note: emailSent
+        ? 'Konto utworzone! Sprawdź swoją skrzynkę e-mail i kliknij link potwierdzający.'
+        : 'Konto utworzone! E-mail potwierdzający zostanie wysłany wkrótce. Jeśli nie dotrze, skontaktuj się z administratorem.'
     });
+
   } catch (error) {
     console.error('[SIGNUP EXCEPTION]', error);
     return res.status(500).json({ error: 'Internal server error' });
