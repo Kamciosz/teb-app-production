@@ -84,7 +84,25 @@ export default function TEBtalk() {
             const raw = sessionStorage.getItem(key)
             if (!raw) return null
             const parsed = JSON.parse(raw)
-            if (!parsed?.ts || !('data' in parsed)) return null
+            
+            // Walidacja schematu
+            const Ajv = require('ajv');
+            const ajv = new Ajv();
+            const cacheSchema = {
+                type: 'object',
+                properties: {
+                    ts: { type: 'number' },
+                    data: { type: ['object', 'array'] }
+                },
+                required: ['ts', 'data']
+            };
+            
+            if (!ajv.validate(cacheSchema, parsed)) {
+                console.error('Invalid cache schema:', ajv.errors);
+                sessionStorage.removeItem(key);
+                return null;
+            }
+            
             if ((Date.now() - parsed.ts) > ttlMs) {
                 sessionStorage.removeItem(key)
                 return null

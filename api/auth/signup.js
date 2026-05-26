@@ -6,6 +6,7 @@ import {
   sendMethodNotAllowed,
   setSessionCookies
 } from '../../lib/serverAuth.js';
+import { createClient } from '@supabase/supabase-js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -162,15 +163,20 @@ export default async function handler(req, res) {
 
   try {
     const supabase = createServerSupabaseClient();
+    const serviceClient = createClient(
+      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
     const emailRedirectTo = resolveEmailRedirectTo(req);
-    const { data, error } = await supabase.auth.signUp({
+    
+    // Create user via Admin API — auto-confirms, no email needed
+    const { data, error } = await serviceClient.auth.admin.createUser({
       email,
       password,
-      options: {
-        ...(emailRedirectTo ? { emailRedirectTo } : {}),
-        data: {
-          full_name: fullName || null
-        }
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName || null
       }
     });
 
