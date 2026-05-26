@@ -186,11 +186,13 @@ export default async function handler(req, res) {
       if (String(error.message || '').toLowerCase().includes('confirmation email')) {
         return res.status(503).json({ error: 'Rejestracja chwilowo niedostępna: problem z wysyłką maila potwierdzającego. Spróbuj ponownie za chwilę.' });
       }
-      if (String(error.message || '').toLowerCase().includes('already registered')) {
+      const errorMsg = String(error.message || error.msg || '').toLowerCase();
+      if (errorMsg.includes('already been registered') || errorMsg.includes('already registered') || errorMsg.includes('email_exists') || errorMsg.includes('user already exists')) {
         return res.status(200).json({
           user: null,
           session: null,
-          note: 'If this account already exists, please sign in or reset your password.'
+          note: 'Konto o tym adresie e-mail już istnieje. Zaloguj się zamiast rejestrować.',
+          alreadyExists: true
         });
       }
       return res.status(400).json({ error: 'Signup failed. Please verify your data and try again.' });
