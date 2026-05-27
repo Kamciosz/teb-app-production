@@ -70,11 +70,17 @@ function resolveBaseUrl(req) {
 }
 
 function createMailTransport() {
-  const host = process.env.SMTP_HOST || 's68.cyber-folks.pl';
-  const port = parseInt(process.env.SMTP_PORT || '465', 10);
-  const user = process.env.SMTP_USER || 'noreply@teb-app.pl';
-  const pass = process.env.SMTP_PASS || 'kamciosz12%Pusia';
+  const host = process.env.SMTP_HOST;
+  const portStr = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
+  if (!host || !portStr || !user || !pass) {
+    console.error('[EMAIL] SMTP environment variables missing');
+    throw new Error('SMTP not configured');
+  }
+
+  const port = parseInt(portStr, 10);
   return nodemailer.createTransport({
     host,
     port,
@@ -172,8 +178,7 @@ export default async function handler(req, res) {
         || errMsg.includes('email_exists') || errMsg.includes('user already exists')) {
         return res.status(200).json({
           user: null, session: null,
-          note: 'Konto o tym adresie e-mail już istnieje. Zaloguj się zamiast rejestrować.',
-          alreadyExists: true
+          note: 'Jeśli konto istnieje, sprawdź e-mail lub zaloguj się.'
         });
       }
       return res.status(400).json({ error: 'Rejestracja nie powiodła się. Sprawdź dane i spróbuj ponownie.' });
@@ -187,11 +192,16 @@ export default async function handler(req, res) {
     const { data: linkData, error: linkError } = await serviceClient.auth.admin.generateLink({
       type: 'signup',
       email,
+      password,
       options: { redirectTo: baseUrl }
     });
 
-    const confirmationUrl = linkData?.properties?.action_link
-      || `${process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL}/auth/v1/verify?token=${userId}&type=signup&redirect_to=${encodeURIComponent(baseUrl)}`;
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error(`[SIGNUP LINK ERROR] ${maskEmail(email)}: ${linkError?.message || 'no action_link'}`);
+      return res.status(500).json({ error: 'Nie udało się wygenerować linku potwierdzającego. Skontaktuj się z administratorem.' });
+    }
+
+    const confirmationUrl = linkData.properties.action_link;
 
     // Send email via Brevo
     const emailHtml = `<!DOCTYPE html>
