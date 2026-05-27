@@ -21,6 +21,11 @@ export default function Admin() {
     const [pageError, setPageError] = useState('')
     const [userSearch, setUserSearch] = useState('')
     const [reportSearch, setReportSearch] = useState('')
+    const [editingGroupId, setEditingGroupId] = useState(null)
+    const [editGroupName, setEditGroupName] = useState('')
+    const [editGroupDesc, setEditGroupDesc] = useState('')
+    const [groupSearch, setGroupSearch] = useState('')
+    const [groupsFilter, setGroupsFilter] = useState('all') // 'all', 'pending', 'approved'
 
     // --- Dashboard & Logs state ---
     const [dashboardStats, setDashboardStats] = useState(null)
@@ -130,10 +135,18 @@ export default function Admin() {
         if (targetView === 'groups' && canManageUsers) {
             const { data } = await supabase.from('groups')
                 .select('*, creator:profiles!creator_id(full_name)')
-                .eq('is_approved', false)
                 .order('created_at', { ascending: false })
                 .limit(100)
-            if (data) setPendingGroups(data)
+            if (data) {
+                // Fetch member counts for each group
+                const groupsWithCounts = await Promise.all(data.map(async (g) => {
+                    const { count } = await supabase.from('group_members')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('group_id', g.id)
+                    return { ...g, member_count: count || 0 }
+                }))
+                setPendingGroups(groupsWithCounts)
+            }
         }
 
         if (targetView === 'appeals' && canManageUsers) {
@@ -278,6 +291,47 @@ export default function Admin() {
         setPendingGroups(prev => prev.filter(group => group.id !== groupId))
     }
 
+    async function handleGroupDelete(groupId) {
+        if (!window.confirm('Czy na pewno chcesz USUNĄĆ tę grupę? Wiadomości i członkowie zostaną usunięci.')) return
+        const { error } = await supabase.from('groups').delete().eq('id', groupId)
+        if (error) {
+            alert(`Nie udało się usunąć grupy: ${error.message}`)
+            return
+        }
+        setPendingGroups(prev => prev.filter(group => group.id !== groupId))
+    }
+
+    function startGroupEdit(group) {
+        setEditingGroupId(group.id)
+        setEditGroupName(group.name)
+        setEditGroupDesc(group.description || '')
+    }
+
+    function cancelGroupEdit() {
+        setEditingGroupId(null)
+        setEditGroupName('')
+        setEditGroupDesc('')
+    }
+
+    async function handleGroupSave(groupId) {
+        if (!editGroupName.trim()) {
+            alert('Nazwa grupy nie może być pusta.')
+            return
+        }
+        const { error } = await supabase.from('groups').update({
+            name: editGroupName.trim(),
+            description: editGroupDesc.trim()
+        }).eq('id', groupId)
+        if (error) {
+            alert(`Nie udało się zapisać zmian: ${error.message}`)
+            return
+        }
+        setPendingGroups(prev => prev.map(g =>
+            g.id === groupId ? { ...g, name: editGroupName.trim(), description: editGroupDesc.trim() } : g
+        ))
+        cancelGroupEdit()
+    }
+
     async function resolveAppeal(appealId, status) {
         const resolutionNote = sanitizePlainText(window.prompt(
             status === 'approved'
@@ -323,6 +377,19 @@ export default function Admin() {
                 || (report.reported_entity_id || '').toLowerCase().includes(q)
         })
     }, [reports, reportSearch])
+
+    const filteredGroups = useMemo(() => {
+        const q = sanitizePlainText(groupSearch, { maxLength: 80 }).toLowerCase()
+        let list = pendingGroups
+        if (groupsFilter === 'pending') list = list.filter(g => !g.is_approved)
+        if (groupsFilter === 'approved') list = list.filter(g => g.is_approved)
+        if (!q) return list
+        return list.filter(g => {
+            return (g.name || '').toLowerCase().includes(q)
+                || (g.description || '').toLowerCase().includes(q)
+                || (g.creator?.full_name || '').toLowerCase().includes(q)
+        })
+    }, [pendingGroups, groupSearch, groupsFilter])
 
     if (loading) return <div className="text-center text-primary mt-10 animate-pulse">Weryfikacja Modeli Bezpieczeństwa (RLS)...</div>
 
@@ -998,45 +1065,175 @@ export default function Admin() {
                 </div>
             )}
 
-            {/* Widok: Grupy publiczne oczekujące na akceptację */}
+            {/* Widok: Zarządzanie grupami (admin) */}
             {view === 'groups' && (
                 <div className="flex flex-col gap-3 fade-in">
-                    {pendingGroups.length === 0 ? (
+                    {/* Search + Filter */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex bg-surface border border-gray-800 rounded-xl p-2 flex-1">
+                            <input
+                                type="text"
+                                placeholder="Szukaj grupy po nazwie, opisie lub twórcy..."
+                                value={groupSearch}
+                                onChange={e => setGroupSearch(e.target.value)}
+                                className="bg-transparent text-white pl-2 outline-none w-full text-sm font-bold"
+                            />
+                            <Search size={18} className="text-gray-400 self-center mr-1" />
+                        </div>
+                        <div className="flex gap-1">
+                            {['all', 'pending', 'approved'].map(f => (
+                                <button
+                                    key={f}
+                                    onClick={() => setGroupsFilter(f)}
+                                    className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition ${groupsFilter === f ? 'bg-red-500 text-white' : 'bg-surface border border-gray-800 text-gray-400 hover:text-white'}`}
+                                >
+                                    {f === 'all' ? 'Wszystkie' : f === 'pending' ? 'Oczekujące' : 'Zatwierdzone'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-1">
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Wszystkie</div>
+                            <div className="text-xl font-black text-white mt-1">{pendingGroups.length}</div>
+                        </div>
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Filtrowane</div>
+                            <div className="text-xl font-black text-primary mt-1">{filteredGroups.length}</div>
+                        </div>
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Zatwierdzone</div>
+                            <div className="text-xl font-black text-green-400 mt-1">{pendingGroups.filter(g => g.is_approved).length}</div>
+                        </div>
+                        <div className="bg-surface border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] uppercase text-gray-500 font-bold">Oczekujące</div>
+                            <div className="text-xl font-black text-yellow-400 mt-1">{pendingGroups.filter(g => !g.is_approved).length}</div>
+                        </div>
+                    </div>
+
+                    {/* Groups list */}
+                    {filteredGroups.length === 0 ? (
                         <div className="text-center text-gray-500 mt-6 p-8 border border-gray-800 border-dashed rounded-2xl">
                             <Hash size={40} className="mx-auto mb-3 opacity-20" />
-                            Brak kółek szkolnych oczekujących na zatwierdzenie.
+                            {pendingGroups.length === 0 ? 'Brak grup w systemie.' : 'Żadne grupy nie pasują do filtra.'}
                         </div>
                     ) : (
-                        pendingGroups.map(g => (
-                            <div key={g.id} className="bg-surface border border-purple-500/30 p-4 rounded-xl flex flex-col gap-3">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-500 flex items-center justify-center">
-                                            <Hash size={16} />
+                        filteredGroups.map(g => {
+                            const isEditing = editingGroupId === g.id
+                            const isPending = !g.is_approved
+                            return (
+                                <div key={g.id} className={`bg-surface border p-4 rounded-xl flex flex-col gap-3 ${isPending ? 'border-purple-500/30' : 'border-gray-800'}`}>
+                                    {/* Header */}
+                                    <div className="flex justify-between items-start gap-4">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isPending ? 'bg-purple-500/20 text-purple-500' : 'bg-green-500/20 text-green-500'}`}>
+                                                <Hash size={16} />
+                                            </div>
+                                            <div className="min-w-0">
+                                                {isEditing ? (
+                                                    <input
+                                                        type="text"
+                                                        value={editGroupName}
+                                                        onChange={e => setEditGroupName(e.target.value)}
+                                                        className="bg-[#1a1a1a] border border-gray-700 rounded px-2 py-1 text-sm font-bold text-white w-full outline-none"
+                                                        maxLength={120}
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    <div className="font-bold text-white text-sm leading-tight truncate">{g.name}</div>
+                                                )}
+                                                <div className="text-[10px] text-gray-500 mt-0.5">
+                                                    Twórca: {g.creator?.full_name || 'Nieznany'} • Członkowie: {g.member_count || 0}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div className="font-bold text-white text-sm leading-tight">{g.name}</div>
-                                            <div className="text-[10px] text-gray-500">Twórca: {g.creator?.full_name || 'Nieznany'}</div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {isPending ? (
+                                                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">Oczekuje</span>
+                                            ) : (
+                                                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">Publiczna</span>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
-                                <div className="text-xs text-gray-300 bg-[#1a1a1a] p-3 rounded-lg border border-gray-800 mt-1">
-                                    {g.description}
-                                </div>
 
-                                <div className="flex justify-between items-center mt-2 border-t border-gray-800 pt-3">
-                                    <span className="text-[10px] text-gray-500 font-bold uppercase">Prośba o rejestrację grupy</span>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleGroupApproval(g.id, false)} className="w-8 h-8 rounded-lg bg-surface border border-red-500/50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition">
-                                            <XCircle size={16} />
-                                        </button>
-                                        <button onClick={() => handleGroupApproval(g.id, true)} className="px-4 py-1.5 rounded-lg bg-green-500 text-white text-xs font-bold hover:bg-green-600 transition shadow-lg shadow-green-500/20">
-                                            ZATWIERDŹ
-                                        </button>
+                                    {/* Description / Edit form */}
+                                    {isEditing ? (
+                                        <textarea
+                                            value={editGroupDesc}
+                                            onChange={e => setEditGroupDesc(e.target.value)}
+                                            className="bg-[#1a1a1a] border border-gray-700 rounded-lg p-2 text-xs text-gray-300 w-full outline-none resize-none"
+                                            rows={3}
+                                            maxLength={1000}
+                                        />
+                                    ) : (
+                                        <div className="text-xs text-gray-300 bg-[#1a1a1a] p-3 rounded-lg border border-gray-800">
+                                            {g.description || <span className="text-gray-500 italic">Brak opisu</span>}
+                                        </div>
+                                    )}
+
+                                    {/* Actions */}
+                                    <div className="flex justify-between items-center mt-1 border-t border-gray-800 pt-3">
+                                        {isEditing ? (
+                                            <>
+                                                <button
+                                                    onClick={() => handleGroupDelete(g.id)}
+                                                    className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 text-[10px] font-bold hover:bg-red-500/20 transition"
+                                                >
+                                                    <Trash2 size={12} className="inline mr-1" /> Usuń
+                                                </button>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={cancelGroupEdit}
+                                                        className="px-3 py-1.5 rounded-lg bg-surface border border-gray-700 text-gray-400 text-[10px] font-bold hover:border-gray-500 transition"
+                                                    >
+                                                        Anuluj
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleGroupSave(g.id)}
+                                                        className="px-4 py-1.5 rounded-lg bg-red-500 text-white text-[10px] font-bold hover:bg-red-600 transition shadow-lg shadow-red-500/20"
+                                                    >
+                                                        Zapisz
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="text-[10px] text-gray-500 font-bold uppercase">
+                                                    ID: {String(g.id).slice(0, 8)}...
+                                                </span>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => handleGroupDelete(g.id)}
+                                                        className="w-8 h-8 rounded-lg bg-surface border border-red-500/50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition"
+                                                        title="Usuń grupę"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => startGroupEdit(g)}
+                                                        className="px-3 py-1.5 rounded-lg bg-surface border border-gray-700 text-gray-400 text-[10px] font-bold hover:border-gray-500 transition"
+                                                    >
+                                                        Edytuj
+                                                    </button>
+                                                    {isPending ? (
+                                                        <>
+                                                            <button onClick={() => handleGroupApproval(g.id, false)} className="w-8 h-8 rounded-lg bg-surface border border-red-500/50 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition" title="Odrzuć">
+                                                                <XCircle size={16} />
+                                                            </button>
+                                                            <button onClick={() => handleGroupApproval(g.id, true)} className="px-4 py-1.5 rounded-lg bg-green-500 text-white text-[10px] font-bold hover:bg-green-600 transition shadow-lg shadow-green-500/20">
+                                                                Zatwierdź
+                                                            </button>
+                                                        </>
+                                                    ) : null}
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
-                            </div>
-                        ))
+                            )
+                        })
                     )}
                 </div>
             )}

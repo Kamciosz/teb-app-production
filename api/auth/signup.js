@@ -85,19 +85,22 @@ function resolveBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
+// SMTP singleton — reuse transport across calls
+let smtpTransport = null;
 function createMailTransport() {
+  if (smtpTransport) return smtpTransport;
   const host = process.env.SMTP_HOST;
   const portStr = process.env.SMTP_PORT;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  if (!host || !portStr || !user || !pass) {
+  if (!host || !portStr || !user || !pass || !process.env.SMTP_FROM) {
     console.error('[EMAIL] SMTP environment variables missing');
     throw new Error('SMTP not configured');
   }
 
   const port = parseInt(portStr, 10);
-  return nodemailer.createTransport({
+  smtpTransport = nodemailer.createTransport({
     host,
     port,
     secure: port === 465,
@@ -105,11 +108,12 @@ function createMailTransport() {
     connectionTimeout: 8000,
     socketTimeout: 8000
   });
+  return smtpTransport;
 }
 
 async function sendConfirmationEmail(toEmail, subject, htmlContent) {
   try {
-    const fromEmail = process.env.SMTP_FROM || 'noreply@teb-app.pl';
+    const fromEmail = process.env.SMTP_FROM;
     const transporter = createMailTransport();
     const info = await transporter.sendMail({
       from: `"TEB-App" <${fromEmail}>`,
@@ -128,8 +132,8 @@ async function sendConfirmationEmail(toEmail, subject, htmlContent) {
 async function sendAdminNotification(userEmail, fullName) {
   try {
     const transporter = createMailTransport();
-    const fromEmail = process.env.SMTP_FROM || 'noreply@teb-app.pl';
-    const adminEmail = 'kamciosz4you@gmail.com';
+    const fromEmail = process.env.SMTP_FROM;
+    const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
     const now = new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' });
     await transporter.sendMail({
       from: `"TEB-App" <${fromEmail}>`,

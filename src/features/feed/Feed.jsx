@@ -192,15 +192,12 @@ export default function Feed() {
         const sanitized = DOMPurify.sanitize(html || '', {
             ADD_TAGS: ['iframe'],
             ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'src', 'class'],
-            FORBID_ATTR: ['srcdoc', 'data', 'onload', 'onerror', 'onclick', 'onmouseover', 'style']
+            FORBID_ATTR: ['srcdoc', 'data', 'onload', 'onerror', 'onclick', 'onmouseover', 'style'],
+            RETURN_DOM_FRAGMENT: true
         })
 
-        const parser = new DOMParser()
-        const doc = parser.parseFromString(`<div>${sanitized}</div>`, 'text/html')
-        const wrapper = doc.body.firstElementChild
-        if (!wrapper) return ''
-
-        wrapper.querySelectorAll('iframe').forEach((frame) => {
+        // Remove iframes that point to non-YouTube sources
+        sanitized.querySelectorAll('iframe').forEach((frame) => {
             const src = frame.getAttribute('src') || ''
             if (!isAllowedYouTubeEmbedSrc(src)) {
                 frame.remove()
@@ -212,7 +209,10 @@ export default function Feed() {
             frame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share')
         })
 
-        return wrapper.innerHTML
+        // Serialize back to HTML string
+        const div = document.createElement('div')
+        div.appendChild(sanitized)
+        return div.innerHTML
     }
 
     function renderFullArticleHtml(rawHtml) {

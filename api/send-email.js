@@ -201,12 +201,12 @@ export default async function handler(req, res) {
       try {
         if (provider === 'brevo' && canUseBrevo()) {
           const result = await sendWithBrevo({ recipients, subject, html, text });
-          return res.status(200).json({ ok: true, provider: 'brevo', result });
+          return res.status(200).json({ ok: true, provider: 'brevo' });
         }
 
         if (provider === 'resend' && canUseResend()) {
           const result = await sendWithResend({ recipients, subject, html, text });
-          return res.status(200).json({ ok: true, provider: 'resend', result });
+          return res.status(200).json({ ok: true, provider: 'resend' });
         }
       } catch (providerError) {
         providerErrors.push(providerError);
