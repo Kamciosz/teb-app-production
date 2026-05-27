@@ -617,6 +617,7 @@ export default function Groups() {
                                             {!group.is_approved && (
                                                 <span className="text-[8px] text-yellow-500 border border-yellow-500/50 px-1 rounded shrink-0">OCZEKUJE</span>
                                             )}
+                                            <span className="text-[8px] text-emerald-400 border border-emerald-400/50 px-1 rounded shrink-0">PUBLICZNA</span>
                                         </div>
                                         <div className="text-[11px] text-gray-600 truncate mt-0.5">
                                             {isMember ? (group.description || 'Brak opisu') : 'Kliknij, aby dołączyć'}
@@ -685,7 +686,10 @@ export default function Groups() {
                         </div>
 
                         <div className="min-w-0">
-                            <div className="font-bold text-white text-sm leading-tight truncate">{activeGroup.name}</div>
+                            <div className="font-bold text-white text-sm leading-tight truncate flex items-center gap-1.5">
+                                {activeGroup.name}
+                                <span className="text-[8px] text-emerald-400 border border-emerald-400/50 px-1 rounded shrink-0">PUBLICZNA</span>
+                            </div>
                             <div className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider flex items-center gap-2">
                                 <Users size={12} className="inline" />
                                 {membersCount} {membersCount === 1 ? 'członek' : 'członków'}
@@ -718,6 +722,7 @@ export default function Groups() {
                                 <Users size={32} className="text-secondary" />
                             </div>
                             <h3 className="text-lg font-bold text-white">{activeGroup.name}</h3>
+                            <span className="text-[10px] text-emerald-400 border border-emerald-400/50 px-2 py-0.5 rounded-full">PUBLICZNA</span>
                             <p className="text-sm text-gray-400 max-w-xs text-center">{activeGroup.description}</p>
                             <button
                                 onClick={() => toggleMembership(activeGroup.id)}
