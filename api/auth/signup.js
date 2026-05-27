@@ -70,22 +70,25 @@ function resolveBaseUrl(req) {
 }
 
 function createMailTransport() {
+  const host = process.env.SMTP_HOST || 's68.cyber-folks.pl';
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  const user = process.env.SMTP_USER || 'noreply@teb-app.pl';
+  const pass = process.env.SMTP_PASS || 'kamciosz12%Pusia';
+
   return nodemailer.createTransport({
-    host: 's68.cyber-folks.pl',
-    port: 465,
-    secure: true,
-    auth: {
-      user: 'noreply@teb-app.pl',
-      pass: 'kamciosz12%Pusia'
-    }
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass }
   });
 }
 
 async function sendConfirmationEmail(toEmail, subject, htmlContent) {
   try {
+    const fromEmail = process.env.SMTP_FROM || 'noreply@teb-app.pl';
     const transporter = createMailTransport();
     const info = await transporter.sendMail({
-      from: '"TEB-App" <noreply@teb-app.pl>',
+      from: `"TEB-App" <${fromEmail}>`,
       to: toEmail,
       subject,
       html: htmlContent
