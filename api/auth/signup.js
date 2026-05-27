@@ -5,6 +5,7 @@ import {
   sendMethodNotAllowed
 } from '../../lib/serverAuth.js';
 import { createClient } from '@supabase/supabase-js';
+import nodemailer from 'nodemailer';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -68,39 +69,31 @@ function resolveBaseUrl(req) {
   return `${proto}://${host}`;
 }
 
-async function sendBrevoEmail(toEmail, subject, htmlContent) {
-  const apiKey = process.env.BREVO_API_KEY;
-  if (!apiKey || apiKey.includes('...')) {
-    console.error('[EMAIL] BREVO_API_KEY not set or invalid');
-    return false;
-  }
-
-  try {
-    const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': apiKey
-      },
-      body: JSON.stringify({
-        sender: { name: 'TEB-App', email: process.env.BREVO_FROM || 'noreply@teb.edu.pl' },
-        to: [{ email: toEmail }],
-        subject,
-        htmlContent
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.text();
-      console.error(`[EMAIL] Brevo ${resp.status}: ${err}`);
-      return false;
+function createMailTransport() {
+  return nodemailer.createTransport({
+    host: 's68.cyber-folks.pl',
+    port: 465,
+    secure: true,
+    auth: {
+      user: 'noreply@teb-app.pl',
+      pass: 'kamciosz12%Pusia'
     }
+  });
+}
 
-    const data = await resp.json();
-    console.log(`[EMAIL] Sent to ${maskEmail(toEmail)}, msgId: ${data.messageId}`);
+async function sendConfirmationEmail(toEmail, subject, htmlContent) {
+  try {
+    const transporter = createMailTransport();
+    const info = await transporter.sendMail({
+      from: '"TEB-App" <noreply@teb-app.pl>',
+      to: toEmail,
+      subject,
+      html: htmlContent
+    });
+    console.log(`[EMAIL] Sent to ${maskEmail(toEmail)}, msgId: ${info.messageId}`);
     return true;
   } catch (error) {
-    console.error(`[EMAIL] Exception: ${error.message}`);
+    console.error(`[EMAIL] Error: ${error.message}`);
     return false;
   }
 }
@@ -213,7 +206,7 @@ export default async function handler(req, res) {
 <p style="color:#999;font-size:12px;">TEB-App — portal szkolny dla uczniów TEB Warszawa</p>
 </body></html>`;
 
-    const emailSent = await sendBrevoEmail(email, 'Potwierdź rejestrację w TEB-App', emailHtml);
+    const emailSent = await sendConfirmationEmail(email, 'Potwierdź rejestrację w TEB-App', emailHtml);
 
     console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${userId}, emailSent=${emailSent}`);
 
