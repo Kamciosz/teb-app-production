@@ -8,9 +8,10 @@ async function checkSupabase() {
 
     // Try resolving the Supabase project health endpoint
     const baseUrl = supabaseUrl.replace(/\/+$/, '');
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     const response = await fetch(`${baseUrl}/rest/v1/`, {
       method: 'HEAD',
-      headers: { 'Accept': 'application/json' },
+      headers: { 'Accept': 'application/json', 'apikey': anonKey || '' },
       signal: AbortSignal.timeout(5000)
     });
     return { status: response.ok ? 'ok' : 'degraded', detail: `HTTP ${response.status}` };
