@@ -104,7 +104,7 @@ export default function Admin() {
         if (targetView === 'users' && canManageUsers) {
             const primaryUsers = await supabase
                 .from('profiles')
-                .select('id, full_name, roles, role, is_banned, banned_until, ban_reason, created_at')
+                .select('id, full_name, roles, role, is_banned, banned_until, created_at')
                 .order('created_at', { ascending: false })
                 .limit(100)
 
@@ -118,7 +118,7 @@ export default function Admin() {
                     .limit(100)
 
                 if (fallbackUsers.data) {
-                    setUsers(fallbackUsers.data.map(user => ({ ...user, ban_reason: null })))
+                    setUsers(fallbackUsers.data || [])
                 }
             }
         }
@@ -245,8 +245,7 @@ export default function Admin() {
 
         const { error } = await supabase.from('profiles').update({
             is_banned: !isBanned,
-            banned_until: banUntil,
-            ban_reason: isBanned ? null : banReason
+            banned_until: banUntil
         }).eq('id', userId)
         if (error) {
             alert(`Nie udało się zmienić statusu bana: ${error.message}`)
@@ -258,8 +257,7 @@ export default function Admin() {
             return {
                 ...user,
                 is_banned: !isBanned,
-                banned_until: banUntil,
-                ban_reason: isBanned ? null : banReason
+                banned_until: banUntil
             }
         }))
     }
@@ -741,9 +739,6 @@ export default function Admin() {
                                         <div className="text-[10px] text-gray-500 font-mono mt-0.5">ID: {u.id?.slice(0, 8)}...</div>
                                         {u.is_banned && u.banned_until && (
                                             <div className="text-[10px] text-red-400 font-bold mt-1">Ban do: {new Date(u.banned_until).toLocaleString()}</div>
-                                        )}
-                                        {u.ban_reason && (
-                                            <div className="text-[10px] text-gray-400 mt-1 max-w-[220px] leading-relaxed">Powód: {u.ban_reason}</div>
                                         )}
                                     </div>
                                     <div className="flex flex-wrap gap-1 max-w-[150px] justify-end">

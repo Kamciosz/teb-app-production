@@ -42,7 +42,7 @@ export default function Profile() {
 
         const primaryQuery = await supabase
             .from('profiles')
-            .select('id, full_name, avatar_url, roles, role, is_private, dm_friends_only, teb_gabki, bio, is_banned, banned_until, ban_reason, created_at, updated_at')
+            .select('id, full_name, avatar_url, roles, role, is_private, teb_gabki, bio, is_banned, banned_until, created_at, updated_at')
             .eq('id', session.user.id)
             .single()
 
@@ -61,9 +61,7 @@ export default function Profile() {
             }
 
             data = {
-                ...fallbackQuery.data,
-                dm_friends_only: false,
-                ban_reason: null
+                ...fallbackQuery.data
             }
         }
 
@@ -202,16 +200,6 @@ export default function Profile() {
         if (!error) setProfile(prev => ({ ...prev, is_private: newPrivacy }))
     }
 
-    async function toggleDmPrivacy() {
-        const newValue = !profile.dm_friends_only
-        const { error } = await supabase
-            .from('profiles')
-            .update({ dm_friends_only: newValue })
-            .eq('id', profile.id)
-
-        if (!error) setProfile(prev => ({ ...prev, dm_friends_only: newValue }))
-    }
-
     async function submitAppeal() {
         const activeBanEvent = moderationEvents.find(event => event.action_type === 'ban')
         if (!profile?.is_banned || !activeBanEvent) {
@@ -313,7 +301,6 @@ export default function Profile() {
                         </span>
                     ))}
                     {profile.is_private && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-300 border border-gray-700">PRYWATNY</span>}
-                    {profile.dm_friends_only && <span className="text-[10px] px-3 py-1 rounded-full font-bold bg-gray-800 text-gray-300 border border-gray-700">DM: ZNAJOMI</span>}
                 </div>
 
                 <div className="w-full mt-5 border-t border-gray-800 pt-4 flex items-center justify-between gap-3 text-sm">
@@ -343,7 +330,7 @@ export default function Profile() {
                         <Shield size={18} className="text-red-400" />
                     </div>
                     <div className="text-sm text-white leading-relaxed">
-                        {sanitizePlainText(profile.ban_reason || activeBanEvent?.reason || 'Moderator nie dodał jeszcze uzasadnienia.', { maxLength: 500, preserveLineBreaks: true })}
+                        {sanitizePlainText(profile.metadata?.ban_reason || activeBanEvent?.reason || 'Moderator nie dodał jeszcze uzasadnienia.', { maxLength: 500, preserveLineBreaks: true })}
                     </div>
                 </div>
             )}
@@ -409,24 +396,6 @@ export default function Profile() {
                         <div className="text-sm text-gray-500">Jeszcze nic tu nie ma. Kup odznakę albo zdobywaj TebGąbki.</div>
                     )}
                 </div>
-            </div>
-
-            <div className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                        <MessageCircle size={18} />
-                    </div>
-                    <div>
-                        <div className="text-sm font-bold text-white leading-none">Wiadomości prywatne</div>
-                        <div className="text-[10px] text-gray-500 uppercase mt-1">{profile.dm_friends_only ? 'Tylko zaakceptowani znajomi' : 'Każdy zalogowany użytkownik'}</div>
-                    </div>
-                </div>
-                <button
-                    onClick={toggleDmPrivacy}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold transition ${profile.dm_friends_only ? 'bg-primary/20 text-primary hover:bg-primary/30' : 'bg-gray-800 text-gray-300 hover:text-white'}`}
-                >
-                    {profile.dm_friends_only ? 'Znajomi' : 'Wszyscy'}
-                </button>
             </div>
 
             <div className="bg-surface border border-gray-800 p-4 rounded-xl mb-6">

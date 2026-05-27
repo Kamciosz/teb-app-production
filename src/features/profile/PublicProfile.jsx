@@ -30,7 +30,7 @@ export default function PublicProfile() {
 
         const { data, error: queryError } = await supabase
             .from('profiles')
-            .select('id, full_name, email, avatar_url, role, roles, teb_gabki, bio, is_private, dm_friends_only, created_at')
+            .select('id, full_name, email, avatar_url, role, roles, teb_gabki, bio, is_private, created_at')
             .eq('id', userId)
             .single()
 

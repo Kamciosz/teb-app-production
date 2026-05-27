@@ -81,9 +81,25 @@ export const NotificationService = {
     },
 
     urlBase64ToUint8Array(base64String) {
-        if (!base64String || typeof base64String !== 'string') throw new Error('Invalid base64 string');
-        // Convert from base64url to base64 and normalize
-        const cleaned = base64String.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        if (!base64String || typeof base64String !== 'string') {
+            throw new Error('Invalid base64 string: expected a non-empty string');
+        }
+
+        // Convert from base64url to base64 — replace URL-safe chars and strip whitespace
+        let cleaned = base64String.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+
+        // Strip any existing '=' padding before recalculating
+        cleaned = cleaned.replace(/=+$/, '');
+
+        // Validate that only base64 characters remain
+        if (!/^[A-Za-z0-9+/]+$/.test(cleaned)) {
+            throw new Error(
+                'VAPID key contains invalid base64url characters. ' +
+                'Expected only A-Z, a-z, 0-9, -, _. Got: "' + base64String.substring(0, 32) + '..."'
+            );
+        }
+
+        // Recalculate correct padding
         const padding = '='.repeat((4 - (cleaned.length % 4)) % 4);
         const base64 = cleaned + padding;
 
@@ -95,7 +111,8 @@ export const NotificationService = {
             }
             return outputArray;
         } catch (err) {
-            throw new Error('Failed to decode VAPID key. Ensure it is a valid base64url string. ' + err.message);
+            const msg = (err && typeof err.message === 'string') ? err.message : String(err);
+            throw new Error('Failed to decode VAPID key. Ensure it is a valid base64url string. ' + msg);
         }
     }
 };

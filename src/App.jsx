@@ -253,11 +253,24 @@ function App() {
                 // Automatyczne TG za codzienne logowanie — weryfikacja po stronie serwera
                 try {
                     const { data: award, error: awardErr } = await supabase.rpc('award_daily_tg')
-                    if (!awardErr && award?.awarded) {
+                    if (awardErr) {
+                        // 400 BAD REQUEST = RPC function doesn't exist or rejected gracefully
+                        if (awardErr.code === '400' || awardErr.status === 400 || awardErr.code === '404') {
+                            console.warn('award_daily_tg RPC not available (status 400/404) — skipping daily TG award')
+                        } else {
+                            console.warn('Daily TG award RPC error:', awardErr.message || awardErr)
+                        }
+                    } else if (award?.awarded) {
                         console.log('Przyznano 5 TG za codzienne logowanie!')
                     }
                 } catch (awardErr) {
-                    console.warn('Daily TG award failed:', awardErr)
+                    // Catch HTTP errors (including 400 when Supabase client throws)
+                    const status = awardErr?.status || awardErr?.code
+                    if (status === 400 || status === 404) {
+                        console.warn('award_daily_tg RPC not available (status ' + status + ') — skipping daily TG award')
+                    } else {
+                        console.warn('Daily TG award failed:', awardErr?.message || awardErr)
+                    }
                 }
 
                 // Rejestracja powiadomień Push

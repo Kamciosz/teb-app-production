@@ -201,7 +201,7 @@ export default function TEBtalk() {
             full_name: sanitizePlainText(target.full_name, { maxLength: 80 }) || 'Użytkownik',
             role: target.role || 'student',
             avatar_url: sanitizeImageUrl(target.avatar_url),
-            dm_friends_only: Boolean(target.dm_friends_only),
+            dm_friends_only: false,
             type: 'private'
         }
     }
@@ -256,7 +256,7 @@ export default function TEBtalk() {
 
                 const { data, error } = await supabase
                     .from('profiles')
-                    .select('id, full_name, role, avatar_url, dm_friends_only')
+                    .select('id, full_name, role, avatar_url')
                     .eq('id', routeChatId)
                     .single()
 
@@ -419,7 +419,7 @@ export default function TEBtalk() {
             .from('friends')
             .select(`
                 friend_id,
-                profiles!friends_friend_id_fkey (id, full_name, avatar_url, role, dm_friends_only)
+                profiles!friends_friend_id_fkey (id, full_name, avatar_url, role)
             `)
             .eq('user_id', userId)
             .eq('status', 'accepted')
@@ -452,7 +452,6 @@ export default function TEBtalk() {
 
         const normalizedFallbackFriends =
             (fallbackProfiles || [])
-                .map(friend => ({ ...friend, dm_friends_only: false }))
                 .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
         setFriends(normalizedFallbackFriends)
         return normalizedFallbackFriends
@@ -514,8 +513,8 @@ export default function TEBtalk() {
 
         let chats = []
         if (userIds.size > 0) {
-            const primaryUsers = await supabase.from('profiles').select('id, full_name, role, avatar_url, dm_friends_only').in('id', Array.from(userIds))
-            const users = primaryUsers.data || (await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))).data?.map(user => ({ ...user, dm_friends_only: false }))
+            const primaryUsers = await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))
+            const users = primaryUsers.data || (await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))).data
 
             if (users) {
                 chats = users
@@ -553,7 +552,7 @@ export default function TEBtalk() {
             return
         }
         const { data } = await supabase.from('profiles')
-            .select('id, full_name, role, avatar_url, is_private, dm_friends_only')
+            .select('id, full_name, role, avatar_url, is_private')
             .ilike('full_name', `%${nextQuery}%`)
             .eq('is_private', false)
             .neq('id', myId)
@@ -572,7 +571,7 @@ export default function TEBtalk() {
             .limit(10)
 
         if (fallbackData) {
-            setSearchResults(fallbackData.map(user => ({ ...user, dm_friends_only: false })).filter(user => !isBlockedRelationship(user.id)))
+            setSearchResults(fallbackData.filter(user => !isBlockedRelationship(user.id)))
         }
     }
 
@@ -879,7 +878,7 @@ export default function TEBtalk() {
                 toast.info('Nie możesz otworzyć rozmowy, ponieważ relacja jest zablokowana.')
                 return
             }
-            if (normalizedTarget.dm_friends_only && !isAcceptedFriend(normalizedTarget.id)) {
+            if (false) {
                 toast.info('Ten użytkownik przyjmuje prywatne wiadomości tylko od znajomych.')
                 return
             }
