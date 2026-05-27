@@ -222,7 +222,7 @@ export default function Feed() {
             .replace(/<\/iframe>/g, '</iframe></div>')
 
         try {
-            return withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img src="${ImageKitService.getOptimizedUrl(src)}"`)
+            return withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img loading="lazy" decoding="async" src="${ImageKitService.getOptimizedUrl(src)}"`)
         } catch {
             return withIframes
         }

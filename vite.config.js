@@ -45,13 +45,48 @@ export default defineConfig({
         })
     ],
     build: {
+        cssCodeSplit: true,
+        sourcemap: false,
+        minify: 'terser',
+        terserOptions: {
+            compress: {
+                drop_console: false,
+                drop_debugger: true,
+                unused: true,
+                dead_code: true,
+            },
+        },
         rollupOptions: {
             output: {
-                manualChunks: {
-                    vendor: ['react', 'react-dom', 'react-router-dom', 'lucide-react'],
-                    supabase: ['@supabase/supabase-js'],
-                    quill: ['react-quill'],
-                    crop: ['react-easy-crop'],
+                manualChunks(id) {
+                    // Vendor — React core
+                    if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+                        return 'vendor-react';
+                    }
+                    // Router
+                    if (id.includes('node_modules/react-router')) {
+                        return 'vendor-router';
+                    }
+                    // Supabase
+                    if (id.includes('node_modules/@supabase')) {
+                        return 'vendor-supabase';
+                    }
+                    // Editor
+                    if (id.includes('node_modules/react-quill') || id.includes('node_modules/quill')) {
+                        return 'vendor-quill';
+                    }
+                    // Image tools
+                    if (id.includes('node_modules/react-easy-crop') || id.includes('node_modules/browser-image-compression')) {
+                        return 'vendor-image';
+                    }
+                    // Lucide (icons)
+                    if (id.includes('node_modules/lucide-react')) {
+                        return 'vendor-icons';
+                    }
+                    // Everything else in a single vendor chunk to minimize HTTP requests
+                    if (id.includes('node_modules')) {
+                        return 'vendor-other';
+                    }
                 },
             },
         },
