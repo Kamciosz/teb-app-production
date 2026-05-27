@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, User, UserX, Menu, Clock } from 'lucide-react'
+import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, Trash2, Smile, User, UserX, Menu } from 'lucide-react'
+import CreateGroup from './modals/CreateGroup'
+import GroupSettings from './modals/GroupSettings'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
@@ -9,6 +11,24 @@ import { WordFilter } from '../../services/wordFilter'
 import { useToast } from '../../context/ToastContext'
 import { getRoleLabel, getUserInitial } from '../profile/profileMeta'
 import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
+import {
+    fetchBlocks as queryFetchBlocks,
+    fetchFriends as queryFetchFriends,
+    fetchGroupMembers as queryFetchGroupMembers,
+    fetchRecentChats as queryFetchRecentChats,
+    fetchMessages as queryFetchMessages,
+    loadOlderMessages as queryLoadOlderMessages,
+    sendMessage as querySendMessage,
+    sendImage as querySendImage,
+    deleteMessage as queryDeleteMessage,
+    deleteGroupMessage as queryDeleteGroupMessage,
+    sendFriendRequest as querySendFriendRequest,
+    toggleBlockQuery,
+    searchProfiles,
+    normalizePrivateTarget as queryNormalizePrivateTarget,
+    isBlockedRelationship as queryIsBlockedRelationship,
+    appendIncomingMessage as queryAppendIncomingMessage,
+} from './services/tebtalkQueries'
 
 // --- Helpers: date separators + Discord-style message grouping ---
 function formatDateSeparator(dateStr) {
@@ -83,11 +103,9 @@ export default function TEBtalk() {
     const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
     const [hasOlderMessages, setHasOlderMessages] = useState(false)
     const [isCreatingGroup, setIsCreatingGroup] = useState(false)
-    const [groupName, setGroupName] = useState('')
     const [isGroupSettingsOpen, setIsGroupSettingsOpen] = useState(false)
     const [friends, setFriends] = useState([])
     const [groupMembers, setGroupMembers] = useState([])
-    const [isAddingMember, setIsAddingMember] = useState(false)
     const [myBlockedIds, setMyBlockedIds] = useState([])
     const [blockedByIds, setBlockedByIds] = useState([])
     const [chatError, setChatError] = useState('')
@@ -193,18 +211,7 @@ export default function TEBtalk() {
         writeCachedSessionEntry(`tebtalk_messages_${cacheKey}`, trimmed)
     }
 
-    const normalizePrivateTarget = (target) => {
-        if (!target?.id) return null
-
-        return {
-            id: target.id,
-            full_name: sanitizePlainText(target.full_name, { maxLength: 80 }) || 'Użytkownik',
-            role: target.role || 'student',
-            avatar_url: sanitizeImageUrl(target.avatar_url),
-            dm_friends_only: false,
-            type: 'private'
-        }
-    }
+    const normalizePrivateTarget = queryNormalizePrivateTarget
 
     useEffect(() => {
         supabase.auth.getSession()
@@ -364,14 +371,10 @@ export default function TEBtalk() {
         }, 100)
     }
 
-    const appendIncomingMessage = (prevMessages, incomingMessage) => {
-        if (prevMessages.some(m => m.id === incomingMessage.id)) return prevMessages
-        const merged = [...prevMessages, incomingMessage]
-        return merged.slice(-MAX_MESSAGES_IN_MEMORY)
-    }
+    const appendIncomingMessage = queryAppendIncomingMessage
 
     function isBlockedRelationship(userId) {
-        return myBlockedIds.includes(userId) || blockedByIds.includes(userId)
+        return queryIsBlockedRelationship(userId, myBlockedIds, blockedByIds)
     }
 
     function isAcceptedFriend(userId) {
@@ -379,18 +382,10 @@ export default function TEBtalk() {
     }
 
     async function fetchBlocks(userId) {
-        const [{ data: myBlocks }, { data: blockedMe }] = await Promise.all([
-            supabase.from('user_blocks').select('blocked_user_id').eq('blocking_user_id', userId),
-            supabase.from('user_blocks').select('blocking_user_id').eq('blocked_user_id', userId)
-        ])
-
-        const blocked = (myBlocks || []).map(row => row.blocked_user_id)
-        const blockedBy = (blockedMe || []).map(row => row.blocking_user_id)
-
-        setMyBlockedIds(blocked)
-        setBlockedByIds(blockedBy)
-
-        return { blocked, blockedBy }
+        const result = await queryFetchBlocks(userId)
+        setMyBlockedIds(result.blocked)
+        setBlockedByIds(result.blockedBy)
+        return result
     }
 
     async function loadCommunicationState(userId) {
@@ -415,131 +410,19 @@ export default function TEBtalk() {
     async function fetchFriends(userId, blockState = null) {
         const blocked = new Set(blockState?.blocked || myBlockedIds)
         const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
-        const { data } = await supabase
-            .from('friends')
-            .select(`
-                friend_id,
-                profiles!friends_friend_id_fkey (id, full_name, avatar_url, role)
-            `)
-            .eq('user_id', userId)
-            .eq('status', 'accepted')
-
-        if (data) {
-            const normalizedFriends =
-                data
-                    .map(f => f.profiles)
-                    .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
-            setFriends(normalizedFriends)
-            return normalizedFriends
-        }
-
-        const { data: fallbackFriends } = await supabase
-            .from('friends')
-            .select('friend_id')
-            .eq('user_id', userId)
-            .eq('status', 'accepted')
-
-        const friendIds = (fallbackFriends || []).map(friend => friend.friend_id).filter(Boolean)
-        if (friendIds.length === 0) {
-            setFriends([])
-            return []
-        }
-
-        const { data: fallbackProfiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, avatar_url, role')
-            .in('id', friendIds)
-
-        const normalizedFallbackFriends =
-            (fallbackProfiles || [])
-                .filter(friend => friend && !blocked.has(friend.id) && !blockedBy.has(friend.id))
-        setFriends(normalizedFallbackFriends)
-        return normalizedFallbackFriends
+        const normalizedFriends = await queryFetchFriends(userId, { blocked: Array.from(blocked), blockedBy: Array.from(blockedBy) })
+        setFriends(normalizedFriends)
+        return normalizedFriends
     }
 
     async function fetchGroupMembers(groupId) {
-        const { data, error } = await supabase
-            .from('chat_group_members')
-            .select(`
-                user_id,
-                role,
-                nickname,
-                profiles (full_name, avatar_url)
-            `)
-            .eq('group_id', groupId)
-
-        if (error) {
-            console.error('Błąd pobierania członków grupy:', error)
-            setGroupMembers([])
-            return []
-        }
-
-        const normalizedMembers = (data || []).map(member => ({
-            ...member,
-            nickname: sanitizePlainText(member.nickname, { maxLength: 80 }),
-            profiles: {
-                full_name: sanitizePlainText(member.profiles?.full_name, { maxLength: 80 }) || 'Użytkownik',
-                avatar_url: sanitizeImageUrl(member.profiles?.avatar_url)
-            }
-        }))
-
+        const normalizedMembers = await queryFetchGroupMembers(groupId)
         setGroupMembers(normalizedMembers)
         return normalizedMembers
     }
 
     async function fetchRecentChats(userId, blockState = null) {
-        const blocked = new Set(blockState?.blocked || myBlockedIds)
-        const blockedBy = new Set(blockState?.blockedBy || blockedByIds)
-        // 1. Prywatne wiadomości
-        const [{ data: sentMsg }, { data: recvMsg }] = await Promise.all([
-            supabase
-                .from('direct_messages')
-                .select('receiver_id')
-                .eq('sender_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(RECENT_DM_SCAN_LIMIT),
-            supabase
-                .from('direct_messages')
-                .select('sender_id')
-                .eq('receiver_id', userId)
-                .order('created_at', { ascending: false })
-                .limit(RECENT_DM_SCAN_LIMIT)
-        ])
-
-        const userIds = new Set([
-            ...(sentMsg || []).map(m => m.receiver_id).filter(id => id && id.length > 20),
-            ...(recvMsg || []).map(m => m.sender_id).filter(id => id && id.length > 20)
-        ])
-
-        let chats = []
-        if (userIds.size > 0) {
-            const primaryUsers = await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))
-            const users = primaryUsers.data || (await supabase.from('profiles').select('id, full_name, role, avatar_url').in('id', Array.from(userIds))).data
-
-            if (users) {
-                chats = users
-                    .filter(u => !blocked.has(u.id) && !blockedBy.has(u.id))
-                    .map(u => ({ ...u, type: 'private' }))
-            }
-        }
-
-        // 2. Grupy w których jestem
-        const { data: myGroups } = await supabase
-            .from('chat_group_members')
-            .select('group_id, chat_groups(id, name, image_url)')
-            .eq('user_id', userId)
-        
-        if (myGroups) {
-            const groups = myGroups.map(g => ({
-                id: g.chat_groups.id,
-                full_name: g.chat_groups.name,
-                avatar_url: g.chat_groups.image_url,
-                type: 'group',
-                role: 'room'
-            }))
-            chats = [...chats, ...groups]
-        }
-
+        const chats = await queryFetchRecentChats(userId, blockState, RECENT_DM_SCAN_LIMIT)
         setRecentChats(chats)
         return chats
     }
@@ -551,67 +434,31 @@ export default function TEBtalk() {
             setSearchResults([])
             return
         }
-        const { data } = await supabase.from('profiles')
-            .select('id, full_name, role, avatar_url, is_private')
-            .ilike('full_name', `%${nextQuery}%`)
-            .eq('is_private', false)
-            .neq('id', myId)
-            .limit(10)
-
-        if (data) {
-            setSearchResults(data.filter(user => !isBlockedRelationship(user.id)))
-            return
-        }
-
-        const { data: fallbackData } = await supabase.from('profiles')
-            .select('id, full_name, role, avatar_url, is_private')
-            .ilike('full_name', `%${nextQuery}%`)
-            .eq('is_private', false)
-            .neq('id', myId)
-            .limit(10)
-
-        if (fallbackData) {
-            setSearchResults(fallbackData.filter(user => !isBlockedRelationship(user.id)))
+        const results = await searchProfiles(nextQuery, myId, 10)
+        if (results) {
+            setSearchResults(results.filter(user => !isBlockedRelationship(user.id)))
         }
     }
 
     async function toggleBlock(userId) {
         const isBlocked = myBlockedIds.includes(userId)
+        const { action, error } = await toggleBlockQuery(myId, userId, isBlocked)
 
-        if (isBlocked) {
-            const { error } = await supabase
-                .from('user_blocks')
-                .delete()
-                .eq('blocking_user_id', myId)
-                .eq('blocked_user_id', userId)
+        if (error) {
+            console.error(error)
+            toast.error(action === 'unblocked' ? 'Nie udało się odblokować użytkownika.' : 'Nie udało się zablokować użytkownika.')
+            return
+        }
 
-            if (error) {
-                console.error(error)
-                toast.error('Nie udało się odblokować użytkownika.')
-                return
-            }
-
-            toast.success('Użytkownik został odblokowany.')
-        } else {
-            if (!window.confirm('Zablokować tego użytkownika? Zablokowane osoby nie wyślą Ci prywatnej wiadomości.')) return
-
-            const { error } = await supabase
-                .from('user_blocks')
-                .insert([{ blocking_user_id: myId, blocked_user_id: userId }])
-
-            if (error) {
-                console.error(error)
-                toast.error('Nie udało się zablokować użytkownika.')
-                return
-            }
-
+        if (action === 'blocked') {
             if (activeChatUser?.type === 'private' && activeChatUser.id === userId) {
                 setActiveChatUser(null)
                 setMessages([])
                 setView('list')
             }
-
             toast.success('Użytkownik został zablokowany.')
+        } else {
+            toast.success('Użytkownik został odblokowany.')
         }
 
         await loadCommunicationState(myId)
@@ -620,17 +467,7 @@ export default function TEBtalk() {
 
     async function fetchMessages(partnerId, isGroup = false, options = {}) {
         const { hadCachedMessages = false } = options
-        let query = supabase.from(isGroup ? 'chat_group_messages' : 'direct_messages').select('*')
-        
-        if (isGroup) {
-            query = query.eq('group_id', partnerId)
-        } else {
-            query = query.or(`and(sender_id.eq.${myId},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${myId})`)
-        }
-
-        const { data, error } = await query
-            .order('created_at', { ascending: false })
-            .limit(INITIAL_MESSAGES_FETCH_LIMIT)
+        const { messages: fetchedMessages, error } = await queryFetchMessages(myId, partnerId, isGroup, INITIAL_MESSAGES_FETCH_LIMIT)
 
         if (error) {
             console.error("Błąd pobierania wiadomości:", error)
@@ -640,11 +477,10 @@ export default function TEBtalk() {
             } else {
                 setChatError('Nie udało się odświeżyć rozmowy. Wyświetlam ostatnio zapisane wiadomości.')
             }
-        } else if (data) {
-            const chronologicalMessages = [...data].reverse()
-            setMessages(chronologicalMessages.slice(-MAX_MESSAGES_IN_MEMORY))
-            setHasOlderMessages(data.length >= INITIAL_MESSAGES_FETCH_LIMIT)
-            persistMessagesCache(partnerId, isGroup, chronologicalMessages)
+        } else if (fetchedMessages) {
+            setMessages(fetchedMessages.slice(-MAX_MESSAGES_IN_MEMORY))
+            setHasOlderMessages(fetchedMessages.length >= INITIAL_MESSAGES_FETCH_LIMIT)
+            persistMessagesCache(partnerId, isGroup, fetchedMessages)
             scrollToBottom()
         }
     }
@@ -658,17 +494,9 @@ export default function TEBtalk() {
         const isGroup = activeChatUser.type === 'group'
         setLoadingOlderMessages(true)
 
-        let query = supabase.from(isGroup ? 'chat_group_messages' : 'direct_messages').select('*')
-        if (isGroup) {
-            query = query.eq('group_id', activeChatUser.id)
-        } else {
-            query = query.or(`and(sender_id.eq.${myId},receiver_id.eq.${activeChatUser.id}),and(sender_id.eq.${activeChatUser.id},receiver_id.eq.${myId})`)
-        }
-
-        const { data, error } = await query
-            .lt('created_at', oldestMessage.created_at)
-            .order('created_at', { ascending: false })
-            .limit(LOAD_OLDER_MESSAGES_LIMIT)
+        const { messages: olderMessages, error } = await queryLoadOlderMessages(
+            myId, oldestMessage.created_at, activeChatUser.id, isGroup, LOAD_OLDER_MESSAGES_LIMIT
+        )
 
         if (error) {
             console.error('Błąd pobierania starszych wiadomości:', error)
@@ -677,18 +505,17 @@ export default function TEBtalk() {
             return
         }
 
-        const olderChronological = [...(data || [])].reverse()
-        if (!olderChronological.length) {
+        if (!olderMessages || !olderMessages.length) {
             setHasOlderMessages(false)
             setLoadingOlderMessages(false)
             return
         }
 
         setMessages(prev => {
-            const merged = [...olderChronological, ...prev]
+            const merged = [...olderMessages, ...prev]
             return merged.slice(-MAX_MESSAGES_IN_MEMORY)
         })
-        setHasOlderMessages(olderChronological.length >= LOAD_OLDER_MESSAGES_LIMIT)
+        setHasOlderMessages(olderMessages.length >= LOAD_OLDER_MESSAGES_LIMIT)
         setLoadingOlderMessages(false)
     }
 
@@ -703,14 +530,12 @@ export default function TEBtalk() {
         }
 
         const msgText = sanitizedMessage
-        const isGroup = activeChatUser.type === 'group'
-        const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
         const tempId = Math.random().toString(36).substring(7)
 
         const optimisticMsg = {
             id: tempId,
             sender_id: myId,
-            [isGroup ? 'group_id' : 'receiver_id']: activeChatUser.id,
+            [activeChatUser.type === 'group' ? 'group_id' : 'receiver_id']: activeChatUser.id,
             content: WordFilter.clean(msgText),
             created_at: new Date().toISOString(),
             status: 'sending'
@@ -720,14 +545,7 @@ export default function TEBtalk() {
         setNewMessage('')
         scrollToBottom()
 
-        const payload = {
-            sender_id: myId,
-            content: WordFilter.clean(msgText)
-        }
-        if (isGroup) payload.group_id = activeChatUser.id
-        else payload.receiver_id = activeChatUser.id
-
-        const { data, error } = await supabase.from(tableName).insert([payload]).select().single()
+        const { data, error } = await querySendMessage(myId, activeChatUser, msgText)
 
         if (error) {
             console.error("Błąd wysyłania:", error)
@@ -735,8 +553,6 @@ export default function TEBtalk() {
             toast.error(isBlockedOrRestricted ? 'Ta osoba nie przyjmuje od Ciebie wiadomości lub istnieje blokada.' : 'Nie udało się wysłać wiadomości.')
             setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m))
         } else if (data) {
-            // Zastąp optimistic msg realnym — uwzględnia przypadek, gdy Realtime
-            // dodał już tę wiadomość przed odpowiedzią insertu (race condition).
             setMessages(prev => {
                 const withoutTemp = prev.filter(m => m.id !== tempId)
                 const alreadyAdded = withoutTemp.some(m => m.id === data.id)
@@ -753,17 +569,7 @@ export default function TEBtalk() {
             return
         }
 
-        const isGroup = activeChatUser.type === 'group'
-        const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
-
-        const payload = {
-            sender_id: myId,
-            content: safeUrl
-        }
-        if (isGroup) payload.group_id = activeChatUser.id
-        else payload.receiver_id = activeChatUser.id
-
-        const { error } = await supabase.from(tableName).insert([payload])
+        const { error } = await querySendImage(myId, activeChatUser, safeUrl)
         if (error) {
             console.error("Błąd wysyłania zdjęcia:", error)
             const isBlockedOrRestricted = error.code === '42501' || /row-level security|permission denied/i.test(error.message || '')
@@ -774,13 +580,10 @@ export default function TEBtalk() {
     async function deleteMessage(messageId) {
         if (!confirm('Czy na pewno chcesz usunąć tę wiadomość?')) return
         const isGroup = activeChatUser.type === 'group'
-        const tableName = isGroup ? 'chat_group_messages' : 'direct_messages'
 
-        const { error } = await supabase
-            .from(tableName)
-            .update({ content: 'Wiadomość usunięta', is_deleted: true })
-            .eq('id', messageId)
-            .eq('sender_id', myId)
+        const { error } = isGroup
+            ? await queryDeleteGroupMessage(messageId, myId)
+            : await queryDeleteMessage(messageId, myId)
 
         if (error) {
             console.error("Błąd usuwania wiadomości:", error)
@@ -790,75 +593,13 @@ export default function TEBtalk() {
         }
     }
 
-    async function createGroup() {
-        const cleanGroupName = sanitizePlainText(groupName, { maxLength: MAX_CHAT_GROUP_NAME })
-        if (!cleanGroupName) return
-        if (cleanGroupName.length > MAX_CHAT_GROUP_NAME) {
-            toast.error(`Nazwa grupy jest za długa (max ${MAX_CHAT_GROUP_NAME} znaków).`)
-            return
-        }
-        
-        // 1. Stwórz grupę
-        const { data: group, error: groupErr } = await supabase
-            .from('chat_groups')
-            .insert([{ name: cleanGroupName, creator_id: myId }])
-            .select()
-            .single()
-        
-        if (groupErr || !group) {
-            console.error(groupErr || 'No group data returned')
-            toast.error("Błąd tworzenia grupy.")
-            return
-        }
-
-        // 2. Dodaj siebie jako admina
-        const { error: memberErr } = await supabase
-            .from('chat_group_members')
-            .insert([{ group_id: group.id, user_id: myId, role: 'admin' }])
-
-        if (memberErr) {
-            console.error("Błąd dodawania admina:", memberErr)
-            // Nie przerywamy, bo grupa powstała, ale RLS mógł zablokować insert
-            // Jednak po naprawie SQL (Tworca dodaje siebie) powinno działać.
-        }
-
-        // 3. Wyślij powitanie
-        await supabase.from('chat_group_messages').insert([{
-            sender_id: myId,
-            group_id: group.id,
-            content: `Grupa ${cleanGroupName} została utworzona!`
-        }])
-
-        setIsCreatingGroup(false)
-        setGroupName('')
-        fetchRecentChats(myId)
-        toast.success("Grupa utworzona pomyślnie!")
-    }
-
-    async function addMember(userId) {
-        const { error } = await supabase
-            .from('chat_group_members')
-            .insert([{ group_id: activeChatUser.id, user_id: userId, role: 'member' }])
-        
-        if (error) {
-            console.error(error)
-            toast.error("Nie udało się dodać użytkownika.")
-        } else {
-            fetchGroupMembers(activeChatUser.id)
-            setIsAddingMember(false)
-            toast.success("Użytkownik dodany!")
-        }
-    }
-
     async function sendFriendRequest(friendId) {
         if (isBlockedRelationship(friendId)) {
             toast.error('Relacja jest zablokowana. Najpierw odblokuj użytkownika.')
             return
         }
 
-        const { error } = await supabase
-            .from('friends')
-            .insert([{ user_id: myId, friend_id: friendId, status: 'pending' }])
+        const { error } = await querySendFriendRequest(myId, friendId)
         if (error) {
             toast.info("Zaproszenie już wysłane lub błąd.")
         } else {
@@ -894,7 +635,6 @@ export default function TEBtalk() {
         setMessages([])
         setChatError('')
         setIsGroupSettingsOpen(false)
-        setIsAddingMember(false)
         setView('list')
         if (routeChatId || routeChat) {
             navigate('/tebtalk', { replace: true, state: null })
@@ -1101,81 +841,29 @@ export default function TEBtalk() {
                     </form>
                 </div>
 
-                {/* Modal Ustawień Grupy */}
-                {isGroupSettingsOpen && (
-                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-                        <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
-                            <button onClick={() => setIsGroupSettingsOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={20} /></button>
-                            <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-secondary" /> Ustawienia Grupy</h3>
-                            
-                            <div className="space-y-6">
-                                <div>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <label className="text-[10px] text-gray-500 font-bold uppercase">Członkowie ({groupMembers.length})</label>
-                                        <button 
-                                            onClick={() => setIsAddingMember(true)}
-                                            className="text-xs text-secondary font-bold flex items-center gap-1 hover:underline"
-                                        >
-                                            <Plus size={12} /> Dodaj znajomego
-                                        </button>
-                                    </div>
-                                    <div className="max-h-48 overflow-y-auto space-y-2 pr-1 scrollbar-none">
-                                        {groupMembers.map(m => (
-                                            <div key={m.user_id} className="flex items-center gap-3 p-2 bg-background border border-gray-800 rounded-xl">
-                                                <div className="w-8 h-8 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center font-bold text-xs">
-                                                    {m.profiles.avatar_url ? (
-                                                        <img src={ImageKitService.getOptimizedUrl(m.profiles.avatar_url, 80)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                                                    ) : m.profiles.full_name.charAt(0)}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="text-sm font-bold text-white leading-none">{m.nickname || m.profiles.full_name}</div>
-                                                    <div className="text-[10px] text-gray-500 uppercase">{m.role === 'admin' ? 'Administrator' : 'Uczestnik'}</div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-gray-800">
-                                    <button 
-                                        className="w-full py-3 bg-red-900/20 text-red-500 border border-red-900/30 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-red-900/40 transition"
-                                        onClick={() => alert("Wkrótce: Opuszczanie grupy")}
-                                    >
-                                        <LogOut size={16} /> Opuść grupę
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Sub-modal Dodawania Członków */}
-                        {isAddingMember && (
-                            <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-[120] flex items-center justify-center p-4">
-                                <div className="bg-surface border border-gray-700 w-full max-w-xs rounded-2xl p-6 shadow-2xl relative">
-                                    <button onClick={() => setIsAddingMember(false)} className="absolute top-4 right-4 text-gray-500"><X size={20} /></button>
-                                    <h4 className="text-lg font-bold text-white mb-4">Dodaj do grupy</h4>
-                                    <div className="space-y-2 max-h-64 overflow-y-auto scrollbar-none">
-                                        {friends.length === 0 ? (
-                                            <p className="text-center text-gray-500 text-sm py-4">Nie masz jeszcze zaakceptowanych znajomych.</p>
-                                        ) : (
-                                            friends.filter(f => !groupMembers.find(m => m.user_id === f.id)).map(friend => (
-                                                <div 
-                                                    key={friend.id} 
-                                                    onClick={() => addMember(friend.id)}
-                                                    className="flex items-center gap-3 p-3 bg-background border border-gray-800 rounded-xl cursor-pointer hover:border-secondary transition"
-                                                >
-                                                    <div className="w-8 h-8 rounded-full bg-gray-800 overflow-hidden flex items-center justify-center font-bold text-xs">
-                                                        {friend.avatar_url ? <img src={ImageKitService.getOptimizedUrl(friend.avatar_url, 80)} alt="Av" className="w-full h-full object-cover" loading="lazy" decoding="async" /> : friend.full_name.charAt(0)}
-                                                    </div>
-                                                    <div className="text-sm font-bold text-white">{friend.full_name}</div>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
+                {/* Ustawienia Grupy - wyekstrahowany modal */}
+                <GroupSettings
+                    isOpen={isGroupSettingsOpen}
+                    onClose={() => setIsGroupSettingsOpen(false)}
+                    groupMembers={groupMembers}
+                    friends={friends}
+                    currentUserId={myId}
+                    currentUserRole={groupMembers.find(m => m.user_id === myId)?.role || 'member'}
+                    groupId={activeChatUser?.id}
+                    groupName={activeChatName}
+                    groupImageUrl={''}
+                    onGroupUpdated={() => fetchGroupMembers(activeChatUser.id)}
+                    onMemberAdded={() => fetchGroupMembers(activeChatUser.id)}
+                    onRoleChanged={() => fetchGroupMembers(activeChatUser.id)}
+                    onMemberRemoved={() => fetchGroupMembers(activeChatUser.id)}
+                    onLeaveGroup={() => {
+                        setActiveChatUser(null)
+                        setMessages([])
+                        setView('list')
+                        fetchRecentChats(myId)
+                    }}
+                    toast={toast}
+                />
             </div>
             {/* Mobile sidebar overlay */}
             {sidebarOpen && (
@@ -1382,40 +1070,16 @@ export default function TEBtalk() {
                     )}
                 </div>
             )}
-            {/* Modal Tworzenia Grupy */}
-            {isCreatingGroup && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-                    <div className="bg-surface border border-gray-700 w-full max-w-sm rounded-3xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
-                        <button onClick={() => setIsCreatingGroup(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={20} /></button>
-                        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2 tracking-tight">Nowa Grupa</h3>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-[10px] text-gray-500 font-bold uppercase ml-1">Nazwa Grupy</label>
-                                <input
-                                    type="text"
-                                    placeholder="np. Giełda 4A..."
-                                    value={groupName}
-                                    onChange={e => setGroupName(e.target.value.slice(0, MAX_CHAT_GROUP_NAME))}
-                                    maxLength={MAX_CHAT_GROUP_NAME}
-                                    className="w-full mt-1 p-3 bg-background border border-gray-800 rounded-xl text-white outline-none focus:border-secondary transition"
-                                />
-                            </div>
-                            <button
-                                onClick={createGroup}
-                                disabled={!groupName.trim()}
-                                className="w-full py-3 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-black font-bold rounded-xl flex items-center justify-center gap-2 transition"
-                            >
-                                <Plus size={18} /> Stwórz Pokój
-                            </button>
-                        </div>
-
-                        <p className="text-[10px] text-gray-600 mt-4 text-center">
-                            Wiadomości w grupach są publiczne dla każdego, <br /> kto zna identyfikator pokoju.
-                        </p>
-                    </div>
-                </div>
-            )}
+            {/* Tworzenie Grupy - wyekstrahowany modal */}
+            <CreateGroup
+                isOpen={isCreatingGroup}
+                onClose={() => setIsCreatingGroup(false)}
+                onCreated={() => {
+                    fetchRecentChats(myId)
+                    toast.success('Grupa utworzona pomyślnie!')
+                }}
+                myId={myId}
+            />
         </div>
     )
 }
