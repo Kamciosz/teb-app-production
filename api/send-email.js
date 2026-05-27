@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed } from '../lib/serverAuth.js';
+import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed, getSessionFromCookies } from '../lib/serverAuth.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUBJECT_MAX_LENGTH = 200;
@@ -125,6 +125,17 @@ export default async function handler(req, res) {
 
   if (!requireSameOrigin(req, res)) {
     return;
+  }
+
+  // Require authenticated session
+  const { session, error: sessionError } = await getSessionFromCookies(req, res);
+  if (sessionError || !session) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const userRoles = session.user?.user_metadata?.roles || ['student'];
+  const isAdmin = Array.isArray(userRoles) && userRoles.some(r => ['admin', 'moderator_users'].includes(r));
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Forbidden: admin or moderator role required' });
   }
 
   if (!canUseBrevo() && !canUseResend()) {

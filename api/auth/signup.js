@@ -85,7 +85,9 @@ function createMailTransport() {
     host,
     port,
     secure: port === 465,
-    auth: { user, pass }
+    auth: { user, pass },
+    connectionTimeout: 8000,
+    socketTimeout: 8000
   });
 }
 
@@ -224,7 +226,7 @@ export default async function handler(req, res) {
     console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${userId}, emailSent=${emailSent}`);
 
     return res.status(200).json({
-      user: createData.user,
+      user: { id: createData.user.id, email: createData.user.email },
       session: null,
       note: emailSent
         ? 'Konto utworzone! Sprawdź swoją skrzynkę e-mail i kliknij link potwierdzający.'
