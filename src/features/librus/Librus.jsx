@@ -76,6 +76,35 @@ function parseAttendance(att) {
 
 // ═══════════════════════════════════════════════════════════════════════
 export default function Librus() {
+    const [showLogin, setShowLogin] = useState(false);
+    const [loginError, setLoginError] = useState('');
+
+    return (
+        <div className="p-4 fade-in">
+            <div className="text-center py-20">
+                <div className="bg-yellow-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <GraduationCap size={40} className="text-yellow-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-3">Dziennik Librus</h2>
+                <p className="text-gray-400 mb-2">Moduł w trakcie integracji</p>
+                <div className="inline-block px-4 py-1.5 bg-yellow-500/20 text-yellow-400 text-sm font-bold rounded-full uppercase tracking-wider mb-6">Coming Soon</div>
+                <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    Pracujemy nad integracją z dziennikiem Librus Synergia.
+                    Będzie dostępny wkrótce. Śledź aktualności w aplikacji.
+                </p>
+                <div className="mt-8 p-4 bg-surface border border-gray-800 rounded-xl max-w-md mx-auto text-left text-sm text-gray-400">
+                    <p className="font-bold text-white mb-2">🔧 Planowane funkcje:</p>
+                    <ul className="space-y-1.5">
+                        <li className="flex items-center gap-2"><span className="text-yellow-500">●</span> Podgląd ocen i frekwencji</li>
+                        <li className="flex items-center gap-2"><span className="text-yellow-500">●</span> Plan lekcji na bieżący tydzień</li>
+                        <li className="flex items-center gap-2"><span className="text-yellow-500">●</span> Automatyczne logowanie przez OAuth2</li>
+                        <li className="flex items-center gap-2"><span className="text-yellow-500">●</span> Powiadomienia o nowych ocenach</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    );
+}
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [loginInput, setLoginInput] = useState('');
     const [passInput, setPassInput] = useState('');

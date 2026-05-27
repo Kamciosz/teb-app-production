@@ -24,14 +24,17 @@ export default function Features() {
                     <ChevronRight className="text-gray-600" />
                 </Link>
 
-                <Link to="/librus" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition hover:border-secondary">
+                <Link to="/librus" className="bg-surface border border-gray-800 p-4 rounded-xl flex items-center justify-between transition opacity-60 pointer-events-none">
                     <div className="flex items-center gap-4">
                         <div className="bg-secondary/20 p-3 rounded-full text-secondary">
                             <GraduationCap size={24} />
                         </div>
                         <div>
                             <h3 className="font-bold text-white">Dziennik Librus</h3>
-                            <p className="text-xs text-gray-400">Podgląd Ocen (Oauth2)</p>
+                            <p className="text-xs text-gray-400 flex items-center gap-2">
+                                <span className="inline-block px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold rounded-full uppercase tracking-wider">Coming Soon</span>
+                                <span>Integracja w trakcie</span>
+                            </p>
                         </div>
                     </div>
                     <ChevronRight className="text-gray-600" />
