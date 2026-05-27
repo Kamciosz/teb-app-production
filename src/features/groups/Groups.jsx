@@ -944,7 +944,7 @@ export default function Groups() {
         <div className="h-[calc(100vh-140px)] lg:h-[calc(100vh-7rem)] -mx-4 -mt-4 lg:mx-0 lg:mt-0 rounded-xl overflow-hidden border border-gray-800 relative z-10 flex bg-[#121212]">
             {/* Sidebar - always visible on desktop, toggleable on mobile */}
             <div className={`
-                ${view === 'list' || view === 'new' || !activeGroup ? 'flex' : 'hidden'}
+                ${view === 'list' || view === 'new' || !activeGroup || sidebarOpen ? 'flex' : 'hidden'}
                 lg:flex
                 ${sidebarOpen ? 'absolute inset-0 z-20' : ''}
                 w-full lg:w-80 lg:relative shrink-0

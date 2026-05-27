@@ -5,7 +5,7 @@ export const NotificationService = {
     // Jeśli nie dostarczono, pozostawiamy wartość domyślną (może być placeholderem).
     VAPID_PUBLIC_KEY: (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_VAPID_PUBLIC_KEY)
         ? import.meta.env.VITE_VAPID_PUBLIC_KEY
-        : 'BJn_v0_4u5ZzX7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X_X7fX5X',
+        : '',
 
     async requestPermission() {
         if (!('Notification' in window)) {

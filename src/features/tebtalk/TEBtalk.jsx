@@ -912,6 +912,7 @@ export default function TEBtalk() {
         const activeChatAvatarUrl = sanitizeImageUrl(activeChatUser.avatar_url)
 
         return (
+            <>
             <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10 lg:h-full lg:min-h-[calc(100vh-7rem)] lg:mx-0 lg:mt-0">
                 {/* Header Czatu */}
                 <div className="bg-[#1a1a1a] px-4 py-3 border-b border-gray-800 flex items-center gap-3 shrink-0">
@@ -1176,6 +1177,41 @@ export default function TEBtalk() {
                     </div>
                 )}
             </div>
+            {/* Mobile sidebar overlay */}
+            {sidebarOpen && (
+                <div className="fixed inset-0 z-50 lg:hidden">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
+                    <div className="absolute left-0 top-0 bottom-0 w-72 bg-[#121212] border-r border-gray-800 shadow-2xl animate-in slide-in-from-left duration-200 overflow-y-auto">
+                        <div className="p-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Rozmowy</h3>
+                                <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-white p-1">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            {recentChats.length === 0 ? (
+                                <div className="text-center text-gray-500 text-sm py-8">Brak rozmów</div>
+                            ) : (
+                                <div className="flex flex-col gap-1">
+                                    {recentChats.map(chat => (
+                                        <div key={chat.id} onClick={() => { openChat(chat); setSidebarOpen(false) }} 
+                                             className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-white/5 cursor-pointer transition">
+                                            <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center shrink-0 text-sm font-bold">
+                                                {chat.type === 'group' ? <Users size={16} className="text-secondary" /> : (chat.avatar_url ? null : chat.full_name?.charAt(0) || '?')}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-sm font-bold text-white truncate">{chat.full_name}</div>
+                                                <div className="text-[10px] text-gray-500 truncate">{chat.type === 'group' ? 'Grupa' : 'Prywatna'}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            </>
         )
     }
 
