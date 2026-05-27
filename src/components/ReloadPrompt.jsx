@@ -12,6 +12,9 @@ export default function ReloadPrompt() {
     useEffect(() => {
         if (!('serviceWorker' in navigator)) return;
 
+        // Auto-update: if a new SW is waiting, auto-activate after 5s timeout
+        let autoUpdateTimer = null;
+
         const onControllerChange = async () => {
             if (refreshingRef.current) return;
             refreshingRef.current = true;
@@ -40,7 +43,6 @@ export default function ReloadPrompt() {
         navigator.serviceWorker.getRegistration().then((reg) => {
             if (!reg) return;
 
-            // Kiedy nowa wersja zostanie zainstalowana i czeka "w poczekalni"
             reg.addEventListener('updatefound', () => {
                 const newWorker = reg.installing;
                 if (!newWorker) return;
@@ -48,21 +50,26 @@ export default function ReloadPrompt() {
                 newWorker.addEventListener('statechange', () => {
                     if (newWorker.state === 'installed') {
                         if (navigator.serviceWorker.controller) {
-                            // Mamy już kontroler, więc to aktualizacja aplikacji
+                            // New version available — auto-update after 5s
                             setWaitingWorker(newWorker);
                             setNeedRefresh(true);
+                            autoUpdateTimer = setTimeout(() => {
+                                updateServiceWorker();
+                            }, 5000);
                         } else {
-                            // To pierwszy start Service Workera, cacheowanie dobiło do końca
                             setOfflineReady(true);
                         }
                     }
                 });
             });
 
-            // Jeśli jakaś wersja już ugrzęzła wcześniej w zawieszeniu (ang. waiting state)
             if (reg.waiting) {
                 setWaitingWorker(reg.waiting);
                 setNeedRefresh(true);
+                // Auto-update after 5s if there's already a waiting worker
+                autoUpdateTimer = setTimeout(() => {
+                    updateServiceWorker();
+                }, 5000);
             }
         });
 
@@ -72,6 +79,7 @@ export default function ReloadPrompt() {
                 clearTimeout(reloadTimeoutRef.current);
                 reloadTimeoutRef.current = null;
             }
+            if (autoUpdateTimer) clearTimeout(autoUpdateTimer);
         };
     }, []);
 
@@ -128,6 +136,12 @@ export default function ReloadPrompt() {
         setOfflineReady(false);
         setNeedRefresh(false);
         setWaitingWorker(null);
+        if (reloadTimeoutRef.current) {
+            clearTimeout(reloadTimeoutRef.current);
+            reloadTimeoutRef.current = null;
+        }
+        // If user dismissed, still force update via clear caches + reload
+        updateServiceWorker();
     };
 
     if (!offlineReady && !needRefresh) return null;
