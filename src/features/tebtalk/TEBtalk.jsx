@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, User, UserX } from 'lucide-react'
+import { Search, ArrowLeft, Send, MessageCircle, Users, Plus, Settings, X, LogOut, Trash2, Paperclip, Smile, User, UserX, Menu, Clock } from 'lucide-react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
@@ -9,6 +9,56 @@ import { WordFilter } from '../../services/wordFilter'
 import { useToast } from '../../context/ToastContext'
 import { getRoleLabel, getUserInitial } from '../profile/profileMeta'
 import { sanitizeImageUrl, sanitizePlainText } from '../../utils/safeContent'
+
+// --- Helpers: date separators + Discord-style message grouping ---
+function formatDateSeparator(dateStr) {
+    const d = new Date(dateStr)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1)
+    const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    if (msgDate.getTime() === today.getTime()) return 'Dzisiaj'
+    if (msgDate.getTime() === yesterday.getTime()) return 'Wczoraj'
+    return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+function formatTimestamp(dateStr) {
+    const d = new Date(dateStr)
+    return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+}
+const GROUP_TIME_WINDOW_MS = 5 * 60 * 1000
+function groupMessages(messages, myId) {
+    if (!messages.length) return []
+    const groups = []; let currentGroup = null
+    for (const msg of messages) {
+        if (msg.is_deleted) { if (currentGroup) { groups.push(currentGroup); currentGroup = null } groups.push({ type: 'deleted', messages: [msg] }); continue }
+        const isMe = msg.sender_id === myId
+        if (currentGroup && currentGroup.type === 'normal' && currentGroup.senderId === msg.sender_id) {
+            const lastMsg = currentGroup.messages[currentGroup.messages.length - 1]
+            const timeDiff = new Date(msg.created_at) - new Date(lastMsg.created_at)
+            if (timeDiff <= GROUP_TIME_WINDOW_MS && currentGroup.messages.length < 6) { currentGroup.messages.push(msg); continue }
+        }
+        if (currentGroup) groups.push(currentGroup)
+        currentGroup = { type: 'normal', senderId: msg.sender_id, senderName: msg.sender_name || 'Nieznany', isMe, messages: [msg] }
+    }
+    if (currentGroup) groups.push(currentGroup)
+    return groups
+}
+function splitGroupsByDate(messages, myId) {
+    const grouped = groupMessages(messages, myId)
+    if (!grouped.length) return []
+    const result = []; let currentDate = null; let currentBlock = []
+    for (const group of grouped) {
+        const firstMsg = group.messages ? group.messages[0] : null
+        const msgDate = firstMsg?.created_at ? new Date(firstMsg.created_at).toDateString() : null
+        if (msgDate !== currentDate) {
+            if (currentBlock.length) result.push({ type: 'block', items: currentBlock, dateLabel: formatDateSeparator(firstMsg?.created_at || currentDate) })
+            currentDate = msgDate; currentBlock = []
+        }
+        currentBlock.push(group)
+    }
+    if (currentBlock.length && currentDate) result.push({ type: 'block', items: currentBlock, dateLabel: formatDateSeparator(currentDate) })
+    return result
+}
 
 export default function TEBtalk() {
     const MAX_CHAT_MESSAGE = 2000
@@ -41,6 +91,7 @@ export default function TEBtalk() {
     const [myBlockedIds, setMyBlockedIds] = useState([])
     const [blockedByIds, setBlockedByIds] = useState([])
     const [chatError, setChatError] = useState('')
+    const [sidebarOpen, setSidebarOpen] = useState(false)
     
     const toast = useToast()
     const messagesEndRef = useRef(null)
@@ -865,6 +916,9 @@ export default function TEBtalk() {
             <div className="flex flex-col h-[calc(100vh-140px)] bg-background -mx-4 -mt-4 rounded-xl overflow-hidden border border-gray-800 relative z-10 lg:h-full lg:min-h-[calc(100vh-7rem)] lg:mx-0 lg:mt-0">
                 {/* Header Czatu */}
                 <div className="bg-[#1a1a1a] px-4 py-3 border-b border-gray-800 flex items-center gap-3 shrink-0">
+                    <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 text-gray-400 hover:text-white transition lg:hidden">
+                        <Menu size={20} />
+                    </button>
                     <button onClick={closeChat} className="p-2 -ml-2 text-gray-400 hover:text-white transition">
                         <ArrowLeft size={20} />
                     </button>
@@ -934,56 +988,73 @@ export default function TEBtalk() {
                             <MessageCircle size={32} className="opacity-50" />
                             <p className="text-sm">Brak wiadomości.<br />Napisz jako pierwszy!</p>
                         </div>
-                    ) : (
-                        messages.map(msg => {
-                            const isMe = msg.sender_id === myId
-                            const sender = activeChatUser.type === 'group' 
-                                ? groupMembers.find(m => m.user_id === msg.sender_id)
-                                : null
-                            const senderName = sanitizePlainText(sender?.nickname || sender?.profiles?.full_name, { maxLength: 80 }) || 'Użytkownik'
-                            const safeMessageImageUrl = sanitizeImageUrl(msg.content)
-                            
-                            return (
-                                <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} mb-2 group relative`}>
-                                    {!isMe && activeChatUser.type === 'group' && sender && (
-                                        <div className="text-[9px] font-bold text-gray-500 mb-0.5 ml-1 uppercase">
-                                            {senderName}
+                    ) : (() => {
+                        const messageBlocks = splitGroupsByDate(messages, myId)
+                        return (
+                            <div className="flex flex-col gap-0">
+                                {messageBlocks.map((block, blockIdx) => (
+                                    <div key={blockIdx} className="mb-4">
+                                        <div className="flex items-center gap-3 mb-3 mt-1">
+                                            <div className="flex-1 h-px bg-gray-800/60" />
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">{block.dateLabel}</span>
+                                            <div className="flex-1 h-px bg-gray-800/60" />
                                         </div>
-                                    )}
-                                    <div className="flex items-center gap-2">
-                                        {isMe && !msg.is_deleted && (
-                                            <button 
-                                                onClick={() => deleteMessage(msg.id)}
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-gray-500 hover:text-red-500"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
-                                        {!isMe && (
-                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <ReportButton entityType={activeChatUser.type === 'group' ? "group_message" : "direct_message"} entityId={msg.id} subtle={true} />
-                                            </div>
-                                        )}
-                                        <div className={`max-w-[80%] p-3 rounded-2xl text-sm ${msg.is_deleted ? 'bg-gray-800/30 text-gray-600 italic border border-gray-800' : isMe ? 'bg-primary text-white rounded-tr-sm' : 'bg-surface border border-gray-800 text-gray-200 rounded-tl-sm'}`}>
-                                            {msg.is_deleted ? 'Wiadomość usunięta' : safeMessageImageUrl ? (
-                                                <img
-                                                    src={ImageKitService.getOptimizedUrl(safeMessageImageUrl, 400)}
-                                                    alt="Przesłane zdjęcie"
-                                                    className="rounded-lg cursor-pointer hover:opacity-90 transition"
-                                                    onClick={() => window.open(safeMessageImageUrl, '_blank', 'noopener,noreferrer')}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                />
-                                            ) : (
-                                                sanitizePlainText(msg.content, { maxLength: MAX_CHAT_MESSAGE, preserveLineBreaks: true })
-                                            )}
-                                        </div>
+                                        {block.items.map((group, groupIdx) => {
+                                            if (group.type === 'deleted') {
+                                                return <div key={groupIdx} className="flex justify-center my-2"><span className="text-[11px] text-gray-600 italic">Wiadomość usunięta</span></div>
+                                            }
+                                            const sender = activeChatUser.type === 'group' ? groupMembers.find(m => m.user_id === group.senderId) : null
+                                            const senderName = sanitizePlainText(sender?.nickname || sender?.profiles?.full_name || group.senderName, { maxLength: 80 }) || 'Użytkownik'
+                                            return (
+                                                <div key={groupIdx} className={`flex mb-0.5 ${group.isMe ? 'justify-end' : 'justify-start'}`}>
+                                                    {!group.isMe && (
+                                                        <div className="flex flex-col items-center mr-2.5 mt-0.5 shrink-0">
+                                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center text-xs font-bold text-white">{(senderName || '?')[0].toUpperCase()}</div>
+                                                        </div>
+                                                    )}
+                                                    <div className={`flex flex-col max-w-[75%] min-w-0 ${group.isMe ? 'items-end' : 'items-start'}`}>
+                                                        {!group.isMe && activeChatUser.type === 'group' && (
+                                                            <span className="text-[11px] font-bold text-gray-400 ml-1 mb-0.5">{senderName}</span>
+                                                        )}
+                                                        {group.messages.map((msg, msgIdx) => {
+                                                            const isImage = !msg.is_deleted && msg.content && msg.content.startsWith('https://')
+                                                            const isLastInGroup = msgIdx === group.messages.length - 1
+                                                            const msgSafeImageUrl = sanitizeImageUrl(msg.content)
+                                                            return (
+                                                                <div key={msg.id} className={`group relative flex items-end gap-1.5 ${msgIdx > 0 ? 'mt-0.5' : ''}`}>
+                                                                    {group.isMe && !msg.is_deleted && (
+                                                                        <button onClick={() => deleteMessage(msg.id)} className="opacity-0 group-hover:opacity-100 transition-all duration-150 p-1 text-gray-600 hover:text-red-500 -ml-8 shrink-0" title="Usuń"><Trash2 size={12} /></button>
+                                                                    )}
+                                                                    {!group.isMe && !msg.is_deleted && (
+                                                                        <div className="opacity-0 group-hover:opacity-100 transition-all duration-150 shrink-0">
+                                                                            <ReportButton entityType={activeChatUser.type === 'group' ? "group_message" : "direct_message"} entityId={msg.id} subtle={true} />
+                                                                        </div>
+                                                                    )}
+                                                                    <div className={`px-3 py-2 text-sm leading-relaxed break-words ${msg.is_deleted ? 'bg-gray-800/20 text-gray-600 italic border border-gray-800/30 rounded-xl' : group.isMe ? 'bg-gradient-to-br from-secondary to-emerald-600 text-white rounded-2xl rounded-br-sm' : 'bg-[#1e1e1e] border border-gray-800/60 text-gray-200 rounded-2xl rounded-bl-sm'} ${msg.status === 'sending' ? 'opacity-70' : ''}`}
+                                                                        style={{ boxShadow: group.isMe && !msg.is_deleted ? '0 1px 4px rgba(34,197,94,0.15)' : 'none' }}>
+                                                                        {msg.is_deleted ? 'Usunięto' : isImage ? (
+                                                                            <img src={ImageKitService.getOptimizedUrl(msg.content, 400)} alt="Zdjęcie" className="rounded-lg max-w-full cursor-pointer hover:opacity-90 transition" onClick={() => window.open(msg.content, '_blank', 'noopener,noreferrer')} loading="lazy" />
+                                                                        ) : (
+                                                                            <span className="whitespace-pre-wrap">{sanitizePlainText(msg.content, { maxLength: MAX_CHAT_MESSAGE, preserveLineBreaks: true })}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {isLastInGroup && (
+                                                                        <span className="text-[9px] text-gray-600 whitespace-nowrap mt-auto mb-1 px-0.5 shrink-0">{formatTimestamp(msg.created_at)}</span>
+                                                                    )}
+                                                                </div>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                    {group.isMe && <div className="w-9 h-9 shrink-0 ml-2.5 hidden lg:block" />}
+                                                </div>
+                                            )
+                                        })}
                                     </div>
-                                </div>
-                            )
-                        })
-                    )}
-                    <div ref={messagesEndRef} />
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+                        )
+                    })()}
                 </div>
 
                 {/* Pole Wprowadzania - Messenger Style */}
