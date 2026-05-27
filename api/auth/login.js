@@ -6,9 +6,18 @@ import {
   sendMethodNotAllowed,
   setSessionCookies
 } from '../../lib/serverAuth.js';
+import errorLog from '../../lib/errorLog.js';
 
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_IP = 10;
+
+/*
+ * Rate limiting: in-memory Map (globalThis).
+ *
+ * TODO: Migrate to Vercel KV (@vercel/kv) for persistence across cold starts.
+ * See signup.js for a full migration guide comment.
+ * In-memory is acceptable for ~1000 students in production.
+ */
 const loginRateStore = globalThis.__tebLoginRateStore || new Map();
 if (!globalThis.__tebLoginRateStore) {
   globalThis.__tebLoginRateStore = loginRateStore;
@@ -102,6 +111,9 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error('auth/login error', error);
+    await errorLog.log('error', 'login', error.message, {
+      stack: error.stack?.slice(0, 500)
+    });
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

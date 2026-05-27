@@ -4,6 +4,7 @@ import {
   requireSameOrigin,
   sendMethodNotAllowed
 } from '../../lib/serverAuth.js';
+import errorLog from '../../lib/errorLog.js';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
 
@@ -15,6 +16,21 @@ const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_IP = 20;
 const MAX_ATTEMPTS_PER_EMAIL = 5;
 
+/*
+ * Rate limiting: in-memory Map (globalThis).
+ *
+ * TODO: Migrate to Vercel KV (@vercel/kv) for persistence across cold starts.
+ * Vercel KV is Redis-backed and available on Hobby plan.
+ * Replace globalThis Map with:
+ *   import { kv } from '@vercel/kv';
+ *   const key = `ratelimit:signup:ip:${clientIp}`;
+ *   const count = await kv.incr(key);
+ *   if (count === 1) await kv.expire(key, RATE_WINDOW_MS / 1000);
+ *
+ * In-memory is acceptable for ~1000 students because Vercel Functions
+ * rarely cold-start in production with warm traffic. If scaling up,
+ * enable Vercel KV in Vercel dashboard, add KV_URL to env, and swap.
+ */
 const signupRateStore = globalThis.__tebSignupRateStore || new Map();
 if (!globalThis.__tebSignupRateStore) {
   globalThis.__tebSignupRateStore = signupRateStore;
@@ -106,6 +122,27 @@ async function sendConfirmationEmail(toEmail, subject, htmlContent) {
   } catch (error) {
     console.error(`[EMAIL] Error: ${error.message}`);
     return false;
+  }
+}
+
+async function sendAdminNotification(userEmail, fullName) {
+  try {
+    const transporter = createMailTransport();
+    const fromEmail = process.env.SMTP_FROM || 'noreply@teb-app.pl';
+    const adminEmail = 'kamciosz4you@gmail.com';
+    const now = new Date().toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' });
+    await transporter.sendMail({
+      from: `"TEB-App" <${fromEmail}>`,
+      to: adminEmail,
+      subject: 'Nowy użytkownik w TEB-App',
+      html: `<h3>Nowa rejestracja</h3>
+<p><strong>Email:</strong> ${maskEmail(userEmail)}</p>
+<p><strong>Imię i nazwisko:</strong> ${fullName || 'nie podano'}</p>
+<p><strong>Data:</strong> ${now}</p>`
+    });
+    console.log(`[ADMIN NOTIFY] Sent to ${adminEmail} for ${maskEmail(userEmail)}`);
+  } catch (error) {
+    console.error(`[ADMIN NOTIFY] Error: ${error.message}`);
   }
 }
 
@@ -223,6 +260,9 @@ export default async function handler(req, res) {
 
     const emailSent = await sendConfirmationEmail(email, 'Potwierdź rejestrację w TEB-App', emailHtml);
 
+    // Notify admin about new registration
+    await sendAdminNotification(email, fullName);
+
     console.log(`[SIGNUP SUCCESS] email=${maskEmail(email)}, userId=${userId}, emailSent=${emailSent}`);
 
     return res.status(200).json({
@@ -235,6 +275,10 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('[SIGNUP EXCEPTION]', error);
+    await errorLog.log('error', 'signup', error.message, {
+      stack: error.stack?.slice(0, 500),
+      email: maskEmail(email)
+    });
     return res.status(500).json({ error: 'Internal server error' });
   }
 }

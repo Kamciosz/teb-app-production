@@ -19,3 +19,7 @@ test-results/*
 .playwright-mcp/
 .vercel
 .env*.local
+
+# Database backups (saved locally, never committed)
+teb-app-backups/
+backup-*.json

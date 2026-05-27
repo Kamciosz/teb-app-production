@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText } from 'lucide-react'
+import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText, BarChart3, Bug, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import { CleanupService } from '../../services/cleanupService'
 import { sanitizePlainText } from '../../utils/safeContent'
@@ -22,6 +22,15 @@ export default function Admin() {
     const [userSearch, setUserSearch] = useState('')
     const [reportSearch, setReportSearch] = useState('')
 
+    // --- Dashboard & Logs state ---
+    const [dashboardStats, setDashboardStats] = useState(null)
+    const [dashboardLoading, setDashboardLoading] = useState(false)
+    const [errorLogs, setErrorLogs] = useState([])
+    const [logsLoading, setLogsLoading] = useState(false)
+    const [logsPage, setLogsPage] = useState(1)
+    const [logsTotal, setLogsTotal] = useState(0)
+    const LOGS_PER_PAGE = 20
+
     const ROLES = ['student', 'teacher', 'admin', 'editor', 'moderator_content', 'moderator_users', 'su_member']
 
     useEffect(() => {
@@ -31,7 +40,40 @@ export default function Admin() {
     useEffect(() => {
         if (myRoles.length === 0) return
         fetchViewData(view, myRoles)
+
+        // Fetch dashboard / logs on tab switch
+        if (view === 'dashboard') fetchDashboardStats()
+        if (view === 'logs') fetchErrorLogs(1)
     }, [view, myRoles])
+
+    async function fetchDashboardStats() {
+        setDashboardLoading(true)
+        try {
+            const res = await fetch('/api/stats')
+            const data = await res.json()
+            setDashboardStats(data)
+        } catch {
+            setDashboardStats(null)
+        } finally {
+            setDashboardLoading(false)
+        }
+    }
+
+    async function fetchErrorLogs(page = 1) {
+        setLogsLoading(true)
+        try {
+            const res = await fetch(`/api/logs?page=${page}&limit=${LOGS_PER_PAGE}`)
+            const data = await res.json()
+            setErrorLogs(data.logs || [])
+            setLogsTotal(data.total || 0)
+            setLogsPage(page)
+        } catch {
+            setErrorLogs([])
+            setLogsTotal(0)
+        } finally {
+            setLogsLoading(false)
+        }
+    }
 
     async function handleCleanup() {
         if (!window.confirm("Czy na pewno chcesz uruchomić Śmieciarkę? Ta operacja trwale usunie stare media i wpisy zgodnie z polityką prywatności.")) return
@@ -297,11 +339,13 @@ export default function Admin() {
     }
 
     const adminTabs = [
+        { id: 'dashboard', label: 'Dashboard', icon: BarChart3, disabled: false },
         { id: 'reports', label: 'Tickety', icon: AlertOctagon, disabled: false },
         { id: 'users', label: 'Uczniowie', icon: UserCheck, disabled: myRole === 'moderator_content' },
         { id: 'groups', label: 'Grupy', icon: Hash, disabled: myRole === 'moderator_content' },
         { id: 'appeals', label: 'Apelacje', icon: Scale, disabled: myRole === 'moderator_content' },
         { id: 'audit', label: 'Audit', icon: ScrollText, disabled: false },
+        { id: 'logs', label: 'Logi', icon: Bug, disabled: false },
         { id: 'system', label: 'System', icon: Trash2, disabled: false }
     ]
 
@@ -355,7 +399,7 @@ export default function Admin() {
                 <div className="min-w-0">
 
             {/* Pasek Zakładek RBAC */}
-            <div className="grid grid-cols-3 md:grid-cols-6 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1 lg:hidden">
+            <div className="grid grid-cols-4 md:grid-cols-8 bg-[#1a1a1a] rounded-xl p-1 mb-6 border border-gray-800 gap-1 lg:hidden">
                 {adminTabs.map(tab => {
                     const Icon = tab.icon
                     return (
@@ -370,6 +414,86 @@ export default function Admin() {
                     )
                 })}
             </div>
+
+            {/* Widok: Dashboard / Statystyki */}
+            {view === 'dashboard' && (
+                <div className="flex flex-col gap-6 fade-in px-2">
+                    {dashboardLoading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <Loader2 size={32} className="animate-spin text-red-500" />
+                        </div>
+                    ) : dashboardStats ? (
+                        <>
+                            {/* Karty statystyk */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
+                                            <UserCheck size={20} />
+                                        </div>
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Total Users</span>
+                                    </div>
+                                    <div className="text-3xl font-black text-white">{dashboardStats.total_users ?? '—'}</div>
+                                </div>
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="w-10 h-10 rounded-xl bg-green-500/20 text-green-500 flex items-center justify-center">
+                                            <CheckCircle size={20} />
+                                        </div>
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Confirmed</span>
+                                    </div>
+                                    <div className="text-3xl font-black text-white">{dashboardStats.confirmed ?? '—'}</div>
+                                </div>
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
+                                            <Activity size={20} />
+                                        </div>
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Ostatnie 24h</span>
+                                    </div>
+                                    <div className="text-3xl font-black text-white">{dashboardStats.last_24h ?? '—'}</div>
+                                </div>
+                            </div>
+
+                            {/* Wykres 7-dniowy */}
+                            <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                                    <BarChart3 size={16} className="text-red-500" />
+                                    Aktywność w ostatnich 7 dniach
+                                </h3>
+                                {dashboardStats.chart_data && dashboardStats.chart_data.length > 0 ? (
+                                    <div className="flex items-end gap-2 h-28">
+                                        {dashboardStats.chart_data.map((day, i) => {
+                                            const maxVal = Math.max(...dashboardStats.chart_data.map(d => d.value), 1)
+                                            const heightPct = (day.value / maxVal) * 100
+                                            return (
+                                                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                                                    <span className="text-[9px] text-gray-500 font-bold">{day.value}</span>
+                                                    <div
+                                                        className="w-full rounded-md bg-gradient-to-t from-red-600 to-red-400 transition-all hover:opacity-80"
+                                                        style={{ height: `${Math.max(heightPct, 2)}%` }}
+                                                        title={`${day.label}: ${day.value}`}
+                                                    />
+                                                    <span className="text-[8px] text-gray-600 uppercase">{day.label}</span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-800 rounded-xl">
+                                        Brak danych do wyświetlenia wykresu.
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-center text-gray-500 mt-6 p-8 border border-gray-800 border-dashed rounded-2xl">
+                            <BarChart3 size={40} className="mx-auto mb-3 opacity-20" />
+                            Nie udało się załadować statystyk. Sprawdź czy endpoint <code className="text-red-400 bg-background px-1 rounded">/api/stats</code> jest dostępny.
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Widok: System / Śmieciarka */}
             {view === 'system' && (
@@ -767,6 +891,110 @@ export default function Admin() {
                         ))}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Widok: Logi błędów */}
+            {view === 'logs' && (
+                <div className="flex flex-col gap-4 fade-in px-2">
+                    <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                        <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                            <Bug size={16} className="text-red-500" />
+                            Logi błędów aplikacji
+                            {logsTotal > 0 && (
+                                <span className="text-[10px] text-gray-500 font-normal ml-1">
+                                    (łącznie {logsTotal})
+                                </span>
+                            )}
+                        </h3>
+
+                        {logsLoading ? (
+                            <div className="flex items-center justify-center py-16">
+                                <Loader2 size={24} className="animate-spin text-red-500" />
+                            </div>
+                        ) : errorLogs.length === 0 ? (
+                            <div className="text-center text-gray-500 py-12 border border-dashed border-gray-800 rounded-xl">
+                                <Bug size={36} className="mx-auto mb-3 opacity-20" />
+                                Brak logów błędów do wyświetlenia.
+                            </div>
+                        ) : (
+                            <>
+                                {/* Tabela desktop */}
+                                <div className="hidden lg:block overflow-x-auto">
+                                    <div className="grid grid-cols-[80px_1.2fr_1.8fr_140px] gap-3 px-4 py-3 text-[10px] uppercase tracking-widest font-bold text-gray-500 border-b border-gray-800 bg-[#171717] rounded-t-xl">
+                                        <span>Poziom</span>
+                                        <span>Źródło</span>
+                                        <span>Wiadomość</span>
+                                        <span>Data</span>
+                                    </div>
+                                    <div className="max-h-[55vh] overflow-y-auto">
+                                        {errorLogs.map((log, i) => {
+                                            let levelColor = ''
+                                            if (log.level === 'error' || log.level === 'critical') levelColor = 'text-red-400 bg-red-500/10 border-red-500/30'
+                                            else if (log.level === 'warn' || log.level === 'warning') levelColor = 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                                            else levelColor = 'text-blue-400 bg-blue-500/10 border-blue-500/30'
+                                            return (
+                                                <div key={log.id || i} className="grid grid-cols-[80px_1.2fr_1.8fr_140px] gap-3 px-4 py-3 border-b border-gray-800/70 hover:bg-white/[0.02] items-center">
+                                                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${levelColor} inline-block text-center`}>
+                                                        {log.level}
+                                                    </span>
+                                                    <span className="text-xs text-gray-300 font-mono truncate">{log.source || '—'}</span>
+                                                    <span className="text-xs text-gray-400 truncate" title={log.message}>{log.message}</span>
+                                                    <span className="text-[10px] text-gray-500">{log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</span>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Karty mobile */}
+                                <div className="lg:hidden grid grid-cols-1 gap-3">
+                                    {errorLogs.map((log, i) => {
+                                        let levelBadge = 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                        if (log.level === 'error' || log.level === 'critical') levelBadge = 'bg-red-500/10 text-red-400 border-red-500/30'
+                                        else if (log.level === 'warn' || log.level === 'warning') levelBadge = 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                                        return (
+                                            <div key={log.id || i} className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-4">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded border ${levelBadge}`}>
+                                                        {log.level}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-500">{log.created_at ? new Date(log.created_at).toLocaleString() : '—'}</span>
+                                                </div>
+                                                <div className="text-[11px] font-mono text-gray-400 truncate mb-1">{log.source || '—'}</div>
+                                                <div className="text-xs text-gray-200 leading-relaxed">{log.message}</div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+
+                                {/* Paginacja */}
+                                {logsTotal > LOGS_PER_PAGE && (
+                                    <div className="flex items-center justify-between pt-3 border-t border-gray-800">
+                                        <span className="text-[11px] text-gray-500">
+                                            Strona {logsPage} z {Math.ceil(logsTotal / LOGS_PER_PAGE)}
+                                        </span>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => fetchErrorLogs(logsPage - 1)}
+                                                disabled={logsPage <= 1}
+                                                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${logsPage <= 1 ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-surface border border-gray-700 text-gray-300 hover:border-gray-500'}`}
+                                            >
+                                                <ChevronLeft size={14} /> Prev
+                                            </button>
+                                            <button
+                                                onClick={() => fetchErrorLogs(logsPage + 1)}
+                                                disabled={logsPage >= Math.ceil(logsTotal / LOGS_PER_PAGE)}
+                                                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition ${logsPage >= Math.ceil(logsTotal / LOGS_PER_PAGE) ? 'bg-gray-800 text-gray-600 cursor-not-allowed' : 'bg-surface border border-gray-700 text-gray-300 hover:border-gray-500'}`}
+                                            >
+                                                Next <ChevronRight size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 
