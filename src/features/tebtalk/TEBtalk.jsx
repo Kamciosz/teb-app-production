@@ -85,20 +85,12 @@ export default function TEBtalk() {
             if (!raw) return null
             const parsed = JSON.parse(raw)
             
-            // Walidacja schematu
-            const Ajv = require('ajv');
-            const ajv = new Ajv();
-            const cacheSchema = {
-                type: 'object',
-                properties: {
-                    ts: { type: 'number' },
-                    data: { type: ['object', 'array'] }
-                },
-                required: ['ts', 'data']
-            };
-            
-            if (!ajv.validate(cacheSchema, parsed)) {
-                console.error('Invalid cache schema:', ajv.errors);
+            // Walidacja schematu (reczna — bez zaleznosci od AJV w przegladarce)
+            const isValid = typeof parsed === 'object' && parsed !== null &&
+                typeof parsed.ts === 'number' && 'data' in parsed;
+
+            if (!isValid) {
+                console.warn('[TEBtalk] Invalid cache schema, clearing');
                 sessionStorage.removeItem(key);
                 return null;
             }
