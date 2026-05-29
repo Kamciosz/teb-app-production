@@ -532,6 +532,113 @@ def cmd_session_stats(args):
     print(f"  Nigdy nie zalogowani:   {never_logged}")
     print(f"  Aktywni w tym tygodniu:  {recent}")
 
+# ─── KOMENDY (48-55) ──────────────────────────────────────────
+
+def cmd_ssl(args):
+    """Sprawdz certyfikat SSL."""
+    import ssl as ssl_mod, socket
+    for host in ["teb-app.pl", "www.teb-app.pl"]:
+        try:
+            ctx = ssl_mod.create_default_context()
+            with socket.create_connection((host, 443), timeout=5) as sock:
+                with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                    cert = ssock.getpeercert()
+                    exp = datetime.fromtimestamp(ssl_mod.cert_time_to_seconds(cert["notAfter"]))
+                    now = datetime.now()
+                    days_left = (exp - now).days
+                    issuer = dict(x[0] for x in cert["issuer"]).get("organizationName", "?")
+                    print(f"  {host:20s} wazny do {exp.strftime('%Y-%m-%d')} ({days_left} dni) {issuer}")
+        except Exception as e:
+            print(f"  {host:20s} BLAD: {str(e)[:50]}")
+
+def cmd_changelog(args):
+    """Git changelog z plikami."""
+    n = int(args.filter or "10")
+    r = subprocess.run(["git","log",f"-{n}","--stat","--format=%H %ai %s"], capture_output=True, text=True, cwd=REPO)
+    lines = r.stdout.split("\n")
+    for line in lines:
+        if not line.strip(): continue
+        if line.startswith(" "):
+            print(f"    {line.strip()}")
+        else:
+            print(f"  {line[:80]}")
+
+def cmd_notify_all(args):
+    """Wyslij email do wszystkich potwierdzonych uzytkownikow."""
+    msg = args.name or "Testowa wiadomosc z TEB-App"
+    users = _get_users()
+    confirmed = [u for u in users if u.get("email_confirmed_at")]
+    if not confirmed: print("  Brak potwierdzonych"); return
+    
+    print(f"  Wysylam do {len(confirmed)} uzytkownikow:")
+    for u in confirmed[:10]:  # Limit to 10 for safety
+        sys.stdout.write(f"  {u['email']:35s}... ")
+        r = _fetch("POST", f"{VERCEL}/api/auth/resend-confirmation",
+                   {"email": u["email"]}, {"Origin": "https://www.teb-app.pl"})
+        print("OK" if "_error" not in r else "ERR")
+        time.sleep(0.3)
+    if len(confirmed) > 10: print(f"  ... i {len(confirmed)-10} wiecej (limit 10)")
+
+def cmd_stress(args):
+    """Prosty test obciazenia."""
+    n = int(args.password or "10")
+    print(f"  Test obciazenia: {n} zapytan do /api/health")
+    times = []
+    for i in range(n):
+        start = time.time()
+        r = _fetch("GET", f"{VERCEL}/api/health")
+        elapsed = time.time() - start
+        ok = "_error" not in r
+        times.append(elapsed)
+        sys.stdout.write(f"  [{i+1}/{n}] {'OK' if ok else 'ERR'} {elapsed:.2f}s\n" if i % 5 == 0 else ".")
+        sys.stdout.flush()
+    print(f"\n  Wyniki: min={min(times):.2f}s avg={sum(times)/n:.2f}s max={max(times):.2f}s")
+
+def cmd_tables(args):
+    """Szczegolowe info o tabelach."""
+    tables_data = api("GET", "/rest/v1/information_schema.tables?select=table_name,table_type&table_schema=eq.public")
+    if not isinstance(tables_data, list): print("  Brak dostepu"); return
+    print(f"  Tabele ({len(tables_data)}):")
+    for t in sorted(tables_data, key=lambda x: x.get("table_name","")):
+        name = t.get("table_name","?")
+        # Row count
+        cnt = api("GET", f"/rest/v1/{name}?select=id&limit=10001")
+        rows = len(cnt) if isinstance(cnt, list) else 0
+        print(f"  {name:30s} {rows:5d} wierszy")
+
+def cmd_config(args):
+    """Pokazuje konfiguracje z kodu."""
+    files_to_check = [
+        ("package.json", "name", "version"),
+        ("src/app.config.js", "APP_NAME", "APP_VERSION"),
+        ("vercel.json", None)
+    ]
+    for path, *keys in files_to_check:
+        full = os.path.join(REPO, path)
+        if not os.path.exists(full): continue
+        with open(full) as f: content = f.read()
+        if keys[0] is None:  # vercel.json
+            data = json.loads(content)
+            for rewrite in data.get("rewrites", []):
+                print(f"  {path}: {rewrite.get('source','')} -> {rewrite.get('destination','')}")
+        else:
+            for key in keys:
+                import re
+                m = re.search(rf'{key}["\']?\s*[:=]\s*["\']([^"\']+)', content)
+                if m: print(f"  {path}: {key} = {m.group(1)}")
+
+def cmd_audit_trail(args):
+    """Analiza audytu."""
+    r = api("GET", "/rest/v1/moderation_audit_log?limit=100&order=created_at.desc&select=id,action_type,reason,created_at")
+    if not isinstance(r, list): print("  Blad"); return
+    from collections import Counter
+    actions = Counter(a.get("action_type","?") for a in r)
+    print("  Podsumowanie dzialan moderatorow:")
+    for action, count in actions.most_common():
+        print(f"  {action:25s} x{count}")
+    if r:
+        print(f"  Ostatnie: {r[0].get('created_at','')[:16]} - {r[0].get('action_type','?')}")
+
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -547,7 +654,9 @@ if __name__ == "__main__":
         "app-version":cmd_app_version,"deploy":cmd_deploy,"whois":cmd_whois,
         "monitor":cmd_monitor,"check":cmd_check,"dashboard":cmd_dashboard,
         "graph":cmd_graph,"top":cmd_top,"anomaly":cmd_anomaly,"report":cmd_report,
-        "health-history":cmd_health_history,"cleanup-logs":cmd_cleanup_logs,"session-stats":cmd_session_stats
+        "health-history":cmd_health_history,"cleanup-logs":cmd_cleanup_logs,"session-stats":cmd_session_stats,
+        "ssl":cmd_ssl,"changelog":cmd_changelog,"notify-all":cmd_notify_all,"stress":cmd_stress,
+        "tables":cmd_tables,"config":cmd_config,"audit-trail":cmd_audit_trail
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
