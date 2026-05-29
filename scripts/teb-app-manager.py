@@ -639,6 +639,148 @@ def cmd_audit_trail(args):
     if r:
         print(f"  Ostatnie: {r[0].get('created_at','')[:16]} - {r[0].get('action_type','?')}")
 
+# ─── KOMENDY (55-63) ──────────────────────────────────────────
+
+def cmd_supa_ping(args):
+    """Ping Supabase z pomiarem czasu."""
+    import time
+    endpoints = [("Auth", "/auth/v1/settings"), ("Users API", "/auth/v1/admin/users")]
+    for name, path in endpoints:
+        start = time.time()
+        r = api("GET", path)
+        elapsed = time.time() - start
+        ok = "_error" not in r
+        icon = "OK" if ok else "ERR"
+        detail = f"({r.get('_body','')[:30]})" if not ok else ""
+        print(f"  [{icon}] {name:12s} {elapsed*1000:5.0f}ms {detail}")
+
+def cmd_headers(args):
+    """Sprawdz naglowki HTTP."""
+    import urllib.request
+    req = urllib.request.Request("https://www.teb-app.pl", method="HEAD")
+    resp = urllib.request.urlopen(req, context=ssl_ctx, timeout=10)
+    important = ["strict-transport-security","x-frame-options","x-content-type-options",
+                 "content-security-policy","referrer-policy","permissions-policy","cache-control"]
+    print("  Naglowki bezpieczenstwa:")
+    for h in important:
+        val = resp.headers.get(h, "BRAK")
+        ok = val and val != "BRAK"
+        print(f"  {'[OK]' if ok else '[--]'} {h:35s} {val[:60] if ok else 'MISSING'}")
+
+def cmd_db_size(args):
+    """Oszacuj rozmiar bazy."""
+    tables_data = api("GET", "/rest/v1/information_schema.tables?select=table_name&table_schema=eq.public")
+    if not isinstance(tables_data, list): print("  Blad"); return
+    
+    total_rows = 0
+    print("  Rozmiar tabel:")
+    for t in sorted(tables_data, key=lambda x: x.get("table_name","")):
+        name = t.get("table_name","?")
+        cnt = api("GET", f"/rest/v1/{name}?select=id&limit=10001")
+        rows = len(cnt) if isinstance(cnt, list) else 0
+        total_rows += rows
+        est_mb = rows * 0.5 / 1024  # ~0.5KB per row estimate
+        if est_mb > 0.1:
+            print(f"  {name:30s} {rows:6d} wierszy ~{est_mb:.1f}MB")
+        else:
+            print(f"  {name:30s} {rows:6d} wierszy")
+    print(f"  SUMA: ~{total_rows} wierszy ~{total_rows*0.5/1024:.1f}MB")
+
+def cmd_recent_errors(args):
+    """Bledy pogrupowane po zrodle."""
+    r = api("GET", "/rest/v1/error_logs?limit=500&order=created_at.desc")
+    if not isinstance(r, list): print("  Blad"); return
+    
+    from collections import Counter, defaultdict
+    by_source = defaultdict(list)
+    for e in r:
+        by_source[e.get("source","?")].append(e)
+    
+    print("  Bledy wedlug zrodla:")
+    for source, errors in sorted(by_source.items(), key=lambda x: len(x[1]), reverse=True):
+        levels = Counter(e.get("level","?") for e in errors)
+        errs = levels.get("error", 0)
+        warns = levels.get("warn", 0)
+        info = levels.get("info", 0)
+        recent = errors[0].get("created_at","")[:16] if errors else ""
+        print(f"  {source:20s} {len(errors):4d} razem (E:{errs} W:{warns} I:{info}) ostatni: {recent}")
+
+def cmd_dns_all(args):
+    """Pelny skan DNS."""
+    import subprocess
+    records = {"A": None, "AAAA": None, "MX": None, "TXT": None, "CNAME": None}
+    for domain in ["teb-app.pl", "www.teb-app.pl"]:
+        print(f"  --- {domain} ---")
+        for rtype in ["A", "AAAA", "MX", "TXT", "CNAME"]:
+            dig = subprocess.run(["dig", "+short", rtype, domain], capture_output=True, text=True, timeout=5)
+            result = dig.stdout.strip().replace("\n", ", ")[:80] or "BRAK"
+            print(f"  {rtype:5s} {result}")
+
+def cmd_token_check(args):
+    """Sprawdz klucze API."""
+    # Test service role key
+    print("  Testowanie kluczy API:")
+    r = api("GET", "/auth/v1/settings")
+    print(f"  {'[OK]' if '_error' not in r else '[ERR]'} Service role key: dostep do auth")
+    
+    # Test anon key
+    anon_key = "sb_publishable_wgAv4LFDeNFUyM_womiPRw_6JaNczHx"
+    import urllib.request
+    req = urllib.request.Request(f"{BASE}/rest/v1/", headers={"apikey": anon_key, "Accept": "application/json"})
+    try:
+        resp = urllib.request.urlopen(req, context=ssl_ctx, timeout=5)
+        print(f"  [OK] Anon key: HTTP {resp.status}")
+    except urllib.error.HTTPError as e:
+        code = "OK" if e.code in (401, 404) else f"ERR({e.code})"
+        print(f"  [{code}] Anon key: HTTP {e.code} (oczekiwane)")
+
+def cmd_compare_models(args):
+    """Szybkie porownanie modeli."""
+    models_to_test = [
+        ("DeepSeek Flash", "deepseek", "deepseek-v4-flash"),
+        ("MiMo v2.5 Pro", "mimo-token-plan", "mimo-v2.5-pro"),
+    ]
+    question = args.filter or "Co to jest SQL Injection? Odpowiedz w 1 zdaniu."
+    
+    print("  Porownanie modeli:")
+    for name, provider, model in models_to_test:
+        start = time.time()
+        r = subprocess.run(["hermes", "chat", "-q", question, "--provider", provider, "--model", model, "-Q", "-t", "web"],
+                          capture_output=True, text=True, timeout=60)
+        elapsed = time.time() - start
+        answer = r.stdout.strip()[-200:] if r.stdout else "BLAD"
+        print(f"  {name:20s} {elapsed:5.1f}s -> {answer[:100]}...")
+        print()
+
+def cmd_archive(args):
+    """Archiwizuj stare dane (>90 dni)."""
+    import urllib.request
+    tables_to_archive = ["error_logs", "moderation_audit_log"]
+    now = datetime.now(timezone.utc)
+    
+    for table in tables_to_archive:
+        print(f"  Archiwizacja {table}...")
+        r = api("GET", f"/rest/v1/{table}?select=id,created_at&limit=10000&order=created_at.desc")
+        if not isinstance(r, list): print(f"  Blad {table}"); continue
+        
+        old = [row for row in r if "created_at" in row and 
+               (now - datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))).days > 90]
+        
+        if not old:
+            print(f"  Brak starych danych w {table}")
+            continue
+        
+        # Archive to file
+        out = os.path.expanduser(f"~/Desktop/teb-app-backups/archive-{table}-{now:%Y-%m-%d}.json")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w") as f: json.dump(old, f, indent=2, default=str)
+        
+        # Delete from database
+        for row in old:
+            api("DELETE", f"/rest/v1/{table}?id=eq.{row['id']}")
+        
+        print(f"  Zarchiwizowano {len(old)} rekordow -> {out}")
+
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -656,7 +798,10 @@ if __name__ == "__main__":
         "graph":cmd_graph,"top":cmd_top,"anomaly":cmd_anomaly,"report":cmd_report,
         "health-history":cmd_health_history,"cleanup-logs":cmd_cleanup_logs,"session-stats":cmd_session_stats,
         "ssl":cmd_ssl,"changelog":cmd_changelog,"notify-all":cmd_notify_all,"stress":cmd_stress,
-        "tables":cmd_tables,"config":cmd_config,"audit-trail":cmd_audit_trail
+        "tables":cmd_tables,"config":cmd_config,"audit-trail":cmd_audit_trail,
+        "supa-ping":cmd_supa_ping,"headers":cmd_headers,"db-size":cmd_db_size,
+        "recent-errors":cmd_recent_errors,"dns-all":cmd_dns_all,
+        "token-check":cmd_token_check,"compare-models":cmd_compare_models,"archive":cmd_archive
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
