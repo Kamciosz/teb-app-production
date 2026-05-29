@@ -1141,7 +1141,60 @@ text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px}}
     print(f"  Odbiorca: {to}")
     print(f"  Token: {token}")
     print(f"  Szablon: https://www.teb-app.pl/confirm?token={token}")
-# ─── DISPATCHER ────────────────────────────────────────────────
+
+def cmd_restore(args):
+    """Przywraca backup do bazy. Wymaga --filter z nazwa pliku."""
+    backup_file = args.filter or ""
+    backup_dir = os.path.expanduser("~/Desktop/teb-app-backups")
+    
+    if not backup_file:
+        files = sorted([f for f in os.listdir(backup_dir) if f.endswith(".json") and f.startswith("backup-")])
+        if not files: print("  Brak backupow."); return
+        print("  Dostepne backupy:")
+        for f in files[-5:]:
+            size = os.path.getsize(os.path.join(backup_dir, f))
+            print(f"    {f} ({size//1024}KB)")
+        print("  Uzyj: teb-app restore --filter 'backup-2026-05-29.json'")
+        return
+    
+    path = os.path.join(backup_dir, backup_file)
+    if not os.path.exists(path): print(f"  Nie znaleziono: {backup_file}"); return
+    
+    print(f"  Zgodz sie na przywrocenie backupu: {backup_file}")
+    print(f"  {R('UWAGA: To nadpisze dane w bazie!')}")
+    print(f"  Aby kontynuowac, dodaj --name confirm")
+    if args.name != "confirm": print("  Nic nie zrobiono."); return
+    
+    with open(path) as f: data = json.load(f)
+    tables = data.get("tables", {})
+    if not tables: print("  Pusty backup."); return
+    
+    pb = _PB(len(tables), "Przywracanie")
+    for table, content in tables.items():
+        rows = content.get("rows", 0) if isinstance(content, dict) else 0
+        pb.tick(f"{table} ({rows} rows)")
+        if rows and isinstance(content.get("data"), list):
+            for row in content["data"][:500]:
+                api("POST", f"/rest/v1/{table}", row)
+        time.sleep(0.1)
+    pb.done()
+    print(f"  Przywrocono {len(tables)} tabel.")
+
+def cmd_report_daily(args):
+    """Konfiguruje codzienny raport przez cron (wymaga hermes cron)."""
+    import subprocess
+    script = os.path.expanduser("~/Desktop/teb-app-production/scripts/teb-app-manager.py")
+    report_cmd = f"cd ~/Desktop/teb-app-production && python3 {script} report"
+    
+    print(f"  Aby skonfigurowac codzienny raport o 8:00, uruchom:")
+    print(f"    hermes cron --schedule '0 8 * * *' --cmd '{report_cmd}'")
+    print(f"")
+    print(f"  Lub recznie dodaj do crontab:")
+    print(f"    0 8 * * * cd ~/Desktop/teb-app-production && python3 {script} report")
+    print(f"")
+    print(f"  Raport trafi do: ~/Desktop/teb-app-backups/raport-*.html")
+
+# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
@@ -1167,7 +1220,8 @@ if __name__ == "__main__":
         "self-update":cmd_self_update,"feedback":cmd_feedback,
         "raw":cmd_raw,
         "quick":cmd_quick,
-        "self-test":cmd_self_test,"email-preview":cmd_email_preview
+        "self-test":cmd_self_test,"email-preview":cmd_email_preview,
+        "restore":cmd_restore,"report-daily":cmd_report_daily
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
