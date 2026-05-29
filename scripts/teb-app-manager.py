@@ -7,6 +7,11 @@ from datetime import datetime, timezone, timedelta
 # ─── INFRASTRUKTURA ────────────────────────────────────────────
 _JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
 if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
+if "--version" in sys.argv or "-V" in sys.argv:
+    print("TEB-App Manager v6.1 — 68 komend")
+    print("Rozwijane w nieskonczonosc przez Hermes Agent")
+    sys.exit(0)
+
 def _out(data, text=None):
     if _JSON_MODE: print(json.dumps(data, indent=2, default=str, ensure_ascii=False))
     elif text: print(text)
