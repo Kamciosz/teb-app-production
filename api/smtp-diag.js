@@ -1,4 +1,3 @@
-import nodemailer from 'nodemailer';
 import { applyNoStore } from '../../lib/serverAuth.js';
 
 export default async function handler(req, res) {
@@ -10,12 +9,9 @@ export default async function handler(req, res) {
 
   const result = {
     timestamp: new Date().toISOString(),
-    env_check: {},
-    verify: null,
-    send_test: null
+    env_check: {}
   };
 
-  // 1. Check env vars (masked)
   const host = process.env.SMTP_HOST;
   const portStr = process.env.SMTP_PORT;
   const user = process.env.SMTP_USER;
@@ -26,19 +22,23 @@ export default async function handler(req, res) {
     host: host || 'MISSING',
     port: portStr || 'MISSING',
     user: user || 'MISSING',
-    pass: pass ? `***(${pass.length} chars)` : 'MISSING',
+    pass_len: pass ? pass.length : 0,
+    pass_present: !!pass,
     from: from || 'MISSING',
     all_present: !!(host && portStr && user && pass && from)
   };
 
   if (!host || !portStr || !user || !pass) {
-    return res.status(500).json(result);
+    result.message = 'SMTP vars incomplete';
+    return res.status(200).json(result);
   }
 
-  const port = parseInt(portStr, 10);
-
   try {
-    const transporter = nodemailer.createTransport({
+    const nodemailer = await import('nodemailer');
+    const createTransport = nodemailer.default?.createTransport || nodemailer.createTransport;
+
+    const port = parseInt(portStr, 10);
+    const transporter = createTransport({
       host,
       port,
       secure: port === 465,
@@ -47,21 +47,19 @@ export default async function handler(req, res) {
       socketTimeout: 10000
     });
 
-    // 2. Verify connection
     const verifyStart = Date.now();
     await transporter.verify();
     result.verify = { ok: true, ms: Date.now() - verifyStart };
 
-    // 3. Try sending test email to the FROM address (loopback test)
     if (req.query.send === 'true') {
-      const testTo = req.query.to || from; // send to self by default
+      const testTo = req.query.to || from;
       const sendStart = Date.now();
       try {
         const info = await transporter.sendMail({
-          from: `"TEB-App Diagnostic" <${from}>`,
+          from: `"TEB-App Test" <${from}>`,
           to: testTo,
-          subject: `[TEST] TEB-App SMTP diagnostic ${new Date().toISOString()}`,
-          html: '<h3>SMTP test passed</h3><p>If you see this, email sending works.</p>'
+          subject: `[TEST] SMTP diagnostic ${new Date().toISOString()}`,
+          html: '<h3>SMTP test passed</h3><p>Email sending works.</p>'
         });
         result.send_test = {
           ok: true,
@@ -82,12 +80,12 @@ export default async function handler(req, res) {
         };
       }
     } else {
-      result.send_test = { skipped: true, note: 'Add ?send=true to test sending. Add ?to=email@test.com to test specific recipient.' };
+      result.send_test = { skipped: true, note: 'Add ?send=true to test. Add ?to=email to test specific recipient.' };
     }
 
     return res.status(200).json(result);
   } catch (error) {
-    result.verify = { ok: false, error: error.message, code: error.code, command: error.command };
+    result.error = { message: error.message, code: error.code, stack: error.stack?.slice(0, 300) };
     return res.status(500).json(result);
   }
 }
