@@ -7,10 +7,48 @@ from datetime import datetime, timezone, timedelta
 # ─── INFRASTRUKTURA ────────────────────────────────────────────
 _JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
 if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
+VERSION = "7.0"
+COMMANDS_COUNT = 68
+
 if "--version" in sys.argv or "-V" in sys.argv:
-    print("TEB-App Manager v6.1 — 68 komend")
+    print(f"TEB-App Manager v{VERSION} — {COMMANDS_COUNT} komend")
     print("Rozwijane w nieskonczonosc przez Hermes Agent")
     sys.exit(0)
+
+# ─── AUTO-UPDATE ───────────────────────────────────────────────
+_AUTO_UPDATE_CHECKED = False
+def _check_update(force=False):
+    global _AUTO_UPDATE_CHECKED
+    if _AUTO_UPDATE_CHECKED and not force: return
+    _AUTO_UPDATE_CHECKED = True
+    try:
+        r = subprocess.run(["git","log","--oneline","-1","--format=%H"], capture_output=True, text=True, cwd=REPO, timeout=5)
+        local = r.stdout.strip()
+        subprocess.run(["git","fetch","--quiet"], capture_output=True, cwd=REPO, timeout=10)
+        r2 = subprocess.run(["git","log","--oneline","-1","--format=%H","origin/main"], capture_output=True, text=True, cwd=REPO, timeout=5)
+        remote = r2.stdout.strip()
+        if local and remote and local[:12] != remote[:12]:
+            print(f"  {Y('UWAGA: Dostepna nowa wersja! Uruchom: git pull')}")
+    except: pass
+
+# ─── SESSION STATE ──────────────────────────────────────────────
+_SESSION_FILE = os.path.expanduser("~/.teb-app-session.json")
+def _save_session(**kw):
+    """Zapisuje stan sesji (ostatni email, filtr itp)."""
+    data = {}
+    if os.path.exists(_SESSION_FILE):
+        try: data = json.load(open(_SESSION_FILE))
+        except: pass
+    data.update(kw)
+    data["_updated"] = datetime.now().isoformat()
+    with open(_SESSION_FILE, "w") as f: json.dump(data, f)
+
+def _load_session():
+    """Wczytuje ostatnia sesje."""
+    if os.path.exists(_SESSION_FILE):
+        try: return json.load(open(_SESSION_FILE))
+        except: return {}
+    return {}
 
 def _out(data, text=None):
     if _JSON_MODE: print(json.dumps(data, indent=2, default=str, ensure_ascii=False))
@@ -1024,4 +1062,6 @@ if __name__ == "__main__":
     p.add_argument("--email");p.add_argument("--password");p.add_argument("--name");p.add_argument("--filter")
     args = p.parse_args()
     if not args.command or args.command not in cmds: p.print_help(); sys.exit(1)
+    _check_update()
+    _save_session(last_cmd=args.command, last_email=args.email or '', last_filter=args.filter or '')
     cmds[args.command](args)
