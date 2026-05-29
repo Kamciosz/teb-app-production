@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "teb-app-manager"
+version = "7.1"
+description = "Zarzadzanie aplikacja szkolna TEB-App — CLI, dashboard, daemon"
+authors = [{name = "Hermes Agent", email = "szymon.sosnowski2@teb.edu.pl"}]
+license = {text = "MIT"}
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+teb-app = "teb_app_manager:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
