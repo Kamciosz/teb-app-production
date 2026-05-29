@@ -6,7 +6,7 @@ const signupStore = globalThis.__tebSignupStore || new Map();
 
 export default async function handler(req, res) {
   applyNoStore(res);
-  requireSameOrigin(req, res);
+  if (!requireSameOrigin(req, res)) return;
 
   if (req.method !== 'POST') return sendMethodNotAllowed(res, ['POST']);
 
