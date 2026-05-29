@@ -4,6 +4,7 @@ import { supabase } from '../../services/supabase'
 import ReportButton from '../../components/ReportButton'
 import MediaUploader from '../../components/common/MediaUploader'
 import { ImageKitService } from '../../services/imageKitService'
+import { sanitizePlainText, sanitizeImageUrl } from '../../utils/safeContent'
 
 // --- Helper: format timestamp for date separator ---
 function formatDateSeparator(dateStr) {
@@ -398,6 +399,7 @@ export default function Groups() {
         }
 
         const msgText = newMessage.trim()
+        const cleanMsg = sanitizePlainText(msgText, { maxLength: MAX_GROUP_MESSAGE })
         const tempId = Math.random().toString(36).substring(7)
 
         // Optimistic UI
@@ -405,7 +407,7 @@ export default function Groups() {
             id: tempId,
             group_id: activeGroup.id,
             sender_id: myId,
-            content: msgText,
+            content: cleanMsg,
             created_at: new Date().toISOString(),
             status: 'sending',
             profiles: { full_name: 'Ty', role: 'student' } // Tymczasowy profil
@@ -422,7 +424,7 @@ export default function Groups() {
         const { data, error } = await supabase.from('group_messages').insert([{
             group_id: activeGroup.id,
             sender_id: myId,
-            content: msgText
+            content: cleanMsg
         }]).select('*, profiles(full_name, role)').single()
 
         if (error) {
@@ -441,10 +443,13 @@ export default function Groups() {
     async function sendImage(url) {
         if (!activeGroup) return
 
+        const safeUrl = sanitizeImageUrl(url)
+        if (!safeUrl) return
+
         const { data, error } = await supabase.from('group_messages').insert([{
             group_id: activeGroup.id,
             sender_id: myId,
-            content: url
+            content: safeUrl
         }]).select('*, profiles(full_name, role)').single()
 
         if (error) {
