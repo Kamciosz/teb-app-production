@@ -208,6 +208,39 @@ function App() {
         }
     }
 
+    // Handle email confirmation redirect: Supabase redirects back with
+    // #access_token=xxx&refresh_token=xxx in URL hash after confirming email.
+    // Exchange these tokens for server-side HttpOnly cookies so the session persists.
+    useEffect(() => {
+        const hash = window.location.hash;
+        if (hash && hash.startsWith('#access_token=')) {
+            const params = new URLSearchParams(hash.slice(1));
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+            if (accessToken && refreshToken) {
+                fetch('/api/auth/session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        access_token: accessToken,
+                        refresh_token: refreshToken,
+                        expires_in: parseInt(params.get('expires_in') || '3600', 10)
+                    })
+                }).then(r => r.json()).then(data => {
+                    if (data.session) {
+                        // Session cookies set — reload to pick them up
+                        window.location.replace(window.location.pathname);
+                    } else {
+                        // Fallback: clean hash, continue with normal init
+                        window.history.replaceState(null, '', window.location.pathname);
+                    }
+                }).catch(() => {
+                    window.history.replaceState(null, '', window.location.pathname);
+                });
+            }
+        }
+    }, []);
+
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
             setSession(session)
