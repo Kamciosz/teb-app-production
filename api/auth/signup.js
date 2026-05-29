@@ -74,10 +74,21 @@ function maskEmail(email) {
 function resolveBaseUrl(req) {
   const rawOrigin = req.headers.origin;
   if (typeof rawOrigin === 'string' && rawOrigin) {
-    try { return new URL(rawOrigin).origin; } catch { /* fall through */ }
+    try {
+      const origin = new URL(rawOrigin).origin;
+      // Force Vercel preview deployments → production domain
+      if (origin.includes('teb-app-production') || origin.includes('vercel.app')) {
+        return 'https://www.teb-app.pl';
+      }
+      return origin;
+    } catch { /* fall through */ }
   }
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   if (!host) return null;
+  // Force Vercel preview hosts → production domain
+  if (host.includes('teb-app-production') || host.includes('vercel.app')) {
+    return 'https://www.teb-app.pl';
+  }
   const protoHeader = req.headers['x-forwarded-proto'];
   const proto = Array.isArray(protoHeader)
     ? protoHeader[0]
