@@ -6,17 +6,28 @@ async function checkSupabase() {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     if (!supabaseUrl) return { status: 'fail', detail: 'SUPABASE_URL not set' };
 
-    // Try resolving the Supabase project health endpoint
+    // Use the auth health endpoint — no API key required
     const baseUrl = supabaseUrl.replace(/\/+$/, '');
-    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-    const response = await fetch(`${baseUrl}/rest/v1/`, {
-      method: 'HEAD',
-      headers: { 'Accept': 'application/json', 'apikey': anonKey || '' },
+    const response = await fetch(`${baseUrl}/auth/v1/health`, {
+      method: 'GET',
       signal: AbortSignal.timeout(5000)
     });
     return { status: response.ok ? 'ok' : 'degraded', detail: `HTTP ${response.status}` };
   } catch (error) {
-    return { status: 'fail', detail: error.message };
+    // Fallback: try project health
+    try {
+      const baseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+      const parsed = new URL(baseUrl);
+      const projectRef = parsed.hostname.split('.')[0];
+      const resp = await fetch(`https://${projectRef}.supabase.co/rest/v1/`, {
+        method: 'HEAD',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000)
+      });
+      return { status: resp.ok ? 'ok' : 'degraded', detail: `HTTP ${resp.status}` };
+    } catch {
+      return { status: 'fail', detail: error.message };
+    }
   }
 }
 
