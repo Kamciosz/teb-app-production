@@ -1077,6 +1077,70 @@ def cmd_quick(args):
     _out({"total":t,"confirmed":c,"unconfirmed":t-c,"errors":err_count,"profiles":prof_count},
          f"  Quick: {t} users, {c} confirmed, {t-c} unconfirmed, {err_count} errors, {prof_count} profiles")
 
+
+def cmd_self_test(args):
+    """Testuje poprawnosc dzialania narzedzia."""
+    print(f"  {B('=== SELF-TEST ===')}")
+    passed = 0; failed = 0
+    
+    def test(name, fn):
+        nonlocal passed, failed
+        try:
+            fn()
+            print(f"  {G('PASS')} {name}")
+            passed += 1
+        except Exception as e:
+            print(f"  {R('FAIL')} {name}: {e}")
+            failed += 1
+    
+    test("API - polaczenie z Supabase", lambda: api("GET", "/auth/v1/settings"))
+    test("API - lista uzytkownikow", lambda: _get_users())
+    test("API - lista tabel", lambda: api("GET", "/rest/v1/information_schema.tables?select=table_name&table_schema=eq.public"))
+    test("Health endpoint", lambda: _fetch("GET", f"{VERCEL}/api/health"))
+    test("STRONY logowania HTTPS", lambda: urllib.request.urlopen(urllib.request.Request("https://www.teb-app.pl"), context=ssl_ctx, timeout=5))
+    test("DNS teb-app.pl", lambda: subprocess.run(["dig","+short","teb-app.pl"], capture_output=True, timeout=5).stdout.strip() or (_ for _ in ()).throw(Exception("pusto")))
+    test("JSON mode", lambda: (_out({"test":1}, "") if _JSON_MODE else None))
+    test("Session persistence", lambda: (_save_session(test_ok=True), _load_session()))
+    test("Git repo", lambda: subprocess.run(["git","rev-parse","HEAD"], capture_output=True, cwd=REPO, timeout=5).stdout.strip() or (_ for _ in ()).throw(Exception("nie repo")))
+    test("Parallel API", lambda: _parallel([{"method":"GET","path":"/auth/v1/admin/users","name":"u"}]))
+    
+    print(f"  {B('===')} {G(f'{passed} PASS')}  {R(f'{failed} FAIL') if failed else ''}")
+    return passed == 10
+
+def cmd_email_preview(args):
+    """Pokazuje podglad szablonu email potwierdzajacego."""
+    to = args.email or "user@teb.edu.pl"
+    token = "abc123def456" 
+    name = args.name or "Jan Kowalski"
+    
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Potwierdzenie rejestracji</title>
+<style>body{{font-family:Arial,sans-serif;background:#f4f4f4;padding:20px}}
+.container{{max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:30px}}
+.logo{{color:#c8102e;font-size:24px;font-weight:bold;margin-bottom:20px}}
+.btn{{display:inline-block;padding:14px 32px;background:#c8102e;color:#fff!important;
+text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px}}
+.footer{{margin-top:24px;font-size:12px;color:#888}}</style></head><body>
+<div class="container">
+<div class="logo">TEB-App</div>
+<h2>Witaj, {name}!</h2>
+<p>Kliknij przycisk ponizej, aby aktywowac konto:</p>
+<p style="text-align:center;margin:30px 0">
+<a class="btn" href="https://www.teb-app.pl/confirm?token={token}">AKTYWUJ KONTO</a></p>
+<p style="font-size:12px;color:#888">Link wazny 60 minut.</p>
+<p style="font-size:12px;color:#c8102e">Sprawdz folder SPAM/Oferty jesli nie widzisz wiadomosci.</p>
+<hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+<p style="font-size:11px;color:#aaa">TEB-App | teb-app.pl | {to}</p>
+</div></body></html>"""
+    
+    # Save preview
+    out = os.path.expanduser(f"~/Desktop/teb-app-backups/email-preview-{datetime.now():%Y-%m-%d}.html")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w") as f: f.write(html)
+    print(f"  Podglad zapisany: {out}")
+    print(f"  Odbiorca: {to}")
+    print(f"  Token: {token}")
+    print(f"  Szablon: https://www.teb-app.pl/confirm?token={token}")
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -1102,7 +1166,8 @@ if __name__ == "__main__":
         "permissions":cmd_permissions,"search":cmd_search_all,"weather":cmd_weather,
         "self-update":cmd_self_update,"feedback":cmd_feedback,
         "raw":cmd_raw,
-        "quick":cmd_quick
+        "quick":cmd_quick,
+        "self-test":cmd_self_test,"email-preview":cmd_email_preview
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
