@@ -34,7 +34,6 @@ def _check_update(force=False):
 # ─── SESSION STATE ──────────────────────────────────────────────
 _SESSION_FILE = os.path.expanduser("~/.teb-app-session.json")
 def _save_session(**kw):
-    """Zapisuje stan sesji (ostatni email, filtr itp)."""
     data = {}
     if os.path.exists(_SESSION_FILE):
         try: data = json.load(open(_SESSION_FILE))
@@ -44,10 +43,56 @@ def _save_session(**kw):
     with open(_SESSION_FILE, "w") as f: json.dump(data, f)
 
 def _load_session():
-    """Wczytuje ostatnia sesje."""
     if os.path.exists(_SESSION_FILE):
         try: return json.load(open(_SESSION_FILE))
         except: return {}
+    return {}
+
+# ─── PARALLEL API ──────────────────────────────────────────────
+import concurrent.futures, threading
+_API_CACHE = {}
+_API_CACHE_TTL = 5  # seconds
+def _parallel(requests, max_workers=5):
+    """Wykonaj wiele zapytan API rownolegle.
+    requests: [{"method":"GET","path":"/auth/v1/admin/users","name":"users"}, ...]
+    Zwraca: {"users": {...}, "health": {...}}
+    """
+    now = time.time()
+    results = {}
+    lock = threading.Lock()
+    
+    def fetch_one(req):
+        name = req.get("name", req.get("path","?"))
+        # Check cache
+        cache_key = f"{req['method']}:{req.get('path','')}"
+        with lock:
+            if cache_key in _API_CACHE and now - _API_CACHE[cache_key]["time"] < _API_CACHE_TTL:
+                return name, _API_CACHE[cache_key]["data"]
+        
+        if "url" in req:
+            result = _fetch(req["method"], req["url"])
+        else:
+            result = api(req["method"], req.get("path",""))
+        
+        # Cache non-error results
+        if "_error" not in result:
+            with lock:
+                _API_CACHE[cache_key] = {"data": result, "time": now}
+        return name, result
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(fetch_one, r) for r in requests]
+        for f in concurrent.futures.as_completed(futures):
+            name, result = f.result()
+            results[name] = result
+    
+    # Preserve order for missing
+    for r in requests:
+        n = r.get("name", r.get("path","?"))
+        if n not in results:
+            results[n] = {"_error": "not_fetched"}
+    
+    return results
     return {}
 
 def _out(data, text=None):
@@ -1013,6 +1058,25 @@ def cmd_raw(args):
     }
     _out(data, json.dumps(data, indent=2, default=str, ensure_ascii=False))
 
+
+def cmd_quick(args):
+    """Szybki podglad - wszystkie kluczowe dane rownolegle (parallel API)."""
+    results = _parallel([
+        {"method":"GET","path":"/auth/v1/admin/users","name":"users"},
+        {"method":"GET","path":"/auth/v1/settings","name":"auth"},
+        {"method":"GET","path":"/rest/v1/error_logs?select=id&limit=1&order=created_at.desc","name":"errors"},
+        {"method":"GET","path":"/rest/v1/profiles?select=id&limit=1","name":"profiles"},
+    ])
+    users = results.get("users",{}).get("users",[])
+    t = len(users); c = sum(1 for u in users if u.get("email_confirmed_at"))
+    errors = results.get("errors",[])
+    err_count = len(errors) if isinstance(errors, list) else 0
+    profs = results.get("profiles",[])
+    prof_count = len(profs) if isinstance(profs, list) else 0
+    
+    _out({"total":t,"confirmed":c,"unconfirmed":t-c,"errors":err_count,"profiles":prof_count},
+         f"  Quick: {t} users, {c} confirmed, {t-c} unconfirmed, {err_count} errors, {prof_count} profiles")
+
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -1037,7 +1101,8 @@ if __name__ == "__main__":
         "engagement":cmd_engagement,"timeline":cmd_timeline,"popular":cmd_popular,
         "permissions":cmd_permissions,"search":cmd_search_all,"weather":cmd_weather,
         "self-update":cmd_self_update,"feedback":cmd_feedback,
-        "raw":cmd_raw
+        "raw":cmd_raw,
+        "quick":cmd_quick
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
