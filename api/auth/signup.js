@@ -142,8 +142,8 @@ export default async function handler(req, res) {
       auth: { persistSession: false, autoRefreshToken: false }
     });
 
-    // Check if email already taken
-    const { data: existingUsers } = await serviceClient.auth.admin.listUsers();
+    // Check if email already taken (get all users, up to 1000)
+    const { data: existingUsers } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
     const alreadyExists = existingUsers?.users?.some(u => u.email === email);
     if (alreadyExists) {
       return res.status(200).json({

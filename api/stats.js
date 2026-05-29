@@ -15,7 +15,7 @@ export default async function handler(req, res) {
   if (sessionError || !session) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  const userRoles = session.user?.user_metadata?.roles || ['student'];
+  const userRoles = session.user?.app_metadata?.roles || ['student'];
   const isAdmin = Array.isArray(userRoles) && userRoles.some(r => ['admin', 'moderator_users'].includes(r));
   if (!isAdmin) {
     return res.status(403).json({ error: 'Forbidden: admin or moderator role required' });
@@ -32,8 +32,8 @@ export default async function handler(req, res) {
       auth: { persistSession: false, autoRefreshToken: false }
     });
 
-    // Fetch all auth users via admin API
-    const { data: usersData, error: usersError } = await serviceClient.auth.admin.listUsers();
+    // Fetch all auth users via admin API (up to 1000)
+    const { data: usersData, error: usersError } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
     if (usersError) throw usersError;
 
     const users = usersData?.users || [];

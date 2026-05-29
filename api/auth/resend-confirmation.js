@@ -173,14 +173,21 @@ export default async function handler(req, res) {
       }
     }
 
+    // If no password found (original entry expired), silently return ok
+    // Creating a new pending entry with empty password would always fail at confirm-signup
+    if (!existingEntry?.password) {
+      console.log(`[RESEND CONFIRMATION] No pending entry found for ${maskEmail(email)} — skipping (silent ok)`);
+      return res.status(200).json({ ok: true });
+    }
+
     // Generate a secure token (same as signup.js)
     const token = crypto.randomBytes(32).toString('hex');
 
-    // Store pending confirmation; preserve password if we found it
+    // Store pending confirmation with preserved password and fullName
     pendingStore.set(`pending:${token}`, {
       email,
-      password: existingEntry?.password || '',
-      fullName: existingEntry?.fullName || '',
+      password: existingEntry.password,
+      fullName: existingEntry.fullName || '',
       createdAt: now,
       expiresAt: now + TOKEN_EXPIRY_MINUTES * 60 * 1000
     });
@@ -191,7 +198,7 @@ export default async function handler(req, res) {
     // Send email via SMTP (same template as signup.js)
     await sendConfirmationEmail(email, token);
 
-    console.log(`[RESEND CONFIRMATION] Email sent to ${maskEmail(email)}, token stored${existingEntry ? ' (preserved password)' : ' (no password found)'}`);
+    console.log(`[RESEND CONFIRMATION] Email sent to ${maskEmail(email)}, new token stored`);
     return res.status(200).json({ ok: true });
 
   } catch (error) {
