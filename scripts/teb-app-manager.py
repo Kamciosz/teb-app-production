@@ -1485,6 +1485,18 @@ def cmd_log_tail(args):
     except KeyboardInterrupt:
         print("\n  Stop.")
 
+
+def cmd_report_weekly(args):
+    """Konfiguruje TYGODNIOWY raport email."""
+    print("  Aby wysylac raport co tydzien (poniedzialek 8:00):")
+    print("    hermes cron --schedule '0 8 * * 1' --cmd '~/Desktop/teb-app-production/scripts/teb-app-manager.py report'")
+    print()
+    print("  Lub recznie crontab:")
+    print("    0 8 * * 1 cd ~/Desktop/teb-app-production && python3 scripts/teb-app-manager.py report")
+    print()
+    print("  Raport HTML trafi do: ~/Desktop/teb-app-backups/")
+
+# ─── DISPATCHER ────────────────────────────────────────────────
 # ─── DISPATCHER ────────────────────────────────────────────────
 # ─── DISPATCHER ────────────────────────────────────────────────
 # ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
@@ -1517,7 +1529,7 @@ if __name__ == "__main__":
         "restore":cmd_restore,"report-daily":cmd_report_daily,
         "analyze":cmd_analyze,"rotate-backups":cmd_rotate_backups,
         "schema-viz":cmd_schema_viz,"gdpr-export":cmd_gdpr_export,
-        "user-delete":cmd_user_delete,"benchmark":cmd_benchmark,
+        "user-delete":cmd_user_delete,"benchmark":cmd_benchmark,"report-weekly":cmd_report_weekly,
         "webhook-notify":cmd_webhook_notify,"log-tail":cmd_log_tail
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
