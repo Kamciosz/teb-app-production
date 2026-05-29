@@ -1,11 +1,5 @@
-import { applyNoStore } from '../../lib/serverAuth.js';
-
 export default async function handler(req, res) {
-  applyNoStore(res);
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  res.setHeader('Content-Type', 'application/json');
 
   const result = {
     timestamp: new Date().toISOString(),
@@ -35,10 +29,14 @@ export default async function handler(req, res) {
 
   try {
     const nodemailer = await import('nodemailer');
-    const createTransport = nodemailer.default?.createTransport || nodemailer.createTransport;
+    const transport = nodemailer.default?.createTransport || nodemailer.createTransport;
+    if (!transport) {
+      result.error = 'createTransport not found. Keys: ' + Object.keys(nodemailer).join(',');
+      return res.status(500).json(result);
+    }
 
     const port = parseInt(portStr, 10);
-    const transporter = createTransport({
+    const transporter = transport({
       host,
       port,
       secure: port === 465,
@@ -85,7 +83,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json(result);
   } catch (error) {
-    result.error = { message: error.message, code: error.code, stack: error.stack?.slice(0, 300) };
+    result.error = { message: error.message, code: error.code, stack: error.stack?.slice(0, 500) };
     return res.status(500).json(result);
   }
 }
