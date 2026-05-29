@@ -16,6 +16,7 @@ const PublicProfile = lazy(() => import('./features/profile/PublicProfile'))
 const TEBtalk = lazy(() => import('./features/tebtalk/TEBtalk'))
 const Groups = lazy(() => import('./features/groups/Groups'))
 const PrivacyPolicy = lazy(() => import('./features/privacy/PrivacyPolicy'))
+const ConfirmPage = lazy(() => import('./pages/ConfirmPage'))
 
 import InstallPrompt from './components/InstallPrompt'
 import ReloadPrompt from './components/ReloadPrompt'
@@ -110,9 +111,11 @@ function App() {
                     const signupResult = await signUpWithEmail(finalEmail, password, finalName)
                     clearTimeout(signupTimeout)
                     if (signupResult?.note) {
-                        setAuthMessage('ℹ️ Konto może już istnieć. Przejdź do logowania i użyj opcji "Wyślij ponownie e-mail potwierdzający". Sprawdź też folder SPAM.')
-                        setIsRegister(false)
-                        setResendAvailable(true)
+                        setAuthMessage(signupResult.note)
+                        if (signupResult.note.includes('zaloguj') || signupResult.note.includes('istnieje')) {
+                            setIsRegister(false)
+                            setResendAvailable(true)
+                        }
                         setEmail(finalEmail)
                         setPassword('')
                         setConfirmPassword('')
@@ -346,6 +349,7 @@ function App() {
                 <Suspense fallback={<RouteLoading />}>
                     <Routes>
                         <Route path="/privacy" element={<PrivacyPolicy />} />
+                        <Route path="/confirm" element={<ConfirmPage />} />
                         <Route path="*" element={
                             <div className="min-h-screen bg-[#121212] flex flex-col items-center justify-center px-6 py-10">
                             <div className="flex flex-col items-center mb-8">
