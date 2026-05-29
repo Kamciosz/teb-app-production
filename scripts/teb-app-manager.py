@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""TEB-App Manager CLI — zarzadzanie aplikacja szkolna. Rozwijane w nieskonczonosc.
-v6.0 — Infrastructure: JSON output (--json/-j), kolory, progress bar, retry logic."""
+"""TEB-App Manager v8.0.0 PRODUCTION — pelny plugin zarzadzania.
+80 komend, 21 plikow, 9 zakladek w panelu admina. CLI + API + Dashboard + Daemon."""
 import json, sys, os, subprocess, urllib.request, ssl, time, re, csv, io
 from datetime import datetime, timezone, timedelta
 
