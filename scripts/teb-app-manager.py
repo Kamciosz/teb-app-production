@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 _JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
 if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
 VERSION = "7.3"
-COMMANDS_COUNT = 78
+COMMANDS_COUNT = 80
 
 if "--version" in sys.argv or "-V" in sys.argv:
     print(f"TEB-App Manager v{VERSION} — {COMMANDS_COUNT} komend")
@@ -1430,6 +1430,62 @@ def cmd_benchmark(args):
     print("  Historia: " + history_file)
     _out(results, "")
 
+
+def cmd_webhook_notify(args):
+    """Konfiguruje powiadomienia na Slack/Discord (wysyla test)."""
+    webhook_url = args.filter or args.email or ""
+    if not webhook_url:
+        print("  Uzyj: teb-app webhook-notify --filter 'WEBHOOK_URL' --name 'tresc'")
+        print("  Obsluguje: Slack webhook, Discord webhook")
+        print("  Test bez argumentu:")
+        print("    https://hooks.slack.com/services/...")
+        print("    https://discord.com/api/webhooks/...")
+        return
+    
+    msg = args.name or "Test powiadomienia z TEB-App Manager v" + VERSION
+    payload = {"text": msg, "username": "TEB-App"}
+    
+    try:
+        r = _fetch("POST", webhook_url, payload)
+        if "_error" in r:
+            print("  " + R("BLAD") + ": " + str(r["_body"][:100]))
+        else:
+            print("  " + G("OK") + ": " + msg)
+    except Exception as e:
+        print("  " + R("BLAD") + ": " + str(e)[:100])
+
+def cmd_log_tail(args):
+    """Podglada logi na zywo (polling)."""
+    interval = max(1, int(args.password or "5"))
+    limit = int(args.filter or "10")
+    
+    print("  Log tail (co %ds, ostatnie %d)" % (interval, limit))
+    print("  Ctrl+C stop")
+    print()
+    
+    last_ids = set()
+    try:
+        while True:
+            logs = api("GET", "/rest/v1/error_logs?limit=%d&order=created_at.desc" % limit)
+            if isinstance(logs, list):
+                for log in logs:
+                    log_id = log.get("id", "")
+                    if log_id in last_ids: continue
+                    last_ids.add(log_id)
+                    ts = log.get("created_at", "")[11:19]
+                    lvl = log.get("level", "?")
+                    src = log.get("source", "?")[:10]
+                    msg = log.get("message", "")[:80]
+                    icon = {"error": "ERR", "warn": "WRN", "info": "INF"}.get(lvl, "?")
+                    print("  [%s] [%s] %s: %s" % (ts, icon, src, msg))
+                # Keep set bounded
+                if len(last_ids) > 1000:
+                    last_ids = set(list(last_ids)[-500:])
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("\n  Stop.")
+
+# ─── DISPATCHER ────────────────────────────────────────────────
 # ─── DISPATCHER ────────────────────────────────────────────────
 # ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
 
@@ -1461,7 +1517,8 @@ if __name__ == "__main__":
         "restore":cmd_restore,"report-daily":cmd_report_daily,
         "analyze":cmd_analyze,"rotate-backups":cmd_rotate_backups,
         "schema-viz":cmd_schema_viz,"gdpr-export":cmd_gdpr_export,
-        "user-delete":cmd_user_delete,"benchmark":cmd_benchmark
+        "user-delete":cmd_user_delete,"benchmark":cmd_benchmark,
+        "webhook-notify":cmd_webhook_notify,"log-tail":cmd_log_tail
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
