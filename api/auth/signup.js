@@ -231,7 +231,7 @@ export default async function handler(req, res) {
     if (!userId) return res.status(500).json({ error: 'Failed to create user' });
 
     // Generate confirmation link via Supabase
-    const baseUrl = resolveBaseUrl(req) || 'https://teb-app-production.vercel.app';
+    const baseUrl = resolveBaseUrl(req) || 'https://www.teb-app.pl';
     const { data: linkData, error: linkError } = await serviceClient.auth.admin.generateLink({
       type: 'signup',
       email,
