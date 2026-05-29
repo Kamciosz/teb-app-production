@@ -1,42 +1,23 @@
 #!/usr/bin/env bash
-# TEB-App Manager — shell completion (bash + zsh)
-# Instalacja: source scripts/teb-app-completion.sh
-# Lub dodaj do ~/.zshrc: source ~/Desktop/teb-app-production/scripts/teb-app-completion.sh
+# TEB-App Manager — auto-generated shell completion
+# Generated: 2026-05-29 16:20
+# Commands: 77
 
 _teb_app_complete() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local prev="${COMP_WORDS[COMP_CWORD-1]}"
-    local commands="health users user whois stats stats-detail logs audit activity resend bulk-resend email-test notify backup export-csv diff create promote ban password-reset clean inactive schema verify-link routes deps lint env app-version deploy monitor check dashboard graph top anomaly report health-history cleanup-logs session-stats ssl changelog notify-all stress tables config audit-trail supa-ping headers db-size recent-errors dns-all token-check compare-models archive engagement timeline popular permissions search weather self-update feedback raw"
+    local commands="activity analyze anomaly app-version archive audit audit-trail backup ban benchmark bulk-resend changelog check clean cleanup-logs compare-models config create dashboard db-size deploy deps diff dns-all email-preview email-test engagement env export-csv feedback gdpr-export graph headers health health-history inactive lint log-tail logs monitor notify notify-all password-reset permissions popular promote quick raw recent-errors report report-daily resend restore rotate-backups routes schema schema-viz search self-test self-update session-stats ssl stats stats-detail stress supa-ping tables timeline token-check top user user-delete users verify-link weather webhook-notify whois"
     local filters="unconfirmed confirmed admin student tg registered"
-    local json_flags="--json -j"
 
     case "${prev}" in
         teb-app|teb-app-manager|python3)
-            COMPREPLY=($(compgen -W "${commands} ${json_flags}" -- "${cur}"))
+            COMPREPLY=($(compgen -W "${commands} --json -j" -- "${cur}"))
             ;;
         --filter|-f)
             COMPREPLY=($(compgen -W "${filters}" -- "${cur}"))
             ;;
-        --email|-e)
-            # Suggest known emails from the database (if jq is available)
-            local emails=""
-            if command -v jq &>/dev/null && [ -f ~/Desktop/teb-app-production/scripts/teb-app-manager.py ]; then
-                emails=$(python3 -c "
-import sys; sys.path.insert(0,'~/Desktop/teb-app-production/scripts')
-exec(open('~/Desktop/teb-app-production/scripts/teb-app-manager.py').read().split('if __name__')[0])
-for u in _get_users()[:5]: print(u['email'])
-" 2>/dev/null)
-            fi
-            COMPREPLY=($(compgen -W "${emails}" -- "${cur}"))
-            ;;
-        --name|-n)
-            COMPREPLY=()
-            ;;
-        --password|--pass|-p)
-            COMPREPLY=()
-            ;;
         *)
-            COMPREPLY=($(compgen -W "${commands} ${json_flags}" -- "${cur}"))
+            COMPREPLY=($(compgen -W "${commands} --json -j" -- "${cur}"))
             ;;
     esac
 }
@@ -45,72 +26,85 @@ for u in _get_users()[:5]: print(u['email'])
 _teb_app_zsh() {
     local -a commands
     commands=(
-        'health:Status systemu'
-        'users:Lista uzytkownikow'
-        'user:Szczegoly uzytkownika'
-        'whois:Szukaj po email'
-        'stats:Statystyki'
-        'stats-detail:Rozszerzone statystyki'
-        'logs:Logi bledow'
-        'audit:Moderacja'
-        'activity:Aktywnosc'
-        'resend:Wyslij potwierdzenie'
-        'bulk-resend:Resend do wszystkich'
-        'email-test:Test SMTP'
-        'notify:Test powiadomienia'
-        'backup:Backup JSON'
-        'export-csv:Export CSV'
-        'diff:Porownaj backupy'
-        'create:Utworz konto'
-        'promote:Nadaj admina'
-        'ban:Ban/Unban'
-        'password-reset:Reset hasla'
-        'clean:Usun testowe'
-        'inactive:Nieaktywni'
-        'schema:Tabele'
-        'verify-link:Link potw.'
-        'routes:API sciezki'
-        'deps:Zaleznosci'
-        'lint:ESLint'
-        'env:Zmienne env'
-        'app-version:Wersja'
-        'deploy:Ostatni commit'
-        'monitor:Monitoruj'
-        'check:Diagnostyka'
-        'dashboard:Web UI'
-        'graph:ASCII chart'
-        'top:TOP ranking'
-        'anomaly:Wykryj anomalie'
-        'report:Raport HTML'
-        'health-history:Historia'
-        'cleanup-logs:Usun stare'
-        'session-stats:Logowania'
-        'ssl:Certyfikat SSL'
-        'changelog:Git log'
-        'notify-all:Email do wszystkich'
-        'stress:Test obciazenia'
-        'tables:Szczegoly tabel'
-        'config:Konfiguracja'
-        'audit-trail:Analiza'
-        'supa-ping:Ping Supabase'
-        'headers:Naglowki HTTP'
-        'db-size:Rozmiar bazy'
-        'recent-errors:Bledy'
-        'dns-all:Pelny DNS'
-        'token-check:Klucze API'
-        'compare-models:Porownaj modele'
-        'archive:Archiwizuj'
-        'engagement:Zaangazowanie'
-        'timeline:Zdarzenia'
-        'popular:Posty'
-        'permissions:Uprawnienia'
-        'search:Szukaj'
-        'weather:Raport pogodowy'
-        'self-update:Aktualizacje'
-        'feedback:Zgloszenia'
-        'raw:JSON dump'
+        'activity:'
+        'analyze:AI analiza danych aplikacji - uzywa LLM do wnioskow.'
+        'anomaly:Wykryj anomalie.'
+        'app-version:'
+        'archive:Archiwizuj stare dane (>90 dni).'
+        'audit:'
+        'audit-trail:Analiza audytu.'
+        'backup:'
+        'ban:'
+        'benchmark:Benchmark API - mierzy wydajnosc Supabase + Vercel.'
+        'bulk-resend:'
+        'changelog:Git changelog z plikami.'
+        'check:'
+        'clean:'
+        'cleanup-logs:Usuwa stare logi bledow (>30 dni).'
+        'compare-models:Szybkie porownanie modeli.'
+        'config:Pokazuje konfiguracje z kodu.'
+        'create:'
+        'dashboard:'
+        'db-size:Oszacuj rozmiar bazy.'
+        'deploy:'
+        'deps:'
+        'diff:'
+        'dns-all:Pelny skan DNS.'
+        'email-preview:Pokazuje podglad szablonu email potwierdzajacego.'
+        'email-test:'
+        'engagement:Metryki zaangazowania uzytkownikow.'
+        'env:'
+        'export-csv:'
+        'feedback:Pokazuje opinie/zgloszenia uzytkownikow.'
+        'gdpr-export:Eksport danych uzytkownika (RODO/GDPR).'
+        'graph:ASCII chart rejestracji.'
+        'headers:Sprawdz naglowki HTTP.'
+        'health:'
+        'health-history:Zapisuje health do pliku i pokazuje historie.'
+        'inactive:'
+        'lint:'
+        'log-tail:Podglada logi na zywo (polling).'
+        'logs:'
+        'monitor:'
+        'notify:'
+        'notify-all:Wyslij email do wszystkich potwierdzonych uzytkownikow.'
+        'password-reset:'
+        'permissions:Macierz uprawnien uzytkownikow.'
+        'popular:Najpopularniejsze tresci.'
+        'promote:'
+        'quick:Szybki podglad - wszystkie kluczowe dane rownolegle (parallel API).'
+        'raw:Wszystkie dane jako JSON (uzyj z --json).'
+        'recent-errors:Bledy pogrupowane po zrodle.'
+        'report:Pelny raport HTML.'
+        'report-daily:Konfiguruje codzienny raport przez cron (wymaga hermes cron).'
+        'resend:'
+        'restore:Przywraca backup do bazy. Wymaga --filter z nazwa pliku.'
+        'rotate-backups:Usuwa stare backupy (>30 dni).'
+        'routes:'
+        'schema:'
+        'schema-viz:Wizualizacja schematu bazy - diagram relacji (ASCII + Mermaid).'
+        'search:'
+        'self-test:Testuje poprawnosc dzialania narzedzia.'
+        'self-update:Sprawdz aktualizacje narzedzia.'
+        'session-stats:Statystyki sesji/logowan.'
+        'ssl:Sprawdz certyfikat SSL.'
+        'stats:'
+        'stats-detail:'
+        'stress:Prosty test obciazenia.'
+        'supa-ping:Ping Supabase z pomiarem czasu.'
+        'tables:Szczegolowe info o tabelach.'
+        'timeline:Os czasu - ostatnie zdarzenia.'
+        'token-check:Sprawdz klucze API.'
+        'top:TOP排行榜.'
+        'user:'
+        'user-delete:Calkowicie usuwa uzytkownika (GDPR right to be forgotten).'
+        'users:'
+        'verify-link:'
+        'weather:Raport pogodowy systemu (wszystko OK czy nie).'
+        'webhook-notify:Konfiguruje powiadomienia na Slack/Discord (wysyla test).'
+        'whois:'
     )
-    _describe 'komenda' commands
+    _describe "komenda" commands
 }
 
 # Install
@@ -121,4 +115,4 @@ elif [[ -n "${BASH_VERSION:-}" ]]; then
     complete -F _teb_app_complete python3
 fi
 
-echo "TEB-App completion loaded"
+echo "TEB-App completion loaded (77 commands)"
