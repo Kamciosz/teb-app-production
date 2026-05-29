@@ -294,32 +294,16 @@ function App() {
             }
             if (data) {
                 setUserRoles(data.roles || ['student'])
-                // Automatyczne TG za codzienne logowanie — weryfikacja po stronie serwera
-                // Najpierw sprawdź czy kolumna last_tg_award istnieje w tabeli profiles
-                let columnExists = false;
+                // Automatyczne TG za codzienne logowanie — pomijane gdy kolumna/tabela nie istnieje
                 try {
-                    await supabase.from('profiles').select('last_tg_award').eq('id', uid).limit(1).maybeSingle();
-                    columnExists = true;
-                } catch {
-                    columnExists = false;
-                }
-
-                if (columnExists) {
-                    try {
-                        const { data: award, error: awardErr } = await supabase.rpc('award_daily_tg')
-                        if (awardErr) {
-                            // 400 BAD REQUEST = RPC function doesn't exist or rejected gracefully
-                            if (awardErr.code === '400' || awardErr.status === 400 || awardErr.code === '404') {
-                                console.debug('award_daily_tg not available — skipping')
-                            } else {
-                                console.warn('Daily TG award RPC error:', awardErr.message || awardErr)
-                            }
-                        } else if (award?.awarded) {
-                            console.log('Przyznano 5 TG za codzienne logowanie!')
+                    const { error: tgErr } = await supabase.rpc('award_daily_tg')
+                    if (tgErr) {
+                        if (tgErr.code === '400' || tgErr.status === 400 || tgErr.code === '404' || tgErr.code === 'PGRST') {
+                            // RPC nie istnieje — pomijamy cicho
                         }
-                    } catch {
-                        // Silently skip
                     }
+                } catch {
+                    // RPC not available — silent skip
                 }
 
                 // Rejestracja powiadomień Push
