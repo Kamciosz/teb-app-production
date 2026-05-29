@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 _JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
 if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
 VERSION = "7.3"
-COMMANDS_COUNT = 76
+COMMANDS_COUNT = 78
 
 if "--version" in sys.argv or "-V" in sys.argv:
     print(f"TEB-App Manager v{VERSION} — {COMMANDS_COUNT} komend")
@@ -1350,6 +1350,87 @@ def cmd_gdpr_export(args):
 # Also add to cmds dict
 
 
+
+def cmd_user_delete(args):
+    """Calkowicie usuwa uzytkownika (GDPR right to be forgotten)."""
+    q = args.email or args.filter or ""
+    if not q: print("  Uzyj: teb-app user-delete --email user@teb.edu.pl --name confirm"); return
+    if args.name != "confirm":
+        print("  " + R("UWAGA: To calkowicie usunie uzytkownika!"))
+        print("  Dodaj --name confirm aby potwierdzic.")
+        return
+    
+    u = _find_user(q)
+    if not u: print("  Nie znaleziono: " + q); return
+    uid = u["id"]; email = u["email"]
+    
+    tables_to_clean = [
+        ("profiles", "id"),
+        ("feed_posts", "author_id"),
+        ("feed_comments", "author_id"),
+        ("feed_votes", "user_id"),
+        ("reports", "reporter_id"),
+        ("error_logs", "email", True),
+    ]
+    
+    pb = _PB(len(tables_to_clean) + 1, "Usuwanie")
+    deleted_total = 0
+    
+    for table, col, *use_email in tables_to_clean:
+        if use_email:
+            r = api("DELETE", "/rest/v1/" + table + "?" + col + "=eq." + email)
+        else:
+            r = api("DELETE", "/rest/v1/" + table + "?" + col + "=eq." + uid)
+        deleted_total += 1
+        pb.tick("%s.%s" % (table, col))
+    
+    # Delete from auth
+    api("DELETE", "/auth/v1/admin/users/" + uid)
+    pb.tick("auth.users")
+    pb.done()
+    
+    print("  Usunieto: " + email)
+    print("  Rekordy: profiles, posts, comments, votes, reports, logs, auth")
+
+def cmd_benchmark(args):
+    """Benchmark API - mierzy wydajnosc Supabase + Vercel."""
+    n = int(args.password or "5")
+    print("  Benchmark API (" + str(n) + " probe):")
+    
+    results = {}
+    
+    # Vercel health
+    times = []
+    for i in range(n):
+        start = time.time()
+        _fetch("GET", VERCEL + "/api/health")
+        times.append(time.time() - start)
+    results["health"] = {"min": min(times), "avg": sum(times)/n, "max": max(times)}
+    print("  Vercel health:  min=%.2fs avg=%.2fs max=%.2fs" % (results["health"]["min"], results["health"]["avg"], results["health"]["max"]))
+    
+    # Supabase users
+    times = []
+    for i in range(n):
+        start = time.time()
+        api("GET", "/auth/v1/admin/users")
+        times.append(time.time() - start)
+    results["supabase"] = {"min": min(times), "avg": sum(times)/n, "max": max(times)}
+    print("  Supabase users: min=%.2fs avg=%.2fs max=%.2fs" % (results["supabase"]["min"], results["supabase"]["avg"], results["supabase"]["max"]))
+    
+    # Save to history
+    history_file = os.path.expanduser("~/.teb-app-benchmark.json")
+    history = []
+    if os.path.exists(history_file):
+        try: history = json.load(open(history_file))
+        except: pass
+    history.append({"ts": datetime.now().isoformat(), "results": results})
+    if len(history) > 100: history = history[-100:]
+    with open(history_file, "w") as f: json.dump(history, f, indent=2)
+    
+    print("  Historia: " + history_file)
+    _out(results, "")
+
+# ─── DISPATCHER ────────────────────────────────────────────────
 # ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -1379,7 +1460,8 @@ if __name__ == "__main__":
         "self-test":cmd_self_test,"email-preview":cmd_email_preview,
         "restore":cmd_restore,"report-daily":cmd_report_daily,
         "analyze":cmd_analyze,"rotate-backups":cmd_rotate_backups,
-        "schema-viz":cmd_schema_viz,"gdpr-export":cmd_gdpr_export
+        "schema-viz":cmd_schema_viz,"gdpr-export":cmd_gdpr_export,
+        "user-delete":cmd_user_delete,"benchmark":cmd_benchmark
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
