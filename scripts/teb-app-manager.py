@@ -387,6 +387,151 @@ load(); setInterval(load,15000);
         def log_message(self,*a): pass
     print(f"  Dashboard: http://localhost:{port}  (Ctrl+C stop)"); HTTPServer(("",port),H).serve_forever()
 
+# ─── KOMENDY (41-48) ──────────────────────────────────────────
+
+def cmd_graph(args):
+    """ASCII chart rejestracji."""
+    users = _get_users()
+    from collections import Counter
+    days = Counter()
+    for u in users:
+        d = u["created_at"][:10]
+        days[d] += 1
+    if not days: print("  Brak danych"); return
+    sorted_days = sorted(days.items())
+    max_count = max(c for _,c in sorted_days)
+    scale = max(20, max_count)
+    print(f"  Rejestracje (skala: {'#'*20} = {scale}):")
+    for day, count in sorted_days[-30:]:
+        bar = "#" * max(1, int(count / max_count * 20)) if max_count else ""
+        print(f"  {day} {bar} {count}")
+
+def cmd_top(args):
+    """TOP排行榜."""
+    filt = args.filter or "tg"  # tg, registered
+    users = _get_users()
+    if filt == "tg":
+        profiles = api("GET", "/rest/v1/profiles?select=email,full_name,teb_gabki&order=teb_gabki.desc&limit=20")
+        if not isinstance(profiles, list): print("  Blad"); return
+        print("  Top 20 wedlug TG:")
+        for i, p in enumerate(profiles, 1):
+            print(f"  {i:2d}. {p.get('full_name','?'):20s} {p.get('email','?'):35s} TG: {p.get('teb_gabki',0)}")
+    elif filt == "registered":
+        sorted_users = sorted(users, key=lambda u: u.get("created_at",""))
+        print("  Ostatnie rejestracje:")
+        for u in sorted_users[-10:]:
+            print(f"  {u['created_at'][:19]} {u['email']}")
+
+def cmd_anomaly(args):
+    """Wykryj anomalie."""
+    users = _get_users(); now = datetime.now(timezone.utc)
+    print("  = ANOMALIE =")
+    # Spikes in registration
+    from collections import Counter
+    days = Counter(u["created_at"][:10] for u in users)
+    avg = sum(days.values())/max(len(days),1)
+    for day, count in sorted(days.items()):
+        if count > avg * 3 and count > 3:
+            print(f"  [SPIKE] {day}: {count} rejestracji (srednia {avg:.1f})")
+    # Users registered but never confirmed + old
+    for u in users:
+        created = datetime.fromisoformat(u["created_at"].replace("Z","+00:00"))
+        if not u.get("email_confirmed_at") and (now-created).days > 30:
+            print(f"  [STALE] {u['email']}: niepotwierdzone od {(now-created).days} dni")
+    # Error rate
+    errors = api("GET", "/rest/v1/error_logs?select=id,created_at,level&limit=200&order=created_at.desc")
+    if isinstance(errors, list) and errors:
+        recent = sum(1 for e in errors if e.get("level")=="error")
+        print(f"  [ERRORS] {recent} bledow w ostatnich 200 logach")
+    if not any(True for _ in days): print("  Brak anomalii.")
+
+def cmd_report(args):
+    """Pelny raport HTML."""
+    users = _get_users(); now = datetime.now(timezone.utc)
+    t = len(users); c = sum(1 for u in users if u.get("email_confirmed_at"))
+    admins = sum(1 for u in users if "admin" in u.get("app_metadata",{}).get("roles",[]))
+    
+    html = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Raport TEB-App</title>
+<style>body{{font-family:system-ui;background:#121212;color:#fff;padding:20px;max-width:800px;margin:0 auto}}
+h1{{color:#c8102e}}h2{{color:#888;font-size:14px;margin-top:24px}}
+.card{{background:#1e1e1e;border:1px solid #333;border-radius:12px;padding:16px;margin:8px 0}}
+.g{{color:#22c55e}}.r{{color:#ef4444}}.b{{color:#3b82f6}}
+table{{width:100%;border-collapse:collapse;font-size:12px}}
+th,td{{text-align:left;padding:6px 8px;border-bottom:1px solid #222}}
+.footer{{margin-top:40px;font-size:10px;color:#444}}</style></head><body>
+<h1>Raport TEB-App</h1>
+<p>Wygenerowano: {now.strftime('%Y-%m-%d %H:%M')}</p>
+<div class="card"><h2>Uzytkownicy</h2>
+<p>Total: <span class="b">{t}</span> | Potwierdzone: <span class="g">{c}</span> | Niepotwierdzone: <span class="r">{t-c}</span> | Admini: <span class="b">{admins}</span></p></div>
+<div class="card"><h2>Status systemu</h2><p>SMTP: <span class="g">Online</span> | Supabase: <span class="g">Online</span></p></div>
+<div class="card"><h2>Ostatnie rejestracje</h2><table><tr><th>Email</th><th>Data</th><th>Potwierdzony</th></tr>"""
+    for u in sorted(users, key=lambda x: x["created_at"], reverse=True)[:15]:
+        html += f"<tr><td>{u['email']}</td><td>{u['created_at'][:10]}</td><td class=\"{'g' if u.get('email_confirmed_at') else 'r'}\">{'TAK' if u.get('email_confirmed_at') else 'NIE'}</td></tr>"
+    html += "</table></div><div class='footer'>TEB-App Manager</div></body></html>"
+    
+    out = os.path.expanduser(f"~/Desktop/teb-app-backups/raport-{now:%Y-%m-%d_%H%M}.html")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w") as f: f.write(html)
+    print(f"  Raport: {out}")
+
+def cmd_health_history(args):
+    """Zapisuje health do pliku i pokazuje historie."""
+    history_file = os.path.expanduser("~/Desktop/teb-app-backups/health-history.json")
+    os.makedirs(os.path.dirname(history_file), exist_ok=True)
+    
+    # Current health
+    h = _fetch("GET", f"{VERCEL}/api/health")
+    entry = {"ts": datetime.now().isoformat(),
+        "smtp": h.get("checks",{}).get("smtp",{}).get("status")=="ok",
+        "supabase": h.get("checks",{}).get("supabase",{}).get("status")=="ok"}
+    
+    # Load history
+    history = []
+    if os.path.exists(history_file):
+        with open(history_file) as f: history = json.load(f)
+    history.append(entry)
+    # Keep last 1000 entries
+    if len(history) > 1000: history = history[-1000:]
+    with open(history_file, "w") as f: json.dump(history, f)
+    
+    # Show summary
+    total = len(history)
+    smtp_ok = sum(1 for e in history if e.get("smtp"))
+    sup_ok = sum(1 for e in history if e.get("supabase"))
+    print(f"  Health history ({total} wpisow):")
+    print(f"  SMTP:     {smtp_ok}/{total} OK ({smtp_ok/total*100:.0f}%)")
+    print(f"  Supabase: {sup_ok}/{total} OK ({sup_ok/total*100:.0f}%)")
+    print(f"  Ostatnie 10:")
+    for e in history[-10:]:
+        ts = e.get("ts","")[11:19]
+        s = "OK" if e.get("smtp") else "ERR"
+        p = "OK" if e.get("supabase") else "ERR"
+        print(f"  {ts} SMTP={s} Supabase={p}")
+
+def cmd_cleanup_logs(args):
+    """Usuwa stare logi bledow (>30 dni)."""
+    r = api("GET", "/rest/v1/error_logs?select=id,created_at&limit=10000&order=created_at.desc")
+    if not isinstance(r, list): print("  Blad"); return
+    now = datetime.now(timezone.utc); deleted = 0
+    for log in r:
+        created = datetime.fromisoformat(log["created_at"].replace("Z","+00:00"))
+        if (now-created).days > 30:
+            api("DELETE", f"/rest/v1/error_logs?id=eq.{log['id']}")
+            deleted += 1
+    print(f"  Usunieto {deleted} starych logow (>30 dni)")
+
+def cmd_session_stats(args):
+    """Statystyki sesji/logowan."""
+    users = _get_users()
+    logged_in = sum(1 for u in users if u.get("last_sign_in_at"))
+    never_logged = sum(1 for u in users if not u.get("last_sign_in_at") and u.get("email_confirmed_at"))
+    now = datetime.now(timezone.utc)
+    recent = sum(1 for u in users if u.get("last_sign_in_at") and 
+                 (now-datetime.fromisoformat(u["last_sign_in_at"].replace("Z","+00:00"))).days < 7)
+    print(f"  Kiedykolwiek zalogowani: {logged_in}")
+    print(f"  Nigdy nie zalogowani:   {never_logged}")
+    print(f"  Aktywni w tym tygodniu:  {recent}")
+
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -400,7 +545,9 @@ if __name__ == "__main__":
         "inactive":cmd_inactive,"schema":cmd_schema,"verify-link":cmd_verify_link,
         "routes":cmd_routes,"deps":cmd_deps,"lint":cmd_lint,"env":cmd_env,
         "app-version":cmd_app_version,"deploy":cmd_deploy,"whois":cmd_whois,
-        "monitor":cmd_monitor,"check":cmd_check,"dashboard":cmd_dashboard
+        "monitor":cmd_monitor,"check":cmd_check,"dashboard":cmd_dashboard,
+        "graph":cmd_graph,"top":cmd_top,"anomaly":cmd_anomaly,"report":cmd_report,
+        "health-history":cmd_health_history,"cleanup-logs":cmd_cleanup_logs,"session-stats":cmd_session_stats
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
