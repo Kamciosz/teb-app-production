@@ -1,0 +1,265 @@
+.\" Man page for teb-app-manager.py
+.\" Usage: man scripts/teb-app-manager.1
+.TH TEB-APP-MANAGER 1 "2026-05-29" "v6.0" "TEB-App Management"
+.SH NAZWA
+teb-app-manager \- Zarzadzanie aplikacja szkolna TEB-App
+.SH SKLADNIA
+.B teb-app
+[\fB--json\fR|\fB-j\fR] \fIkomenda\fR [\fB--email\fR \fIE\fR] [\fB--password\fR \fIP\fR] [\fB--name\fR \fIN\fR] [\fB--filter\fR \fIQ\fR]
+.SH OPIS
+TEB-App Manager to narzedzie CLI do zarzadzania aplikacja szkolna TEB-App.
+Zawiera 68+ komend: zarzadzanie uzytkownikami, diagnostyka systemu,
+backupy, audit, monitoring i analiza danych.
+.SH OPCJE
+.TP
+\fB--json\fR, \fB-j\fR
+Tryb JSON dla maszynowego odczytu. Wszystkie komendy zwracaja JSON.
+.TP
+\fB--email\fR \fIE\fR
+Adres email (dla komend: user, resend, promote, ban, itp.)
+.TP
+\fB--password\fR, \fB--pass\fR \fIP\fR
+Haslo (dla: create, password-reset) lub czas w minutach (dla: ban)
+.TP
+\fB--name\fR, \fB-n\fR \fIN\fR
+Nazwa (dla: create, notify)
+.TP
+\fB--filter\fR, \fB-f\fR \fIQ\fR
+Filtr (dla: users, whois, search, logs, top, changelog, export-csv, activity)
+.SH KOMENDY
+.SS "Zarzadzanie uzytkownikami"
+.TP
+.B users [\fB--filter\fR unconfirmed|confirmed|admin]
+Lista uzytkownikow
+.TP
+.B user \fB--email\fR \fIE\fR
+Szczegoly uzytkownika
+.TP
+.B whois \fB--filter\fR \fIq\fR
+Szukaj po fragmencie emaila
+.TP
+.B create [\fB--email\fR \fIE\fR] [\fB--password\fR \fIP\fR] [\fB--name\fR \fIN\fR]
+Utworz konto testowe
+.TP
+.B promote \fB--email\fR \fIE\fR
+Nadaj role admin (auth.app_metadata + profiles.roles)
+.TP
+.B ban \fB--email\fR \fIE\fR [\fB--pass\fR \fImin\fR]
+Ban/Unban (dom. 1440 min = 24h)
+.TP
+.B password-reset \fB--email\fR \fIE\fR [\fB--pass\fR \fInowe\fR]
+Zmiana hasla uzytkownika
+.TP
+.B clean
+Usun konta testowe (zawierajace "test" w email)
+.TP
+.B inactive
+Lista nieaktywnych kont (>30d bez logowania lub >7d bez potwierdzenia)
+.SS "Email"
+.TP
+.B resend \fB--email\fR \fIE\fR
+Wyslij ponownie email potwierdzajacy
+.TP
+.B bulk-resend
+Resend do wszystkich niepotwierdzonych
+.TP
+.B email-test [\fB--email\fR \fIE\fR]
+Wyslij testowy email SMTP
+.TP
+.B notify \fB--email\fR \fIE\fR \fB--name\fR \fItresc\fR
+Test powiadomienia
+.TP
+.B notify-all
+Wyslij do wszystkich potwierdzonych (max 10)
+.SS "Backup i dane"
+.TP
+.B backup
+Backup 13 tabel bazy do JSON
+.TP
+.B export-csv \fB--filter\fR \fItabela\fR
+Export tabeli do CSV
+.TP
+.B diff
+Porownaj 2 ostatnie backupy
+.TP
+.B tables
+Szczegolowe info o tabelach (nazwa, wiersze)
+.TP
+.B schema
+Lista tabel w bazie
+.TP
+.B archive
+Archiwizuj stare dane (>90 dni) + usun z DB
+.SS "Diagnostyka"
+.TP
+.B health
+Status systemu (SMTP, Supabase, API)
+.TP
+.B check
+Pelna diagnostyka (DNS + HTTPS + API + git)
+.TP
+.B ssl
+Sprawdz certyfikat SSL (waznosc, dni, wystawca)
+.TP
+.B headers
+Naglowki bezpieczenstwa HTTP
+.TP
+.B dns-all
+Pelny skan DNS (A, AAAA, MX, TXT, CNAME)
+.TP
+.B supa-ping
+Pomiar latencji Supabase
+.TP
+.B token-check
+Weryfikacja kluczy API
+.SS "Statystyki"
+.TP
+.B stats
+Podstawowe statystyki
+.TP
+.B stats-detail
+Rozszerzone statystyki (tydzien, miesiac, TG, bledy)
+.TP
+.B graph
+ASCII wykres rejestracji
+.TP
+.B top [\fB--filter\fR tg|registered]
+Ranking TG lub ostatnie rejestracje
+.TP
+.B anomaly
+Wykrywanie anomalii (spike, stale niepotwierdzone)
+.TP
+.B engagement
+Metryki zaangazowania (posty, komentarze, grupy)
+.TP
+.B session-stats
+Statystyki logowan
+.TP
+.B permissions
+Macierz uprawnien uzytkownikow
+.TP
+.B weather
+Raport pogodowy systemu (SUNNY/CLOUDY)
+.SS "Audyt"
+.TP
+.B logs [\fB--filter\fR \fIpage\fR]
+Logi bledow z paginacja
+.TP
+.B audit
+Ostatnie dzialania moderatorow
+.TP
+.B activity [\fB--filter\fR \fIN\fR]
+Ostatnia aktywnosc
+.TP
+.B recent-errors
+Bledy pogrupowane po zrodle
+.TP
+.B audit-trail
+Podsumowanie dzialan moderatorow
+.TP
+.B feedback
+Zgloszenia uzytkownikow
+.SS "Projekt"
+.TP
+.B routes
+Lista wszystkich endpointow API
+.TP
+.B deps
+Wersje zaleznosci npm
+.TP
+.B lint
+Sprawdz kod (ESLint)
+.TP
+.B env
+Status zmiennych srodowiskowych
+.TP
+.B app-version
+Wersja lokalna vs deploy
+.TP
+.B deploy
+Ostatnie commity z gita
+.TP
+.B changelog [\fB--filter\fR \fIN\fR]
+Git log z plikami
+.TP
+.B config
+Konfiguracja z kodu
+.TP
+.B self-update
+Sprawdz czy narzedzie jest aktualne
+.SS "Narzedzia"
+.TP
+.B monitor [\fB--pass\fR \fIsec\fR]
+Monitoruj co N sekund (Ctrl+C stop)
+.TP
+.B dashboard [\fB--pass\fR \fIport\fR]
+Web dashboard (HTTP server, dom. :8080)
+.TP
+.B stress [\fB--pass\fR \fIN\fR]
+Test obciazenia API
+.TP
+.B compare-models [\fB--filter\fR \fIpytanie\fR]
+Porownaj DeepSeek vs MiMo
+.TP
+.B timeline
+Os zdarzen systemowych
+.TP
+.B popular
+Ostatnie posty na feedzie
+.TP
+.B search \fB--filter\fR \fIfraza\fR
+Szukaj we wszystkich tabelach
+.TP
+.B raw
+Pelny dump JSON (uzyj z --json)
+.TP
+.B health-history
+Historia dostepnosci (zapisuje do pliku)
+.TP
+.B cleanup-logs
+Usuwa stare logi bledow (>30 dni)
+.SH PRZYKLADY
+.TP
+Sprawdz status systemu:
+$ teb-app health
+.TP
+Lista niepotwierdzonych:
+$ teb-app users --filter unconfirmed
+.TP
+Wyslij potwierdzenie:
+$ teb-app resend --email jan@teb.edu.pl
+.TP
+Backup calej bazy:
+$ teb-app backup
+.TP
+Nadaj admina:
+$ teb-app promote --email jan@teb.edu.pl
+.TP
+JSON dla skryptow:
+$ teb-app --json stats | jq '.total'
+.TP
+Web dashboard (przegladarka):
+$ teb-app dashboard
+.SH ZMIENNE SRODOWISKOWE
+.TP
+SUPABASE_SERVICE_ROLE_KEY
+Klucz administracyjny Supabase (domyslnie czytany z .env.local)
+.TP
+TEB_OUTPUT
+Tryb wyjscia: text (domyslny) lub json
+.SH PLIKI
+.TP
+~/.zshrc
+Alias i completion (dodawane przez setup.sh)
+.TP
+~/Desktop/teb-app-production/scripts/
+Lokalizacja skryptow
+.TP
+~/Desktop/teb-app-backups/
+Katalog backupow i raportow
+.SH AUTOR
+Hermes Agent — rozwijane w nieskonczonosc
+.SH ZOBACZ TEZ
+.BR teb-app.pl (1),
+.BR supabase.com (1),
+.BR vercel.com (1)
