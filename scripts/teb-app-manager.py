@@ -960,6 +960,16 @@ def cmd_feedback(args):
         dt = r.get("created_at","")[:10]
         print(f"  [{status[:4]}] {dt} {reporter:15s} {reason}")
 
+
+def cmd_raw(args):
+    """Wszystkie dane jako JSON (uzyj z --json)."""
+    data = {
+        "timestamp": datetime.now().isoformat(),
+        "users": _get_users(),
+        "health": _fetch("GET", f"{VERCEL}/api/health"),
+    }
+    _out(data, json.dumps(data, indent=2, default=str, ensure_ascii=False))
+
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -983,7 +993,8 @@ if __name__ == "__main__":
         "token-check":cmd_token_check,"compare-models":cmd_compare_models,"archive":cmd_archive,
         "engagement":cmd_engagement,"timeline":cmd_timeline,"popular":cmd_popular,
         "permissions":cmd_permissions,"search":cmd_search_all,"weather":cmd_weather,
-        "self-update":cmd_self_update,"feedback":cmd_feedback
+        "self-update":cmd_self_update,"feedback":cmd_feedback,
+        "raw":cmd_raw
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
