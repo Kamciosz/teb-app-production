@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText, BarChart3, Bug, Activity, ChevronLeft, ChevronRight, Mail, X, Clock, ExternalLink, Send, Server, Wifi, AlertTriangle } from 'lucide-react'
+import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText, BarChart3, Bug, Activity, ChevronLeft, ChevronRight, Mail, X, Clock, ExternalLink, Send, Server, Wifi, AlertTriangle, Monitor, Terminal } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import { CleanupService } from '../../services/cleanupService'
 import { sanitizePlainText } from '../../utils/safeContent'
@@ -71,6 +71,9 @@ export default function Admin() {
         if (view === 'system') {
             fetchHealthStatus()
             fetchSystemLogs()
+        }
+        if (view === 'manager') {
+            fetchHealthStatus()
         }
     }, [view, myRoles])
 
@@ -548,7 +551,8 @@ export default function Admin() {
         { id: 'appeals', label: 'Apelacje', icon: Scale, disabled: myRole === 'moderator_content' },
         { id: 'audit', label: 'Audit', icon: ScrollText, disabled: false },
         { id: 'logs', label: 'Logi', icon: Bug, disabled: false },
-        { id: 'system', label: 'System', icon: Trash2, disabled: false }
+        { id: 'system', label: 'System', icon: Trash2, disabled: false },
+        { id: 'manager', label: 'Manager', icon: Terminal, disabled: false }
     ]
 
     return (
@@ -1152,6 +1156,48 @@ export default function Admin() {
                         >
                             <Loader2 size={16} className={`${systemLogsLoading ? 'animate-spin' : 'hidden'}`} />
                             Odśwież logi
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Widok: Manager (CLI) */}
+            {view === 'manager' && (
+                <div className="flex flex-col gap-6 fade-in px-2">
+                    <div className="bg-surface border border-green-600/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Terminal size={18} className="text-green-400" />
+                            <h3 className="text-sm font-bold text-green-400">TEB-App Manager</h3>
+                        </div>
+
+                        {/* Stats grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                            {[
+                                ['Uzytkownicy', healthStatus?.total_users || 0, 'text-blue-400'],
+                                ['Potwierdzeni', healthStatus?.confirmed || 0, 'text-green-400'],
+                                ['Niepotwierdzeni', (healthStatus?.total_users || 0) - (healthStatus?.confirmed || 0), 'text-red-400'],
+                                ['SMTP', healthStatus?.smtp_ok ? 'Online' : 'Offline', healthStatus?.smtp_ok ? 'text-green-400' : 'text-red-400'],
+                            ].map(([label, value, color]) => (
+                                <div key={label} className="bg-black/30 rounded-lg p-3 border border-gray-800">
+                                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">{label}</div>
+                                    <div className={`text-xl font-bold ${color}`}>{value}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="text-[11px] text-gray-500 space-y-1">
+                            <p>Dostepny przez CLI: <span className="text-green-400 font-mono">python3 scripts/teb-app-manager.py</span></p>
+                            <p>Backup: <span className="text-yellow-400 font-mono">teb-app backup</span></p>
+                            <p>Web dashboard: <span className="text-blue-400 font-mono">teb-app dashboard</span></p>
+                            <p>AI analiza: <span className="text-purple-400 font-mono">teb-app analyze</span></p>
+                        </div>
+
+                        <button
+                            onClick={() => window.open('/api/health', '_blank')}
+                            className="mt-3 px-4 py-2 bg-green-900/20 border border-green-700/30 rounded-lg text-xs font-bold text-green-400 hover:bg-green-900/40 transition"
+                        >
+                            <Activity size={14} className="inline mr-1" />
+                            API Health Check
                         </button>
                     </div>
                 </div>
