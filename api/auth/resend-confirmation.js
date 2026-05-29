@@ -1,21 +1,21 @@
-import {
-  applyNoStore,
-  createServerSupabaseClient,
-  readJsonBody,
-  requireSameOrigin,
-  sendMethodNotAllowed
-} from '../../lib/serverAuth.js';
+import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed } from '../../lib/serverAuth.js';
+import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ALLOWED_EMAIL_DOMAIN = '@teb.edu.pl';
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_IP = 12;
 const MAX_ATTEMPTS_PER_EMAIL = 4;
+const TOKEN_EXPIRY_MINUTES = 60;
 
+// Shared signupStore from signup.js – stores pending tokens
+const signupStore = globalThis.__tebSignupStore || new Map();
+if (!globalThis.__tebSignupStore) globalThis.__tebSignupStore = signupStore;
+
+// Separate rate-limit store for resend endpoint
 const resendRateStore = globalThis.__tebResendRateStore || new Map();
-if (!globalThis.__tebResendRateStore) {
-  globalThis.__tebResendRateStore = resendRateStore;
-}
+if (!globalThis.__tebResendRateStore) globalThis.__tebResendRateStore = resendRateStore;
 
 function getClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
@@ -62,27 +62,58 @@ function maskEmail(email) {
   return `${email.slice(0, 2)}***${email.slice(atIndex)}`;
 }
 
-function resolveEmailRedirectTo(req) {
-  const rawOrigin = req.headers.origin;
-  if (typeof rawOrigin === 'string' && rawOrigin) {
-    try {
-      const parsed = new URL(rawOrigin);
-      return parsed.origin;
-    } catch {
-      return null;
-    }
+// --- SMTP / mail helper (same as signup.js) ---
+
+let smtpTransport = null;
+
+function createMailTransport() {
+  if (smtpTransport) return smtpTransport;
+  const host = process.env.SMTP_HOST;
+  const portStr = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !portStr || !user || !pass || !process.env.SMTP_FROM) {
+    throw new Error('SMTP not configured');
   }
-
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  if (!host) return null;
-
-  const protoHeader = req.headers['x-forwarded-proto'];
-  const proto = Array.isArray(protoHeader)
-    ? protoHeader[0]
-    : (typeof protoHeader === 'string' && protoHeader) || (process.env.NODE_ENV === 'development' ? 'http' : 'https');
-
-  return `${proto}://${host}`;
+  const port = parseInt(portStr, 10);
+  smtpTransport = nodemailer.createTransport({
+    host, port, secure: port === 465,
+    auth: { user, pass },
+    connectionTimeout: 10000, socketTimeout: 10000
+  });
+  return smtpTransport;
 }
+
+async function sendConfirmationEmail(toEmail, token) {
+  const confirmUrl = `https://www.teb-app.pl/confirm?token=${token}`;
+
+  const html = `<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;padding:20px;max-width:500px;margin:0 auto;">
+<div style="text-align:center;margin-bottom:30px;">
+  <h2 style="color:#c8102e;">TEB-App</h2>
+</div>
+<h3 style="color:#333;">Witaj!</h3>
+<p>Kliknij poniższy przycisk, aby <strong>aktywować konto</strong> w TEB-App:</p>
+<div style="text-align:center;margin:30px 0;">
+  <a href="${confirmUrl}" style="display:inline-block;padding:14px 36px;background:#c8102e;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;">Aktywuj konto</a>
+</div>
+<p style="color:#666;font-size:13px;">Link wygasa za ${TOKEN_EXPIRY_MINUTES} minut. Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość.</p>
+<p style="color:#666;font-size:13px;">📧 Wiadomość może trafić do folderu SPAM — sprawdź go, jeśli nie widzisz maila w skrzynce odbiorczej.</p>
+<hr style="border:1px solid #eee;margin:20px 0;">
+<p style="color:#999;font-size:12px;">TEB-App — portal szkolny dla uczniów TEB Warszawa</p>
+</body></html>`;
+
+  const fromEmail = process.env.SMTP_FROM;
+  const transporter = createMailTransport();
+  await transporter.sendMail({
+    from: `"TEB-App" <${fromEmail}>`,
+    to: toEmail,
+    subject: 'Aktywuj konto w TEB-App',
+    html
+  });
+}
+
+// --- Main handler ---
 
 export default async function handler(req, res) {
   applyNoStore(res);
@@ -104,9 +135,11 @@ export default async function handler(req, res) {
     }
     return res.status(500).json({ error: 'Internal server error' });
   }
+
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const now = Date.now();
 
+  // --- Rate limiting ---
   pruneRateStore(now);
   const clientIp = getClientIp(req);
   const ipRateState = registerAttemptAndCheck(`ip:${clientIp}`, MAX_ATTEMPTS_PER_IP, now);
@@ -123,26 +156,30 @@ export default async function handler(req, res) {
     }
   }
 
+  // --- Validation (always return 200 ok to avoid email enumeration) ---
   if (!email || !EMAIL_REGEX.test(email) || !email.endsWith(ALLOWED_EMAIL_DOMAIN)) {
     return res.status(200).json({ ok: true });
   }
 
   try {
-    const supabase = createServerSupabaseClient();
-    const emailRedirectTo = resolveEmailRedirectTo(req);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
+    // Generate a secure token (same as signup.js)
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // Store pending confirmation in shared signupStore
+    signupStore.set(`pending:${token}`, {
       email,
-      options: emailRedirectTo ? { emailRedirectTo } : undefined
+      password: '',
+      fullName: '',
+      createdAt: now,
+      expiresAt: now + TOKEN_EXPIRY_MINUTES * 60 * 1000
     });
 
-    if (error) {
-      console.error(`[RESEND CONFIRMATION ERROR] email=${maskEmail(email)}, error=${error.message}`);
-      return res.status(200).json({ ok: true });
-    }
+    // Send email via SMTP (same template as signup.js)
+    await sendConfirmationEmail(email, token);
 
-    console.log(`[RESEND CONFIRMATION SUCCESS] email=${maskEmail(email)}`);
+    console.log(`[RESEND CONFIRMATION] Email sent to ${maskEmail(email)}, token stored in signupStore`);
     return res.status(200).json({ ok: true });
+
   } catch (error) {
     console.error('[RESEND CONFIRMATION EXCEPTION]', error);
     return res.status(200).json({ ok: true });

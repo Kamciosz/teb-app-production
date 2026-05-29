@@ -320,7 +320,7 @@ export default function Admin() {
         }))
     }
 
-    async function handleBan(userId, isBanned) {
+    async function handleBan(userId, isBanned, duration) {
         if (!myRoles.includes('admin') && !myRoles.includes('moderator_users')) {
             alert('Brak uprawnień do moderacji uczniów.')
             return
@@ -332,7 +332,8 @@ export default function Admin() {
             if (!banReason) return
         }
 
-        const banUntil = isBanned ? null : new Date(Date.now() + parseInt(banDuration) * 60000).toISOString()
+        const effectiveDuration = duration ?? banDuration
+        const banUntil = isBanned ? null : new Date(Date.now() + parseInt(effectiveDuration) * 60000).toISOString()
 
         const { error } = await supabase.from('profiles').update({
             is_banned: !isBanned,
@@ -1435,11 +1436,7 @@ export default function Admin() {
                                         </select>
                                         <button
                                             onClick={async () => {
-                                                // Use modalBanDuration temporarily
-                                                const savedDuration = banDuration
-                                                setBanDuration(modalBanDuration)
-                                                await handleBan(selectedUserDetails.id, selectedUserDetails.is_banned)
-                                                setBanDuration(savedDuration)
+                                                await handleBan(selectedUserDetails.id, selectedUserDetails.is_banned, modalBanDuration)
                                                 // Refresh details
                                                 openUserModal(selectedUserDetails)
                                             }}

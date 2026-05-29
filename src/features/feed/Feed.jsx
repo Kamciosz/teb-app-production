@@ -221,11 +221,22 @@ export default function Feed() {
             .replace(/<iframe/g, '<div class="aspect-video w-full my-6 rounded-2xl overflow-hidden shadow-2xl"><iframe class="w-full h-full"')
             .replace(/<\/iframe>/g, '</iframe></div>')
 
+        let processed
         try {
-            return withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img loading="lazy" decoding="async" src="${ImageKitService.getOptimizedUrl(src)}"`)
+            processed = withIframes.replace(/<img[^>]+src="([^">]+)"/g, (m, src) => `<img loading="lazy" decoding="async" src="${ImageKitService.getOptimizedUrl(src)}"`)
         } catch {
-            return withIframes
+            processed = withIframes
         }
+
+        // Second DOMPurify pass after all string replacements to prevent XSS
+        // that could bypass the first sanitization via regex manipulation
+        return DOMPurify.sanitize(processed || '', {
+            ADD_TAGS: ['iframe'],
+            ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'src', 'class', 'loading', 'decoding'],
+            FORBID_ATTR: ['srcdoc', 'data', 'onload', 'onerror', 'onclick', 'onmouseover', 'onfocus', 'onmouseenter',
+                          'onmouseleave', 'onkeydown', 'onkeyup', 'onkeypress', 'onsubmit', 'onchange', 'onblur',
+                          'onpointerdown', 'onpointerup', 'onpointermove', 'ontouchstart', 'ontouchend', 'style']
+        })
     }
 
     function getPreviewText(rawHtml) {

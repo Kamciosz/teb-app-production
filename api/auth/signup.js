@@ -1,4 +1,4 @@
-import { applyNoStore, readJsonBody, sendMethodNotAllowed } from '../../lib/serverAuth.js';
+import { applyNoStore, readJsonBody, requireSameOrigin, sendMethodNotAllowed } from '../../lib/serverAuth.js';
 import errorLog from '../../lib/errorLog.js';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
@@ -9,11 +9,15 @@ const MIN_PASSWORD_LENGTH = 8;
 const MAX_NAME_LENGTH = 80;
 const ALLOWED_EMAIL_DOMAIN = '@teb.edu.pl';
 const RATE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS_PER_IP = 20;
 const MAX_ATTEMPTS_PER_EMAIL = 5;
 const TOKEN_EXPIRY_MINUTES = 60;
 
-const signupStore = globalThis.__tebSignupStore || new Map();
-if (!globalThis.__tebSignupStore) globalThis.__tebSignupStore = signupStore;
+const pendingStore = globalThis.__tebPendingStore || new Map();
+if (!globalThis.__tebPendingStore) globalThis.__tebPendingStore = pendingStore;
+
+const rateLimitStore = globalThis.__tebRateLimitStore || new Map();
+if (!globalThis.__tebRateLimitStore) globalThis.__tebRateLimitStore = rateLimitStore;
 
 function maskEmail(email) {
   if (!email || typeof email !== 'string') return 'unknown';
@@ -22,20 +26,32 @@ function maskEmail(email) {
   return `${email.slice(0, 2)}***${email.slice(atIndex)}`;
 }
 
+function getClientIp(req) {
+  const xRealIp = req.headers['x-real-ip'];
+  if (typeof xRealIp === 'string' && xRealIp.trim()) return xRealIp.trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (Array.isArray(xff) && xff.length > 0) return String(xff[0]).split(',')[0].trim();
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
 function pruneStore(now) {
-  for (const [key, state] of signupStore.entries()) {
-    if (!state || state.expiresAt <= now) signupStore.delete(key);
+  for (const [key, state] of pendingStore.entries()) {
+    if (!state || state.expiresAt <= now) pendingStore.delete(key);
+  }
+  for (const [key, state] of rateLimitStore.entries()) {
+    if (!state || state.resetAt <= now) rateLimitStore.delete(key);
   }
 }
 
 function registerAttempt(key, limit, now) {
-  const existing = signupStore.get(key);
+  const existing = rateLimitStore.get(key);
   if (!existing || existing.resetAt <= now) {
-    signupStore.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
+    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
     return false;
   }
   existing.count += 1;
-  signupStore.set(key, existing);
+  rateLimitStore.set(key, existing);
   return existing.count > limit;
 }
 
@@ -89,6 +105,7 @@ async function sendSignupEmail(toEmail, token, fullName) {
 export default async function handler(req, res) {
   applyNoStore(res);
   if (req.method !== 'POST') return sendMethodNotAllowed(res, ['POST']);
+  if (!requireSameOrigin(req, res)) return;
 
   let body;
   try { body = await readJsonBody(req); }
@@ -106,6 +123,10 @@ export default async function handler(req, res) {
   if (!email.endsWith(ALLOWED_EMAIL_DOMAIN)) return res.status(400).json({ error: `Only ${ALLOWED_EMAIL_DOMAIN} addresses are allowed` });
   if (password.length < MIN_PASSWORD_LENGTH) return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   if (fullName.length > MAX_NAME_LENGTH) return res.status(400).json({ error: `Full name must be at most ${MAX_NAME_LENGTH} characters` });
+
+  if (registerAttempt(`ip:${getClientIp(req)}`, MAX_ATTEMPTS_PER_IP, now)) {
+    return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
+  }
 
   if (registerAttempt(`email:${email}`, MAX_ATTEMPTS_PER_EMAIL, now)) {
     return res.status(429).json({ error: 'Too many attempts. Please try again later.' });
@@ -135,7 +156,7 @@ export default async function handler(req, res) {
     const token = crypto.randomBytes(32).toString('hex');
     
     // Store pending signup (in memory - survives ~60min)
-    signupStore.set(`pending:${token}`, {
+    pendingStore.set(`pending:${token}`, {
       email, password, fullName,
       createdAt: now,
       expiresAt: now + TOKEN_EXPIRY_MINUTES * 60 * 1000

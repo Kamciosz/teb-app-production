@@ -182,21 +182,48 @@ export async function fetchRecentChats(userId, blockState = null, scanLimit = 30
  * Returns chronological array and a hasMore flag.
  */
 export async function fetchMessages(myId, partnerId, isGroup = false, limit = 120) {
-    let query = supabase
-        .from(isGroup ? 'chat_group_messages' : 'direct_messages')
-        .select('*')
+    let data, error
 
     if (isGroup) {
-        query = query.eq('group_id', partnerId)
+        const result = await supabase
+            .from('chat_group_messages')
+            .select('*')
+            .eq('group_id', partnerId)
+            .order('created_at', { ascending: false })
+            .limit(limit)
+        data = result.data
+        error = result.error
     } else {
-        query = query.or(
-            `and(sender_id.eq.${myId},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${myId})`
-        )
-    }
+        // Two separate .eq() queries instead of .or() with string interpolation
+        const [{ data: data1 }, { data: data2 }] = await Promise.all([
+            supabase
+                .from('direct_messages')
+                .select('*')
+                .eq('sender_id', myId)
+                .eq('receiver_id', partnerId)
+                .order('created_at', { ascending: false })
+                .limit(limit),
+            supabase
+                .from('direct_messages')
+                .select('*')
+                .eq('sender_id', partnerId)
+                .eq('receiver_id', myId)
+                .order('created_at', { ascending: false })
+                .limit(limit),
+        ])
 
-    const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(limit)
+        // Merge, deduplicate by id, sort chronologically desc
+        const seen = new Set()
+        const merged = []
+        for (const msg of [...(data1 || []), ...(data2 || [])]) {
+            if (!seen.has(msg.id)) {
+                seen.add(msg.id)
+                merged.push(msg)
+            }
+        }
+        merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        data = merged.slice(0, limit)
+    }
 
     if (error) {
         console.error('Błąd pobierania wiadomości:', error)
@@ -215,22 +242,51 @@ export async function fetchMessages(myId, partnerId, isGroup = false, limit = 12
  * Fetch older messages (pagination, targeting messages before the oldest).
  */
 export async function loadOlderMessages(myId, oldestMessageCreatedAt, partnerId, isGroup = false, limit = 80) {
-    let query = supabase
-        .from(isGroup ? 'chat_group_messages' : 'direct_messages')
-        .select('*')
+    let data, error
 
     if (isGroup) {
-        query = query.eq('group_id', partnerId)
+        const result = await supabase
+            .from('chat_group_messages')
+            .select('*')
+            .eq('group_id', partnerId)
+            .lt('created_at', oldestMessageCreatedAt)
+            .order('created_at', { ascending: false })
+            .limit(limit)
+        data = result.data
+        error = result.error
     } else {
-        query = query.or(
-            `and(sender_id.eq.${myId},receiver_id.eq.${partnerId}),and(sender_id.eq.${myId},receiver_id.eq.${partnerId})`
-        )
-    }
+        // Two separate .eq() queries instead of .or() with string interpolation
+        const [{ data: data1 }, { data: data2 }] = await Promise.all([
+            supabase
+                .from('direct_messages')
+                .select('*')
+                .eq('sender_id', myId)
+                .eq('receiver_id', partnerId)
+                .lt('created_at', oldestMessageCreatedAt)
+                .order('created_at', { ascending: false })
+                .limit(limit),
+            supabase
+                .from('direct_messages')
+                .select('*')
+                .eq('sender_id', partnerId)
+                .eq('receiver_id', myId)
+                .lt('created_at', oldestMessageCreatedAt)
+                .order('created_at', { ascending: false })
+                .limit(limit),
+        ])
 
-    const { data, error } = await query
-        .lt('created_at', oldestMessageCreatedAt)
-        .order('created_at', { ascending: false })
-        .limit(limit)
+        // Merge, deduplicate by id, sort chronologically desc
+        const seen = new Set()
+        const merged = []
+        for (const msg of [...(data1 || []), ...(data2 || [])]) {
+            if (!seen.has(msg.id)) {
+                seen.add(msg.id)
+                merged.push(msg)
+            }
+        }
+        merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        data = merged.slice(0, limit)
+    }
 
     if (error) {
         console.error('Błąd pobierania starszych wiadomości:', error)
