@@ -1,7 +1,50 @@
 #!/usr/bin/env python3
-"""TEB-App Manager CLI — zarzadzanie aplikacja szkolna. Rozwijane w nieskonczonosc."""
+"""TEB-App Manager CLI — zarzadzanie aplikacja szkolna. Rozwijane w nieskonczonosc.
+v6.0 — Infrastructure: JSON output (--json/-j), kolory, progress bar, retry logic."""
 import json, sys, os, subprocess, urllib.request, ssl, time, re, csv, io
 from datetime import datetime, timezone, timedelta
+
+# ─── INFRASTRUKTURA ────────────────────────────────────────────
+_JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
+if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
+def _out(data, text=None):
+    if _JSON_MODE: print(json.dumps(data, indent=2, default=str, ensure_ascii=False))
+    elif text: print(text)
+
+_COLORS = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+_C = lambda c, t: f"\033[{c}m{t}\033[0m" if _COLORS else t
+G = lambda t: _C("92", t); R = lambda t: _C("91", t)
+Y = lambda t: _C("93", t); B = lambda t: _C("94", t); D = lambda t: _C("90", t)
+
+class _PB:
+    def __init__(s, total, label=""): s.total=total; s.i=0; s.label=label
+    def tick(s, msg=""):
+        s.i+=1
+        if _COLORS and not _JSON_MODE:
+            p=s.i/s.total*100; bar="█"*int(p//5)+"░"*(20-int(p//5))
+            sys.stdout.write(f"\r  {s.label}: [{bar}] {s.i}/{s.total} {msg[:30]:30s}"); sys.stdout.flush()
+    def done(s):
+        if _COLORS and not _JSON_MODE: print(f"\r  {s.label}: [{G('█'*20)}] {G('OK')}")
+
+def _fetch(method, url, data=None, headers=None, retries=2):
+    for attempt in range(retries+1):
+        h = {"Content-Type":"application/json", **(headers or {})}
+        body = json.dumps(data).encode() if data else None
+        req = urllib.request.Request(url, data=body, headers=h, method=method)
+        try:
+            resp = urllib.request.urlopen(req, context=ssl_ctx, timeout=15)
+            return json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            if attempt < retries and e.code >= 500: time.sleep(1); continue
+            return {"_error": e.code, "_body": e.read().decode()[:300]}
+        except (urllib.error.URLError, TimeoutError) as e:
+            if attempt < retries: time.sleep(2); continue
+            return {"_error": str(e)[:200]}
+        except Exception as e:
+            return {"_error": str(e)[:200]}
+
+def api(method, path, data=None):
+    return _fetch(method, f"{BASE}{path}", data, {"apikey": KEY, "Authorization": f"Bearer {KEY}"})
 
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.popen(
     "grep SUPABASE_SERVICE_ROLE_KEY ~/Desktop/teb-app-production/.env.local | cut -d= -f2-"
@@ -13,20 +56,6 @@ REPO = os.path.expanduser("~/Desktop/teb-app-production")
 try: import certifi; ssl_ctx = ssl.create_default_context(cafile=certifi.where())
 except: ssl_ctx = ssl._create_unverified_context()
 
-def _fetch(method, url, data=None, headers=None):
-    h = {"Content-Type": "application/json", **(headers or {})}
-    body = json.dumps(data).encode() if data else None
-    req = urllib.request.Request(url, data=body, headers=h, method=method)
-    try:
-        resp = urllib.request.urlopen(req, context=ssl_ctx)
-        return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        return {"_error": e.code, "_body": e.read().decode()[:300]}
-    except Exception as e:
-        return {"_error": str(e)[:200]}
-
-def api(method, path, data=None):
-    return _fetch(method, f"{BASE}{path}", data, {"apikey": KEY, "Authorization": f"Bearer {KEY}"})
 
 def _get_users():
     return api("GET", "/auth/v1/admin/users").get("users", [])
