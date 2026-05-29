@@ -146,14 +146,14 @@ function App() {
             const errorMsg = error?.message || 'Nieznany błąd. Spróbuj ponownie.'
             
             // Lepsze error messages
-            if (errorMsg.includes('confirmation email') || errorMsg.includes('mail')) {
+            if (errorMsg.includes('Email not confirmed') || errorMsg.includes('not confirmed')) {
+                setAuthError('⚠️ Twoje konto nie zostało jeszcze potwierdzone. Sprawdź skrzynkę e-mail (także folder SPAM) i kliknij link potwierdzający. Nie dostałeś e-maila?')
+                setEmail(finalEmail)
+            } else if (errorMsg.includes('confirmation email') || errorMsg.includes('mail')) {
                 setAuthError('📧 Problem z wysyłką e-maila potwierdzającego. Spróbuj za minutę.')
             } else if (errorMsg.includes('already registered') || errorMsg.includes('user already')) {
                 setAuthError('⚠️ Ten e-mail jest już zarejestrowany. Zaloguj się, a jeśli nie dostałeś e-maila potwierdzającego — sprawdź folder SPAM.')
-            } else if (errorMsg.includes('Email not confirmed') || errorMsg.includes('not confirmed')) {
-     setAuthError('⚠️ Twoje konto nie zostało jeszcze potwierdzone. Sprawdź skrzynkę e-mail (także folder SPAM) i kliknij link potwierdzający. Nie dostałeś e-maila?')
-     setEmail(finalEmail)
- } else if (errorMsg.includes('Invalid login')) {
+            } else if (errorMsg.includes('Invalid login')) {
                 setAuthError('❌ Zły e-mail lub hasło.')
             } else if (errorMsg.includes('timeout') || errorMsg.includes('Abort')) {
                 setAuthError(`⏱️ Timeout (próba ${retryCount + 1}/3). Spróbuj ponownie.`)
