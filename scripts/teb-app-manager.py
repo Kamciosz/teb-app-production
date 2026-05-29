@@ -781,6 +781,156 @@ def cmd_archive(args):
         
         print(f"  Zarchiwizowano {len(old)} rekordow -> {out}")
 
+# ─── KOMENDY (64-75) ──────────────────────────────────────────
+
+def cmd_engagement(args):
+    """Metryki zaangazowania uzytkownikow."""
+    users = _get_users(); t = len(users)
+    c = sum(1 for u in users if u.get("email_confirmed_at"))
+    
+    # Content counts
+    posts = api("GET", "/rest/v1/feed_posts?select=id&limit=1")
+    comments = api("GET", "/rest/v1/feed_comments?select=id&limit=1")
+    rewear = api("GET", "/rest/v1/rewear_posts?select=id&limit=1")
+    groups = api("GET", "/rest/v1/groups?select=id&limit=1")
+    
+    p = len(posts) if isinstance(posts, list) else 0
+    co = len(comments) if isinstance(comments, list) else 0
+    r = len(rewear) if isinstance(rewear, list) else 0
+    g = len(groups) if isinstance(groups, list) else 0
+    
+    print("  Metryki zaangazowania:")
+    print(f"  Uzytkownicy:     {t}")
+    print(f"  Potwierdzeni:    {c} ({c/t*100:.0f}%)" if t else "")
+    print(f"  Posty na feed:   {p}")
+    print(f"  Komentarze:      {co}")
+    print(f"  Oferty gieldy:   {r}")
+    print(f"  Grupy:           {g}")
+    if t:
+        print(f"  Posty/osoba:     {p/t:.1f}")
+        print(f"  Grupy/osoba:     {g/t:.1f}")
+
+def cmd_timeline(args):
+    """Os czasu - ostatnie zdarzenia."""
+    users = _get_users()
+    events = []
+    
+    # New registrations
+    for u in users:
+        events.append((u["created_at"], "REJESTRACJA", u["email"], ""))
+        if u.get("email_confirmed_at"):
+            events.append((u["email_confirmed_at"], "POTWIERDZENIE", u["email"], ""))
+        if u.get("last_sign_in_at"):
+            events.append((u["last_sign_in_at"], "LOGOWANIE", u["email"], ""))
+    
+    # Error events
+    errors = api("GET", "/rest/v1/error_logs?limit=50&order=created_at.desc")
+    if isinstance(errors, list):
+        for e in errors:
+            events.append((e.get("created_at",""), f"BLAD:{e.get('level','?')}", e.get("source","?"), e.get("message","")[:40]))
+    
+    events.sort(reverse=True)
+    print("  Os zdarzen (ostatnie 30):")
+    for ts, typ, who, what in events[:30]:
+        d = ts[:16] if ts else "?";
+        print(f"  {d} [{typ:15s}] {who:35s} {what}")
+
+def cmd_popular(args):
+    """Najpopularniejsze tresci."""
+    posts = api("GET", "/rest/v1/feed_posts?select=id,title,created_at,author_id&order=created_at.desc&limit=20")
+    if not isinstance(posts, list): print("  Blad"); return
+    print("  Ostatnie posty:")
+    for p in posts[:10]:
+        title = (p.get("title") or "?")[:60]
+        dt = p.get("created_at","")[:10]
+        print(f"  {dt} {title}")
+
+def cmd_permissions(args):
+    """Macierz uprawnien uzytkownikow."""
+    users = _get_users()
+    print("  Macierz uprawnien:")
+    # Group by roles
+    from collections import Counter
+    role_matrix = Counter()
+    for u in users:
+        roles = tuple(sorted(u.get("app_metadata",{}).get("roles",["student"])))
+        role_matrix[roles] += 1
+    
+    for roles, count in role_matrix.most_common():
+        print(f"  {str(roles):40s} x{count}")
+    
+    # Who has which roles
+    print("\n  Uzytkownicy z rolami niestandardowymi:")
+    for u in users:
+        roles = u.get("app_metadata",{}).get("roles",["student"])
+        if roles != ["student"] and roles:
+            print(f"  {u['email']:35s} roles={roles}")
+
+def cmd_search_all(args):
+    """Szukaj we wszystkich tabelach."""
+    q = args.filter or args.email or ""
+    if not q: print("  Uzyj: teb-app search --filter 'fraza'"); return
+    
+    tables = ["profiles","feed_posts","feed_comments","groups","error_logs"]
+    print(f"  Szukam '{q}' w {len(tables)} tabelach...")
+    found = 0
+    for table in tables:
+        try:
+            r = api("GET", f"/rest/v1/{table}?select=*&limit=200")
+            if not isinstance(r, list): continue
+            ql = q.lower()
+            for row in r:
+                for val in row.values():
+                    if isinstance(val, str) and ql in val.lower():
+                        id_val = row.get("id", row.get("email", "?"))
+                        print(f"  [{table}] {str(id_val)[:20]:20s} {str(val)[:80]}")
+                        found += 1
+                        break
+        except: pass
+    if not found: print(f"  Brak wynikow.")
+
+def cmd_weather(args):
+    """Raport pogodowy systemu (wszystko OK czy nie)."""
+    h = _fetch("GET", f"{VERCEL}/api/health")
+    users = _get_users(); t = len(users)
+    c = sum(1 for u in users if u.get("email_confirmed_at"))
+    
+    smtp_ok = h.get("checks",{}).get("smtp",{}).get("status")=="ok"
+    sup_ok = h.get("checks",{}).get("supabase",{}).get("status")=="ok"
+    all_green = smtp_ok and sup_ok and t > 0
+    
+    icon = "SUNNY" if all_green else "CLOUDY"
+    print(f"  ☀️  Weather: {icon}")
+    print(f"  {t} uzytkownikow, {c} potwierdzonych")
+    print(f"  SMTP: {'OK' if smtp_ok else 'ERR'}  Supabase: {'OK' if sup_ok else 'ERR'}")
+    print(f"  Wszystkie systemy: {'DZIALAJA' if all_green else 'PROBLEMY'}")
+
+def cmd_self_update(args):
+    """Sprawdz aktualizacje narzedzia."""
+    r = subprocess.run(["git","log","--oneline","-1","--format=%H %ai"], capture_output=True, text=True, cwd=REPO)
+    local = r.stdout.strip()
+    r2 = subprocess.run(["git","fetch","--quiet"], capture_output=True, text=True, cwd=REPO, timeout=10)
+    r3 = subprocess.run(["git","log","--oneline","-1","--format=%H %ai","origin/main"], capture_output=True, text=True, cwd=REPO)
+    remote = r3.stdout.strip()
+    
+    print(f"  Lokalnie: {local[:50]}")
+    print(f"  Remote:   {remote[:50]}")
+    print(f"  {'Aktualny' if local[:40] == remote[:40] else 'Dostepna aktualizacja - uruchom git pull'}")
+
+def cmd_feedback(args):
+    """Pokazuje opinie/zgloszenia uzytkownikow."""
+    reports = api("GET", "/rest/v1/reports?limit=20&order=created_at.desc&select=id,reason,description,status,created_at,reporter:profiles!reporter_id(full_name)")
+    if not isinstance(reports, list): print("  Blad lub brak raportow"); return
+    print("  Zgloszenia uzytkownikow:")
+    pending = sum(1 for r in reports if r.get("status")=="pending")
+    print(f"  Oczekujace: {pending}")
+    for r in reports[:10]:
+        status = r.get("status","?")
+        reason = (r.get("reason") or "?")[:30]
+        reporter = r.get("reporter",{}).get("full_name","?") if isinstance(r.get("reporter"),dict) else "?"
+        dt = r.get("created_at","")[:10]
+        print(f"  [{status[:4]}] {dt} {reporter:15s} {reason}")
+
 # ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -801,7 +951,10 @@ if __name__ == "__main__":
         "tables":cmd_tables,"config":cmd_config,"audit-trail":cmd_audit_trail,
         "supa-ping":cmd_supa_ping,"headers":cmd_headers,"db-size":cmd_db_size,
         "recent-errors":cmd_recent_errors,"dns-all":cmd_dns_all,
-        "token-check":cmd_token_check,"compare-models":cmd_compare_models,"archive":cmd_archive
+        "token-check":cmd_token_check,"compare-models":cmd_compare_models,"archive":cmd_archive,
+        "engagement":cmd_engagement,"timeline":cmd_timeline,"popular":cmd_popular,
+        "permissions":cmd_permissions,"search":cmd_search_all,"weather":cmd_weather,
+        "self-update":cmd_self_update,"feedback":cmd_feedback
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
