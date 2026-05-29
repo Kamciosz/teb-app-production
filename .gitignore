@@ -1,25 +1,32 @@
-node_modules
-.env
+# TEB-App Production
+node_modules/
+dist/
 .env.local
-.env.*.local
-dist
-.DS_Store
 *.log
-.vscode/.history
+.DS_Store
 
-# Temp/uploaded files (except .gitkeep)
-reports/*
-!reports/.gitkeep
-tmp_uploads/*
-!tmp_uploads/.gitkeep
-test-results/*
-!test-results/.gitkeep
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
 
-# Playwright/dev cache
-.playwright-mcp/
-.vercel
-.env*.local
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# Database backups (saved locally, never committed)
-teb-app-backups/
+# Backup
 backup-*.json
+gdpr-*.json
+raport-*.html
+email-preview-*.html
+archive-*.json
+health-history.json
+
+# Daemon
+teb-app-daemon.json
+daemon.log
+daemon.err
