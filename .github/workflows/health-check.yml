@@ -1,0 +1,41 @@
+name: TEB-App Health Check
+on:
+  schedule:
+    - cron: '0 * * * *'   # co godzine
+  workflow_dispatch:       # reczne uruchomienie
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Health check
+        run: |
+          echo "=== TEB-App Health Check ==="
+          echo "Timestamp: $(date -u)"
+          
+          # Check HTTP status
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" https://teb-app-production.vercel.app)
+          echo "Frontend: HTTP $HTTP"
+          
+          HTML=$(curl -s https://teb-app-production.vercel.app | head -5)
+          echo "Title: $(echo "$HTML" | grep -o '<title>[^<]*' | head -1)"
+          
+          # Check API health
+          HEALTH=$(curl -s https://teb-app-production.vercel.app/api/health)
+          echo "API health: $HEALTH"
+          
+          # Check SSL
+          SSL=$(curl -sI https://teb-app.pl | grep -i "strict-transport" || echo "no HSTS")
+          echo "SSL: $SSL"
+          
+          # DNS check
+          DNS=$(dig +short teb-app.pl)
+          echo "DNS: $DNS"
+          
+      - name: Status summary
+        run: |
+          echo "### $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: https://teb-app.pl" >> $GITHUB_STEP_SUMMARY
+          echo "- API: https://teb-app-production.vercel.app/api/health" >> $GITHUB_STEP_SUMMARY
