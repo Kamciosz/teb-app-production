@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 _JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
 if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
 VERSION = "7.3"
-COMMANDS_COUNT = 68
+COMMANDS_COUNT = 76
 
 if "--version" in sys.argv or "-V" in sys.argv:
     print(f"TEB-App Manager v{VERSION} — {COMMANDS_COUNT} komend")
@@ -1264,6 +1264,92 @@ def cmd_rotate_backups(args):
     print(f"  Usunieto: {deleted} ({'>'+str(days)} dni)")
     print(f"  Zachowano: {kept}")
 
+def cmd_schema_viz(args):
+    """Wizualizacja schematu bazy - diagram relacji (ASCII + Mermaid)."""
+    known_tables = ["profiles","feed_posts","feed_comments","feed_votes","rewear_posts",
+        "reports","moderation_audit_log","error_logs","groups","group_messages",
+        "punishment_appeals","chat_groups","chat_group_members","chat_messages",
+        "pending_signups","user_sessions","notifications"]
+    table_names = []
+    for t in known_tables:
+        r = api("GET", "/rest/v1/" + t + "?select=id&limit=1")
+        if isinstance(r, list):
+            table_names.append(t)
+    
+    print("  " + G("=== SCHEMAT BAZY ==="))
+    print("  Tabele (%d):" % len(table_names))
+    print()
+    
+    for t in table_names:
+        col_resp = api("GET", "/rest/v1/information_schema.columns?select=column_name,data_type&table_name=eq." + t)
+        cols = []
+        if isinstance(col_resp, list):
+            for col in col_resp[:6]:
+                cn = col.get("column_name","?")
+                dt = col.get("data_type","?")[:10]
+                cols.append("%s:%s" % (cn, dt))
+        
+        cnt = api("GET", "/rest/v1/" + t + "?select=id&limit=1")
+        rows = len(cnt) if isinstance(cnt, list) else 0
+        row_info = " [%d wierszy]" % rows if rows else " [pusta]"
+        
+        print("  +- " + G(t) + row_info)
+        for col in cols[:5]:
+            print("     |-- " + D(col))
+        if len(cols) > 5:
+            print("     |-- " + D("... + %d more" % (len(cols)-5)))
+        print()
+    
+    print("  " + G("Mermaid:"))
+    print("  ```mermaid")
+    print("  erDiagram")
+    for t in table_names:
+        print("    " + t + " {")
+        col_resp = api("GET", "/rest/v1/information_schema.columns?select=column_name,data_type&table_name=eq." + t)
+        if isinstance(col_resp, list):
+            for col in col_resp[:5]:
+                cn = col.get("column_name","?"); dt = col.get("data_type","?")[:10]
+                print("      " + dt + " " + cn)
+        print("    }")
+        print()
+    print("  ```")
+
+
+def cmd_gdpr_export(args):
+    """Eksport danych uzytkownika (RODO/GDPR)."""
+    q = args.email or args.filter or ""
+    if not q: print("  Uzyj: teb-app gdpr-export --email user@teb.edu.pl"); return
+    
+    u = _find_user(q)
+    if not u: print("  Nie znaleziono: " + q); return
+    uid = u["id"]; email = u["email"]
+    
+    print("  Eksportuje dane dla: " + email)
+    
+    data = {
+        "profile": api("GET", "/rest/v1/profiles?id=eq." + uid),
+        "feed_posts": api("GET", "/rest/v1/feed_posts?author_id=eq." + uid + "&limit=100"),
+        "feed_comments": api("GET", "/rest/v1/feed_comments?author_id=eq." + uid + "&limit=100"),
+        "auth": {
+            "email": u["email"],
+            "created_at": u["created_at"],
+            "confirmed_at": u.get("email_confirmed_at"),
+            "last_sign_in": u.get("last_sign_in_at"),
+            "roles": u.get("app_metadata",{}).get("roles",[]),
+        }
+    }
+    
+    out = os.path.expanduser("~/Desktop/teb-app-backups/gdpr-" + email.replace("@","_at_") + "-" + datetime.now().strftime("%Y-%m-%d") + ".json")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w") as f: json.dump(data, f, indent=2, default=str, ensure_ascii=False)
+    
+    total = sum(len(v) if isinstance(v, list) else 1 for v in data.values())
+    print("  Wyeksportowano ~%d rekordow" % total)
+    print("  Plik: " + out)
+
+# Also add to cmds dict
+
+
 # ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -1292,7 +1378,8 @@ if __name__ == "__main__":
         "quick":cmd_quick,
         "self-test":cmd_self_test,"email-preview":cmd_email_preview,
         "restore":cmd_restore,"report-daily":cmd_report_daily,
-        "analyze":cmd_analyze,"rotate-backups":cmd_rotate_backups
+        "analyze":cmd_analyze,"rotate-backups":cmd_rotate_backups,
+        "schema-viz":cmd_schema_viz,"gdpr-export":cmd_gdpr_export
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
