@@ -246,6 +246,14 @@ export default async function handler(req, res) {
 
     const confirmationUrl = linkData.properties.action_link;
 
+    // Calculate expiry time for the email (24h from now, Polish timezone)
+    const expiryDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiryFormatted = expiryDate.toLocaleString('pl-PL', {
+      timeZone: 'Europe/Warsaw',
+      day: 'numeric', month: 'long', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+
     // Send email via Brevo
     const emailHtml = `<!DOCTYPE html>
 <html><body style="font-family:Arial,sans-serif;padding:20px;max-width:500px;margin:0 auto;">
@@ -257,7 +265,7 @@ export default async function handler(req, res) {
 <div style="text-align:center;margin:30px 0;">
   <a href="${confirmationUrl}" style="display:inline-block;padding:14px 36px;background:#c8102e;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;">Potwierdź e-mail</a>
 </div>
-<p style="color:#666;font-size:13px;">Link wygasa za 24 godziny. Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość.</p>
+<p style="color:#666;font-size:13px;">Link wygasa ${expiryFormatted}. Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość.</p>
 <hr style="border:1px solid #eee;margin:20px 0;">
 <p style="color:#999;font-size:12px;">TEB-App — portal szkolny dla uczniów TEB Warszawa</p>
 </body></html>`;

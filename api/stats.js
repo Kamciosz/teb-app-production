@@ -68,11 +68,25 @@ export default async function handler(req, res) {
       });
     }
 
+    // Unconfirmed users
+    const unconfirmed_users = total_users - confirmed_users;
+    const unconfirmed_list = users
+      .filter(u => !u.email_confirmed_at)
+      .map(u => ({
+        email: u.email,
+        created_at: u.created_at
+      }))
+      // sort newest first
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
     return res.status(200).json({
       total_users,
       confirmed_users,
       users_last_24h,
-      users_by_day
+      users_by_day,
+      unconfirmed_users,
+      emails_sent_today: 0, // mock – no counter yet
+      unconfirmed_list
     });
   } catch (error) {
     console.error('[STATS ERROR]', error);

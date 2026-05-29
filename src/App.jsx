@@ -44,6 +44,9 @@ function App() {
     const [isLoading, setIsLoading] = useState(false)
     const [isResendingConfirmation, setIsResendingConfirmation] = useState(false)
     const [retryCount, setRetryCount] = useState(0)
+    const [showPassword, setShowPassword] = useState(false)
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+    const [resendAvailable, setResendAvailable] = useState(false)
 
     const extractNameFromEmail = (mail) => {
         const parts = mail.split('@')[0].split('.');
@@ -109,6 +112,7 @@ function App() {
                     if (signupResult?.note) {
                         setAuthMessage('ℹ️ Konto może już istnieć. Przejdź do logowania i użyj opcji "Wyślij ponownie e-mail potwierdzający". Sprawdź też folder SPAM.')
                         setIsRegister(false)
+                        setResendAvailable(true)
                         setEmail(finalEmail)
                         setPassword('')
                         setConfirmPassword('')
@@ -149,6 +153,7 @@ function App() {
             if (errorMsg.includes('Email not confirmed') || errorMsg.includes('not confirmed')) {
                 setAuthError('⚠️ Twoje konto nie zostało jeszcze potwierdzone. Sprawdź skrzynkę e-mail (także folder SPAM) i kliknij link potwierdzający. Nie dostałeś e-maila?')
                 setEmail(finalEmail)
+                setResendAvailable(true)
             } else if (errorMsg.includes('confirmation email') || errorMsg.includes('mail')) {
                 setAuthError('📧 Problem z wysyłką e-maila potwierdzającego. Spróbuj za minutę.')
             } else if (errorMsg.includes('already registered') || errorMsg.includes('user already')) {
@@ -364,21 +369,39 @@ function App() {
                                     value={email} onChange={e => setEmail(e.target.value)}
                                     disabled={isLoading}
                                 />
-                                <input
-                                    type="password" placeholder="Hasło" required
-                                    minLength={isRegister ? 8 : undefined}
-                                    className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50"
-                                    value={password} onChange={e => setPassword(e.target.value)}
-                                    disabled={isLoading}
-                                />
+                                <div className="relative">
+                                    <input
+                                        type={showPassword ? 'text' : 'password'} placeholder="Hasło" required
+                                        minLength={isRegister ? 8 : undefined}
+                                        className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50 w-full pr-10"
+                                        value={password} onChange={e => setPassword(e.target.value)}
+                                        disabled={isLoading}
+                                    />
+                                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs disabled:opacity-50"
+                                        disabled={isLoading}
+                                        tabIndex={-1}
+                                    >
+                                        {showPassword ? '🙈' : '👁️'}
+                                    </button>
+                                </div>
                                 {isRegister && (
                                     <>
-                                        <input
-                                            type="password" placeholder="Potwierdź hasło (Min. 8 znaków)" required minLength={8}
-                                            className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50"
-                                            value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                                            disabled={isLoading}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showConfirmPassword ? 'text' : 'password'} placeholder="Potwierdź hasło (Min. 8 znaków)" required minLength={8}
+                                                className="p-3 rounded-xl bg-surface border border-gray-700 outline-none focus:border-primary text-white transition disabled:opacity-50 w-full pr-10"
+                                                value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                                                disabled={isLoading}
+                                            />
+                                            <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 text-xs disabled:opacity-50"
+                                                disabled={isLoading}
+                                                tabIndex={-1}
+                                            >
+                                                {showConfirmPassword ? '🙈' : '👁️'}
+                                            </button>
+                                        </div>
                                         <div className="text-xs text-gray-500 px-2">
                                             Hasło: {password.length} / 8 znaków
                                         </div>
@@ -424,7 +447,7 @@ function App() {
                                     </button>
                                 )}
 
-                                {!isRegister && authError && (authError.includes('Potwierdź swoją rejestrację') || authError.includes('konto nie zostało jeszcze potwierdzone')) && (
+                                {resendAvailable && (
                                     <button
                                         type="button"
                                         onClick={handleResendConfirmation}
@@ -436,7 +459,7 @@ function App() {
                                 )}
                             </form>
 
-                            <button onClick={() => { setIsRegister(!isRegister); setAuthError(''); setAuthMessage('') }} className="mt-6 text-sm text-gray-500 underline">
+                            <button onClick={() => { setIsRegister(!isRegister); setAuthError(''); setAuthMessage(''); setResendAvailable(false) }} className="mt-6 text-sm text-gray-500 underline">
                                 {isRegister ? 'Masz już konto? Zaloguj się' : 'Jesteś tu pierwszy raz? Zarejestruj się'}
                             </button>
 

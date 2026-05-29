@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText, BarChart3, Bug, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ShieldAlert, Search, UserMinus, UserCheck, CheckCircle, XCircle, AlertOctagon, Hash, Trash2, Loader2, Scale, ScrollText, BarChart3, Bug, Activity, ChevronLeft, ChevronRight, Mail, X, Clock, ExternalLink, Send, Server, Wifi, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../services/supabase'
 import { CleanupService } from '../../services/cleanupService'
 import { sanitizePlainText } from '../../utils/safeContent'
@@ -30,11 +30,30 @@ export default function Admin() {
     // --- Dashboard & Logs state ---
     const [dashboardStats, setDashboardStats] = useState(null)
     const [dashboardLoading, setDashboardLoading] = useState(false)
+    const [resendingEmail, setResendingEmail] = useState(null) // email string or null
+    const [resendMessage, setResendMessage] = useState('')
     const [errorLogs, setErrorLogs] = useState([])
     const [logsLoading, setLogsLoading] = useState(false)
     const [logsPage, setLogsPage] = useState(1)
     const [logsTotal, setLogsTotal] = useState(0)
     const LOGS_PER_PAGE = 20
+
+    // --- System health check state ---
+    const [healthStatus, setHealthStatus] = useState(null)
+    const [healthLoading, setHealthLoading] = useState(false)
+    const [healthLastUpdate, setHealthLastUpdate] = useState(null)
+    const [testEmail, setTestEmail] = useState('')
+    const [testEmailLoading, setTestEmailLoading] = useState(false)
+    const [testEmailResult, setTestEmailResult] = useState(null)
+    const [systemLogs, setSystemLogs] = useState([])
+    const [systemLogsLoading, setSystemLogsLoading] = useState(false)
+
+    // --- User details modal state ---
+    const [selectedUserId, setSelectedUserId] = useState(null)
+    const [showUserModal, setShowUserModal] = useState(false)
+    const [selectedUserDetails, setSelectedUserDetails] = useState(null)
+    const [fetchingDetails, setFetchingDetails] = useState(false)
+    const [modalBanDuration, setModalBanDuration] = useState('1440')
 
     const ROLES = ['student', 'teacher', 'admin', 'editor', 'moderator_content', 'moderator_users', 'su_member']
 
@@ -46,9 +65,13 @@ export default function Admin() {
         if (myRoles.length === 0) return
         fetchViewData(view, myRoles)
 
-        // Fetch dashboard / logs on tab switch
+        // Fetch dashboard / logs / health on tab switch
         if (view === 'dashboard') fetchDashboardStats()
         if (view === 'logs') fetchErrorLogs(1)
+        if (view === 'system') {
+            fetchHealthStatus()
+            fetchSystemLogs()
+        }
     }, [view, myRoles])
 
     async function fetchDashboardStats() {
@@ -61,6 +84,29 @@ export default function Admin() {
             setDashboardStats(null)
         } finally {
             setDashboardLoading(false)
+        }
+    }
+
+    async function handleResendConfirmation(email) {
+        setResendingEmail(email)
+        setResendMessage('')
+        try {
+            const res = await fetch('/api/auth/resend-confirmation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            })
+            const data = await res.json()
+            if (res.ok) {
+                setResendMessage(`✅ Wysłano ponownie na ${email}`)
+            } else {
+                setResendMessage(`❌ ${data.error || 'Błąd wysyłania'}`)
+            }
+        } catch (err) {
+            setResendMessage(`❌ Błąd sieci: ${err.message}`)
+        } finally {
+            setResendingEmail(null)
+            setTimeout(() => setResendMessage(''), 4000)
         }
     }
 
@@ -93,6 +139,51 @@ export default function Admin() {
             alert(`🚛 Sprzątanie zakończone!\nUsunięto:\n- ${result.deleted.chat} wiadomości\n- ${result.deleted.rewear} ofert giełdy\n- ${result.deleted.reports} raportów`)
         } else {
             alert("❌ Błąd podczas sprzątania: " + result.error)
+        }
+    }
+
+    async function fetchHealthStatus() {
+        setHealthLoading(true)
+        try {
+            const res = await fetch('/api/health')
+            const data = await res.json()
+            setHealthStatus(data)
+        } catch {
+            setHealthStatus(null)
+        } finally {
+            setHealthLoading(false)
+            setHealthLastUpdate(new Date().toISOString())
+        }
+    }
+
+    async function handleSendTestEmail() {
+        if (!testEmail.trim()) {
+            alert('Podaj adres email do testu.')
+            return
+        }
+        setTestEmailLoading(true)
+        setTestEmailResult(null)
+        try {
+            const res = await fetch(`/api/health?send=true&to=${encodeURIComponent(testEmail.trim())}`)
+            const data = await res.json()
+            setTestEmailResult(data)
+        } catch (err) {
+            setTestEmailResult({ error: err.message })
+        } finally {
+            setTestEmailLoading(false)
+        }
+    }
+
+    async function fetchSystemLogs() {
+        setSystemLogsLoading(true)
+        try {
+            const res = await fetch('/api/logs?limit=10')
+            const data = await res.json()
+            setSystemLogs(data.logs || [])
+        } catch {
+            setSystemLogs([])
+        } finally {
+            setSystemLogsLoading(false)
         }
     }
 
@@ -261,6 +352,51 @@ export default function Admin() {
             }
         }))
     }
+
+    async function openUserModal(user) {
+        setSelectedUserId(user.id)
+        setShowUserModal(true)
+        setFetchingDetails(true)
+        setSelectedUserDetails(null)
+        setModalBanDuration('1440')
+
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('id, full_name, email, roles, role, is_banned, banned_until, created_at')
+                .eq('id', user.id)
+                .single()
+
+            if (error) {
+                console.error('Error fetching user details:', error)
+                setSelectedUserDetails(user)
+            } else {
+                setSelectedUserDetails(data)
+            }
+        } catch (err) {
+            console.error('Error:', err)
+            setSelectedUserDetails(user)
+        } finally {
+            setFetchingDetails(false)
+        }
+    }
+
+    function closeUserModal() {
+        setShowUserModal(false)
+        setSelectedUserId(null)
+        setSelectedUserDetails(null)
+    }
+
+    // Handle Escape key to close modal
+    useEffect(() => {
+        function handleKeyDown(e) {
+            if (e.key === 'Escape') closeUserModal()
+        }
+        if (showUserModal) {
+            document.addEventListener('keydown', handleKeyDown)
+            return () => document.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [showUserModal])
 
     async function resolveReport(reportId, status) {
         // status: 'resolved' lub 'dismissed'
@@ -490,63 +626,196 @@ export default function Admin() {
                     ) : dashboardStats ? (
                         <>
                             {/* Karty statystyk */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-4 sm:p-5">
                                     <div className="flex items-center gap-3 mb-3">
                                         <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-500 flex items-center justify-center">
                                             <UserCheck size={20} />
                                         </div>
                                         <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Total Users</span>
                                     </div>
-                                    <div className="text-3xl font-black text-white">{dashboardStats.total_users ?? '—'}</div>
+                                    <div className="text-2xl sm:text-3xl font-black text-white">{dashboardStats.total_users ?? '—'}</div>
                                 </div>
-                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-4 sm:p-5">
                                     <div className="flex items-center gap-3 mb-3">
                                         <div className="w-10 h-10 rounded-xl bg-green-500/20 text-green-500 flex items-center justify-center">
                                             <CheckCircle size={20} />
                                         </div>
                                         <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Confirmed</span>
                                     </div>
-                                    <div className="text-3xl font-black text-white">{dashboardStats.confirmed ?? '—'}</div>
+                                    <div className="text-2xl sm:text-3xl font-black text-white">{dashboardStats.confirmed_users ?? '—'}</div>
                                 </div>
-                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-4 sm:p-5">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-500 flex items-center justify-center">
+                                            <XCircle size={20} />
+                                        </div>
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Niepotwierdzone</span>
+                                    </div>
+                                    <div className="text-2xl sm:text-3xl font-black text-white">{dashboardStats.unconfirmed_users ?? '—'}</div>
+                                </div>
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-4 sm:p-5">
                                     <div className="flex items-center gap-3 mb-3">
                                         <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center">
                                             <Activity size={20} />
                                         </div>
                                         <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Ostatnie 24h</span>
                                     </div>
-                                    <div className="text-3xl font-black text-white">{dashboardStats.last_24h ?? '—'}</div>
+                                    <div className="text-2xl sm:text-3xl font-black text-white">{dashboardStats.users_last_24h ?? '—'}</div>
+                                </div>
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-4 sm:p-5">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-500 flex items-center justify-center">
+                                            <Send size={20} />
+                                        </div>
+                                        <span className="text-[10px] uppercase tracking-widest font-bold text-gray-500">Emaili dziś</span>
+                                    </div>
+                                    <div className="text-2xl sm:text-3xl font-black text-white">{dashboardStats.emails_sent_today ?? '—'}</div>
                                 </div>
                             </div>
 
-                            {/* Wykres 7-dniowy */}
+                            {/* Wykresy - równoległe */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Wykres 7-dniowy: rejestracje */}
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                    <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                                        <BarChart3 size={16} className="text-red-500" />
+                                        Rejestracje w ostatnich 7 dniach
+                                    </h3>
+                                    {dashboardStats.users_by_day && dashboardStats.users_by_day.length > 0 ? (
+                                        <div className="flex items-end gap-2 h-28">
+                                            {dashboardStats.users_by_day.map((day, i) => {
+                                                const allCounts = dashboardStats.users_by_day.map(d => d.count)
+                                                const maxVal = Math.max(...allCounts, 1)
+                                                const heightPct = (day.count / maxVal) * 100
+                                                const label = day.date ? day.date.slice(5) : ''
+                                                return (
+                                                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                                                        <span className="text-[9px] text-gray-500 font-bold">{day.count}</span>
+                                                        <div
+                                                            className="w-full rounded-md bg-gradient-to-t from-red-600 to-red-400 transition-all hover:opacity-80"
+                                                            style={{ height: `${Math.max(heightPct, 2)}%` }}
+                                                            title={`${day.date}: ${day.count} rejestracji`}
+                                                        />
+                                                        <span className="text-[8px] text-gray-600 uppercase">{label}</span>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-800 rounded-xl">
+                                            Brak danych do wyświetlenia wykresu.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Wykres 7-dniowy: rejestracje vs potwierdzenia */}
+                                <div className="bg-surface border border-gray-800 rounded-2xl p-5">
+                                    <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                                        <CheckCircle size={16} className="text-blue-500" />
+                                        Rejestracje vs Potwierdzenia
+                                    </h3>
+                                    {dashboardStats.unconfirmed_users !== undefined ? (
+                                        <div className="flex flex-col gap-4">
+                                            {/* Wizualizacja procentowa */}
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs text-gray-500 font-bold w-20 shrink-0">Potwierdzone</span>
+                                                <div className="flex-1 bg-gray-800 rounded-full h-4 overflow-hidden">
+                                                    <div
+                                                        className="h-full rounded-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all"
+                                                        style={{ width: `${dashboardStats.total_users > 0 ? (dashboardStats.confirmed_users / dashboardStats.total_users) * 100 : 0}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-xs text-green-400 font-bold w-12 text-right">{dashboardStats.total_users > 0 ? Math.round((dashboardStats.confirmed_users / dashboardStats.total_users) * 100) : 0}%</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs text-gray-500 font-bold w-20 shrink-0">Niepotwierdzone</span>
+                                                <div className="flex-1 bg-gray-800 rounded-full h-4 overflow-hidden">
+                                                    <div
+                                                        className="h-full rounded-full bg-gradient-to-r from-red-500 to-red-400 transition-all"
+                                                        style={{ width: `${dashboardStats.total_users > 0 ? (dashboardStats.unconfirmed_users / dashboardStats.total_users) * 100 : 0}%` }}
+                                                    />
+                                                </div>
+                                                <span className="text-xs text-red-400 font-bold w-12 text-right">{dashboardStats.total_users > 0 ? Math.round((dashboardStats.unconfirmed_users / dashboardStats.total_users) * 100) : 0}%</span>
+                                            </div>
+                                            {/* Liczby bezwzględne */}
+                                            <div className="flex gap-4 mt-2">
+                                                <div className="flex-1 bg-green-500/10 border border-green-500/30 rounded-xl p-3 text-center">
+                                                    <div className="text-lg font-black text-green-400">{dashboardStats.confirmed_users ?? 0}</div>
+                                                    <div className="text-[9px] uppercase tracking-widest text-gray-500 font-bold mt-1">Potwierdzone</div>
+                                                </div>
+                                                <div className="flex-1 bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-center">
+                                                    <div className="text-lg font-black text-red-400">{dashboardStats.unconfirmed_users ?? 0}</div>
+                                                    <div className="text-[9px] uppercase tracking-widest text-gray-500 font-bold mt-1">Niepotwierdzone</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-800 rounded-xl">
+                                            Brak danych.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Ostatnie rejestracje */}
                             <div className="bg-surface border border-gray-800 rounded-2xl p-5">
                                 <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
-                                    <BarChart3 size={16} className="text-red-500" />
-                                    Aktywność w ostatnich 7 dniach
+                                    <Mail size={16} className="text-purple-500" />
+                                    Ostatnie rejestracje
+                                    {dashboardStats.unconfirmed_list && dashboardStats.unconfirmed_list.length > 0 && (
+                                        <span className="ml-auto text-[10px] uppercase tracking-widest font-bold text-red-400">
+                                            {dashboardStats.unconfirmed_list.length} niepotwierdzonych
+                                        </span>
+                                    )}
                                 </h3>
-                                {dashboardStats.chart_data && dashboardStats.chart_data.length > 0 ? (
-                                    <div className="flex items-end gap-2 h-28">
-                                        {dashboardStats.chart_data.map((day, i) => {
-                                            const maxVal = Math.max(...dashboardStats.chart_data.map(d => d.value), 1)
-                                            const heightPct = (day.value / maxVal) * 100
-                                            return (
-                                                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                                                    <span className="text-[9px] text-gray-500 font-bold">{day.value}</span>
-                                                    <div
-                                                        className="w-full rounded-md bg-gradient-to-t from-red-600 to-red-400 transition-all hover:opacity-80"
-                                                        style={{ height: `${Math.max(heightPct, 2)}%` }}
-                                                        title={`${day.label}: ${day.value}`}
-                                                    />
-                                                    <span className="text-[8px] text-gray-600 uppercase">{day.label}</span>
-                                                </div>
-                                            )
-                                        })}
+                                {resendMessage && (
+                                    <div className="mb-3 text-xs text-gray-300 bg-gray-800/50 rounded-lg px-3 py-2 border border-gray-700">
+                                        {resendMessage}
+                                    </div>
+                                )}
+                                {dashboardStats.unconfirmed_list && dashboardStats.unconfirmed_list.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs">
+                                            <thead>
+                                                <tr className="border-b border-gray-800">
+                                                    <th className="text-left py-2 px-2 text-gray-500 uppercase tracking-widest font-bold">Email</th>
+                                                    <th className="text-left py-2 px-2 text-gray-500 uppercase tracking-widest font-bold hidden sm:table-cell">Data rejestracji</th>
+                                                    <th className="text-right py-2 px-2 text-gray-500 uppercase tracking-widest font-bold">Akcja</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {dashboardStats.unconfirmed_list.map((u, i) => (
+                                                    <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
+                                                        <td className="py-2.5 px-2 text-gray-300 font-medium truncate max-w-[200px] sm:max-w-none">
+                                                            {u.email}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-gray-500 hidden sm:table-cell">
+                                                            {u.created_at ? new Date(u.created_at).toLocaleDateString('pl-PL', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                        </td>
+                                                        <td className="py-2.5 px-2 text-right">
+                                                            <button
+                                                                onClick={() => handleResendConfirmation(u.email)}
+                                                                disabled={resendingEmail === u.email}
+                                                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/30 text-[10px] font-bold hover:bg-blue-500/20 transition disabled:opacity-50"
+                                                            >
+                                                                {resendingEmail === u.email ? (
+                                                                    <Loader2 size={12} className="animate-spin" />
+                                                                ) : (
+                                                                    <Send size={12} />
+                                                                )}
+                                                                Wyślij ponownie
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 ) : (
                                     <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-800 rounded-xl">
-                                        Brak danych do wyświetlenia wykresu.
+                                        <Mail size={32} className="mx-auto mb-2 opacity-20" />
+                                        Wszystkie konta są potwierdzone.
                                     </div>
                                 )}
                             </div>
@@ -560,9 +829,10 @@ export default function Admin() {
                 </div>
             )}
 
-            {/* Widok: System / Śmieciarka */}
+            {/* Widok: System */}
             {view === 'system' && (
                 <div className="flex flex-col gap-6 fade-in px-2">
+                    {/* ---- Panel: Śmieciarka ---- */}
                     <div className="bg-surface border border-gray-800 p-6 rounded-2xl shadow-xl">
                         <div className="flex items-center gap-4 mb-6">
                             <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)]">
@@ -628,6 +898,261 @@ export default function Admin() {
                             </div>
                         </div>
                     )}
+
+                    {/* ---- Panel: Status systemu ---- */}
+                    <div className="bg-surface border border-gray-800 p-6 rounded-2xl shadow-xl">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-14 h-14 rounded-2xl bg-blue-500/20 text-[#006DAE] flex items-center justify-center shadow-[0_0_20px_rgba(0,109,174,0.2)]">
+                                <Server size={30} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Status systemu</h3>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mt-1">Diagnostyka połączeń</p>
+                            </div>
+                        </div>
+
+                        {healthLoading ? (
+                            <div className="flex items-center justify-center py-8 text-gray-500">
+                                <Loader2 size={24} className="animate-spin mr-3" /> Sprawdzanie statusu...
+                            </div>
+                        ) : !healthStatus ? (
+                            <div className="text-center text-gray-500 py-8 border border-dashed border-gray-800 rounded-xl">
+                                <Server size={32} className="mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">Nie można pobrać statusu systemu.</p>
+                                <button onClick={fetchHealthStatus} className="mt-3 px-4 py-2 bg-[#1a1a1a] border border-gray-700 rounded-lg text-xs font-bold text-gray-300 hover:border-gray-500 transition">
+                                    Spróbuj ponownie
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-3">
+                                {/* SMTP */}
+                                <div className="bg-[#171717] border border-gray-800 rounded-xl p-4 flex items-center gap-4">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${healthStatus.checks?.smtp?.status === 'ok' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                        <Mail size={22} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-white">SMTP</span>
+                                            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${healthStatus.checks?.smtp?.status === 'ok' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                                {healthStatus.checks?.smtp?.status === 'ok' ? 'Online' : 'Offline'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-gray-500 mt-1 truncate">{healthStatus.checks?.smtp?.detail || '—'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Supabase */}
+                                <div className="bg-[#171717] border border-gray-800 rounded-xl p-4 flex items-center gap-4">
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${healthStatus.checks?.supabase?.status === 'ok' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                        <Wifi size={22} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-white">Supabase</span>
+                                            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${healthStatus.checks?.supabase?.status === 'ok' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                                                {healthStatus.checks?.supabase?.status === 'ok' ? 'Online' : 'Offline'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-gray-500 mt-1 truncate">{healthStatus.checks?.supabase?.detail || '—'}</p>
+                                    </div>
+                                </div>
+
+                                {/* API */}
+                                <div className="bg-[#171717] border border-gray-800 rounded-xl p-4 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-green-500/20 text-green-400 flex items-center justify-center shrink-0">
+                                        <Activity size={22} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-bold text-white">API</span>
+                                            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">
+                                                Online
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-gray-500 mt-1 truncate">Serwer API działa prawidłowo</p>
+                                    </div>
+                                </div>
+
+                                {/* Ostatnia aktualizacja */}
+                                <div className="bg-[#171717] border border-gray-800 rounded-xl p-4 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-gray-500/20 text-gray-400 flex items-center justify-center shrink-0">
+                                        <Clock size={22} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-sm font-bold text-white">Ostatnia aktualizacja</span>
+                                        <p className="text-[11px] text-gray-500 mt-1">
+                                            {healthLastUpdate ? new Date(healthLastUpdate).toLocaleString() : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={fetchHealthStatus}
+                            disabled={healthLoading}
+                            className="mt-4 w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 bg-[#006DAE]/20 text-[#006DAE] border border-[#006DAE]/30 hover:bg-[#006DAE]/30 active:scale-95"
+                        >
+                            <Loader2 size={16} className={`${healthLoading ? 'animate-spin' : 'hidden'}`} />
+                            Odśwież status
+                        </button>
+                    </div>
+
+                    {/* ---- Panel: Testuj email ---- */}
+                    <div className="bg-surface border border-gray-800 p-6 rounded-2xl shadow-xl">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-14 h-14 rounded-2xl bg-blue-500/20 text-[#006DAE] flex items-center justify-center shadow-[0_0_20px_rgba(0,109,174,0.2)]">
+                                <Mail size={30} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Testuj email</h3>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mt-1">Wyślij testową wiadomość</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-[#171717] border border-gray-800 rounded-xl p-4">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
+                                Adres email odbiorcy
+                            </label>
+                            <input
+                                type="email"
+                                value={testEmail}
+                                onChange={e => setTestEmail(e.target.value)}
+                                placeholder="admin@example.com"
+                                className="w-full bg-[#1a1a1a] border border-gray-700 rounded-lg px-4 py-3 text-sm text-white outline-none focus:border-[#006DAE] transition placeholder:text-gray-600"
+                            />
+                            <button
+                                onClick={handleSendTestEmail}
+                                disabled={testEmailLoading || !testEmail.trim()}
+                                className={`mt-3 w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 shadow-lg ${testEmailLoading || !testEmail.trim() ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-[#006DAE] text-white hover:bg-[#005a94] active:scale-95 shadow-[#006DAE]/20'}`}
+                            >
+                                {testEmailLoading ? (
+                                    <><Loader2 size={18} className="animate-spin" /> Wysyłanie...</>
+                                ) : (
+                                    <><Send size={18} /> Wyślij test</>
+                                )}
+                            </button>
+                        </div>
+
+                        {testEmailResult && (
+                            <div className={`mt-4 p-4 rounded-xl border text-sm ${testEmailResult.error ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-green-500/10 border-green-500/30 text-green-400'}`}>
+                                <div className="flex items-center gap-2 font-bold mb-2">
+                                    {testEmailResult.error ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                                    {testEmailResult.error ? 'Błąd wysyłania:' : 'Email wysłany pomyślnie'}
+                                </div>
+                                {testEmailResult.error ? (
+                                    <p className="text-xs text-gray-400">{testEmailResult.error}</p>
+                                ) : (
+                                    <div className="space-y-1 text-xs text-gray-400">
+                                        {testEmailResult.messageId && (
+                                            <div className="flex justify-between">
+                                                <span>Message ID:</span>
+                                                <span className="text-white font-mono truncate max-w-[200px]">{testEmailResult.messageId}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between">
+                                            <span>Accepted:</span>
+                                            <span className="text-green-400 font-bold">{testEmailResult.accepted ? testEmailResult.accepted.length : 0}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>Rejected:</span>
+                                            <span className={testEmailResult.rejected && testEmailResult.rejected.length > 0 ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
+                                                {testEmailResult.rejected ? testEmailResult.rejected.length : 0}
+                                            </span>
+                                        </div>
+                                        {testEmailResult.accepted && testEmailResult.accepted.length > 0 && (
+                                            <div className="pt-1 border-t border-gray-700 mt-1">
+                                                <span className="text-gray-500">Do:</span>
+                                                <span className="text-white ml-1">{testEmailResult.accepted.join(', ')}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ---- Panel: Ostatnie błędy ---- */}
+                    <div className="bg-surface border border-gray-800 p-6 rounded-2xl shadow-xl">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-500 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.2)]">
+                                <AlertTriangle size={30} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Ostatnie błędy</h3>
+                                <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mt-1">Ostatnie 10 wpisów z logów</p>
+                            </div>
+                        </div>
+
+                        {systemLogsLoading ? (
+                            <div className="flex items-center justify-center py-8 text-gray-500">
+                                <Loader2 size={24} className="animate-spin mr-3" /> Ładowanie logów...
+                            </div>
+                        ) : systemLogs.length === 0 ? (
+                            <div className="text-center text-gray-500 py-8 border border-dashed border-gray-800 rounded-xl">
+                                <AlertTriangle size={32} className="mx-auto mb-2 opacity-30" />
+                                <p className="text-sm">Brak wpisów w logach.</p>
+                                <button onClick={fetchSystemLogs} className="mt-3 px-4 py-2 bg-[#1a1a1a] border border-gray-700 rounded-lg text-xs font-bold text-gray-300 hover:border-gray-500 transition">
+                                    Odśwież
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                {/* Nagłówek tabeli - desktop */}
+                                <div className="hidden lg:grid grid-cols-[auto_auto_1fr_auto] gap-3 px-4 py-2 text-[10px] text-gray-500 uppercase font-bold tracking-wider border-b border-gray-800">
+                                    <span>Data</span>
+                                    <span>Poziom</span>
+                                    <span>Źródło</span>
+                                    <span>Wiadomość</span>
+                                </div>
+
+                                {/* Wiersze */}
+                                {systemLogs.map((log, i) => {
+                                    let levelColor = 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                    if (log.level === 'error' || log.level === 'critical') levelColor = 'bg-[#C8102E]/10 text-[#C8102E] border-[#C8102E]/30'
+                                    else if (log.level === 'warn' || log.level === 'warning') levelColor = 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+
+                                    return (
+                                        <div key={log.id || i} className="bg-[#171717] border border-gray-800 rounded-xl p-3">
+                                            {/* Desktop */}
+                                            <div className="hidden lg:grid grid-cols-[auto_auto_1fr_auto] gap-3 items-center">
+                                                <span className="text-[11px] text-gray-500 whitespace-nowrap">
+                                                    {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
+                                                </span>
+                                                <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${levelColor} inline-block text-center`}>
+                                                    {log.level}
+                                                </span>
+                                                <span className="text-xs text-gray-300 font-mono truncate">{log.source || '—'}</span>
+                                                <span className="text-xs text-gray-400 truncate max-w-[200px]" title={log.message}>{log.message}</span>
+                                            </div>
+                                            {/* Mobile */}
+                                            <div className="lg:hidden flex flex-col gap-1">
+                                                <div className="flex justify-between items-center">
+                                                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${levelColor}`}>
+                                                        {log.level}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-500">
+                                                        {log.created_at ? new Date(log.created_at).toLocaleString() : '—'}
+                                                    </span>
+                                                </div>
+                                                <span className="text-[11px] font-mono text-gray-400 truncate">{log.source || '—'}</span>
+                                                <span className="text-xs text-gray-200 leading-relaxed">{log.message}</span>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+
+                        <button
+                            onClick={fetchSystemLogs}
+                            disabled={systemLogsLoading}
+                            className="mt-4 w-full py-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 bg-gray-800 text-gray-400 hover:bg-gray-700 active:scale-95 border border-gray-700"
+                        >
+                            <Loader2 size={16} className={`${systemLogsLoading ? 'animate-spin' : 'hidden'}`} />
+                            Odśwież logi
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -676,7 +1201,7 @@ export default function Admin() {
                                 const userRoles = u.roles || [u.role] || ['student']
                                 return (
                                     <div key={u.id} className="grid grid-cols-[1.2fr_1.1fr_0.8fr_1fr] gap-3 px-4 py-3 border-b border-gray-800/70 hover:bg-white/[0.02]">
-                                        <div>
+                                        <div className="cursor-pointer" onClick={() => openUserModal(u)}>
                                             <div className="font-bold text-white text-sm">{u.full_name}</div>
                                             <div className="text-[10px] text-gray-500 font-mono mt-1">{u.id}</div>
                                         </div>
@@ -700,6 +1225,13 @@ export default function Admin() {
                                             {u.banned_until ? <div className="text-[10px] text-gray-500 mt-1">do {new Date(u.banned_until).toLocaleString()}</div> : null}
                                         </div>
                                         <div className="flex gap-2 items-center">
+                                            <button
+                                                onClick={() => openUserModal(u)}
+                                                className="px-2 py-1.5 rounded text-[9px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 transition"
+                                                title="Szczegóły użytkownika"
+                                            >
+                                                Szczegóły
+                                            </button>
                                             <select
                                                 className="bg-background border border-gray-700 rounded text-[10px] text-gray-400 p-1 outline-none"
                                                 value={banDuration}
@@ -730,7 +1262,7 @@ export default function Admin() {
                         const userRoles = u.roles || [u.role] || ['student']
                         return (
                             <div key={u.id} className={`bg-surface border p-4 rounded-xl flex flex-col gap-3 transition ${u.is_banned ? 'border-red-500/50 bg-red-500/5' : 'border-gray-800'}`}>
-                                <div className="flex justify-between items-start">
+                                <div className="flex justify-between items-start cursor-pointer" onClick={() => openUserModal(u)}>
                                     <div>
                                         <div className={`font-bold text-sm ${u.is_banned ? 'text-red-500' : 'text-white'}`}>
                                             {u.full_name}
@@ -788,6 +1320,161 @@ export default function Admin() {
                             </div>
                         )
                     })}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal szczegółów użytkownika */}
+            {showUserModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm pt-4 pb-8 px-2 sm:px-4"
+                    onClick={(e) => { if (e.target === e.currentTarget) closeUserModal() }}
+                >
+                    <div className="relative w-full max-w-lg my-auto bg-gradient-to-b from-[#1e1e1e] to-[#171717] border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                                    <UserCheck size={16} className="text-blue-400" />
+                                </div>
+                                <h3 className="text-sm font-bold text-white">Szczegóły użytkownika</h3>
+                            </div>
+                            <button
+                                onClick={closeUserModal}
+                                className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 flex items-center justify-center text-gray-400 hover:text-white transition"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        {fetchingDetails ? (
+                            <div className="flex items-center justify-center py-16">
+                                <Loader2 size={28} className="animate-spin text-blue-400" />
+                            </div>
+                        ) : selectedUserDetails ? (
+                            <div className="p-4 space-y-4 overflow-y-auto max-h-[70vh]">
+                                {/* User info */}
+                                <div className="bg-black/20 rounded-xl p-4 border border-gray-800/50 space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                                            {(selectedUserDetails.full_name || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-white text-base truncate">{selectedUserDetails.full_name}</div>
+                                            <div className="text-xs text-gray-400 truncate">{selectedUserDetails.email || 'Brak email'}</div>
+                                        </div>
+                                        <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${selectedUserDetails.is_banned ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'}`}>
+                                            {selectedUserDetails.is_banned ? 'ZBANOWANY' : 'AKTYWNY'}
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div className="bg-black/30 rounded-lg p-2.5">
+                                            <div className="text-gray-500 font-bold text-[10px] uppercase tracking-wider">ID</div>
+                                            <div className="text-white font-mono text-[11px] mt-0.5 break-all">{selectedUserDetails.id}</div>
+                                        </div>
+                                        <div className="bg-black/30 rounded-lg p-2.5">
+                                            <div className="text-gray-500 font-bold text-[10px] uppercase tracking-wider">Data rejestracji</div>
+                                            <div className="text-white text-[11px] mt-0.5">
+                                                {selectedUserDetails.created_at
+                                                    ? new Date(selectedUserDetails.created_at).toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                                    : 'Brak danych'}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {selectedUserDetails.banned_until && (
+                                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 flex items-center gap-2">
+                                            <Clock size={14} className="text-red-400 shrink-0" />
+                                            <span className="text-xs text-red-300">
+                                                Ban do: {new Date(selectedUserDetails.banned_until).toLocaleString('pl-PL')}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Roles management */}
+                                <div className="bg-black/20 rounded-xl p-4 border border-gray-800/50">
+                                    <div className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-3">Zarządzanie rangami</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {ROLES.map(rank => {
+                                            const userRoles = selectedUserDetails.roles || [selectedUserDetails.role] || ['student']
+                                            return (
+                                                <button
+                                                    key={rank}
+                                                    onClick={() => toggleRank(selectedUserDetails.id, userRoles, rank)}
+                                                    className={`text-[10px] px-3 py-1.5 rounded-lg border transition font-bold ${
+                                                        userRoles.includes(rank)
+                                                            ? 'bg-primary/20 border-primary text-primary'
+                                                            : 'bg-[#121212] border-gray-800 text-gray-500 hover:border-gray-600'
+                                                    }`}
+                                                >
+                                                    {rank}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Ban controls */}
+                                <div className="bg-black/20 rounded-xl p-4 border border-gray-800/50">
+                                    <div className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-3">Kara / Ban</div>
+                                    <div className="flex gap-2 items-center">
+                                        <select
+                                            className="bg-background border border-gray-700 rounded-lg text-xs text-gray-400 p-2 outline-none flex-1"
+                                            value={modalBanDuration}
+                                            onChange={(e) => setModalBanDuration(e.target.value)}
+                                            disabled={selectedUserDetails.is_banned}
+                                        >
+                                            <option value="60">1 godzina</option>
+                                            <option value="1440">24 godziny</option>
+                                            <option value="4320">3 dni</option>
+                                            <option value="10080">7 dni</option>
+                                            <option value="52560000">Permanentny</option>
+                                        </select>
+                                        <button
+                                            onClick={async () => {
+                                                // Use modalBanDuration temporarily
+                                                const savedDuration = banDuration
+                                                setBanDuration(modalBanDuration)
+                                                await handleBan(selectedUserDetails.id, selectedUserDetails.is_banned)
+                                                setBanDuration(savedDuration)
+                                                // Refresh details
+                                                openUserModal(selectedUserDetails)
+                                            }}
+                                            className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                                                selectedUserDetails.is_banned
+                                                    ? 'bg-green-500/10 text-green-500 border border-green-500/30 hover:bg-green-500/20'
+                                                    : 'bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500/20'
+                                            }`}
+                                        >
+                                            {selectedUserDetails.is_banned ? <><UserCheck size={14} /> Odbanuj</> : <><UserMinus size={14} /> Zbanuj</>}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex gap-2">
+                                    <a
+                                        href={`mailto:${selectedUserDetails.email || ''}`}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20 transition text-xs font-bold"
+                                    >
+                                        <Mail size={14} /> Wyślij email
+                                    </a>
+                                    <button
+                                        onClick={closeUserModal}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-800/50 text-gray-400 border border-gray-700 hover:bg-gray-700/50 transition text-xs font-bold"
+                                    >
+                                        <X size={14} /> Zamknij
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center py-16 text-gray-500 text-sm">
+                                Nie znaleziono danych użytkownika.
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
