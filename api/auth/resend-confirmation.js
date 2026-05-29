@@ -9,9 +9,9 @@ const MAX_ATTEMPTS_PER_IP = 12;
 const MAX_ATTEMPTS_PER_EMAIL = 4;
 const TOKEN_EXPIRY_MINUTES = 60;
 
-// Shared signupStore from signup.js – stores pending tokens
-const signupStore = globalThis.__tebSignupStore || new Map();
-if (!globalThis.__tebSignupStore) globalThis.__tebSignupStore = signupStore;
+// Shared pendingStore from signup.js – stores {email, password, fullName} by token
+const pendingStore = globalThis.__tebPendingStore || new Map();
+if (!globalThis.__tebPendingStore) globalThis.__tebPendingStore = pendingStore;
 
 // Separate rate-limit store for resend endpoint
 const resendRateStore = globalThis.__tebResendRateStore || new Map();
@@ -162,22 +162,36 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Search for existing pending entry by email to preserve password
+    let existingEntry = null;
+    let existingKey = null;
+    for (const [key, val] of pendingStore.entries()) {
+      if (key.startsWith('pending:') && val.email === email) {
+        existingEntry = val;
+        existingKey = key;
+        break;
+      }
+    }
+
     // Generate a secure token (same as signup.js)
     const token = crypto.randomBytes(32).toString('hex');
 
-    // Store pending confirmation in shared signupStore
-    signupStore.set(`pending:${token}`, {
+    // Store pending confirmation; preserve password if we found it
+    pendingStore.set(`pending:${token}`, {
       email,
-      password: '',
-      fullName: '',
+      password: existingEntry?.password || '',
+      fullName: existingEntry?.fullName || '',
       createdAt: now,
       expiresAt: now + TOKEN_EXPIRY_MINUTES * 60 * 1000
     });
 
+    // Remove old token only AFTER new one is stored
+    if (existingKey) pendingStore.delete(existingKey);
+
     // Send email via SMTP (same template as signup.js)
     await sendConfirmationEmail(email, token);
 
-    console.log(`[RESEND CONFIRMATION] Email sent to ${maskEmail(email)}, token stored in signupStore`);
+    console.log(`[RESEND CONFIRMATION] Email sent to ${maskEmail(email)}, token stored${existingEntry ? ' (preserved password)' : ' (no password found)'}`);
     return res.status(200).json({ ok: true });
 
   } catch (error) {

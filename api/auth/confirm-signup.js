@@ -2,7 +2,9 @@ import { applyNoStore, sendMethodNotAllowed, requireSameOrigin } from '../../lib
 import { createClient } from '@supabase/supabase-js';
 import errorLog from '../../lib/errorLog.js';
 
-const signupStore = globalThis.__tebSignupStore || new Map();
+// Must match signup.js store key: __tebPendingStore
+const signupStore = globalThis.__tebPendingStore || new Map();
+if (!globalThis.__tebPendingStore) globalThis.__tebPendingStore = signupStore;
 
 export default async function handler(req, res) {
   applyNoStore(res);
