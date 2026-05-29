@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 # ─── INFRASTRUKTURA ────────────────────────────────────────────
 _JSON_MODE = "--json" in sys.argv or "-j" in sys.argv
 if _JSON_MODE: sys.argv = [a for a in sys.argv if a not in ("--json","-j")]
-VERSION = "7.0"
+VERSION = "7.3"
 COMMANDS_COUNT = 68
 
 if "--version" in sys.argv or "-V" in sys.argv:
@@ -1194,7 +1194,77 @@ def cmd_report_daily(args):
     print(f"")
     print(f"  Raport trafi do: ~/Desktop/teb-app-backups/raport-*.html")
 
-# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
+
+def cmd_analyze(args):
+    """AI analiza danych aplikacji - uzywa LLM do wnioskow."""
+    print(f"  {B('Zbieranie danych...')}")
+    users = _get_users()
+    health = _fetch("GET", f"{VERCEL}/api/health")
+    errors = api("GET", "/rest/v1/error_logs?limit=50&order=created_at.desc")
+    profiles = api("GET", "/rest/v1/profiles?select=teb_gabki,is_banned&limit=1000")
+    posts = api("GET", "/rest/v1/feed_posts?select=id&limit=1")
+    
+    t = len(users); c = sum(1 for u in users if u.get("email_confirmed_at"))
+    err_count = len(errors) if isinstance(errors, list) else 0
+    err_types = {}
+    if isinstance(errors, list):
+        for e in errors:
+            src = e.get("source","?")
+            err_types[src] = err_types.get(src, 0) + 1
+    banned = sum(1 for p in (profiles if isinstance(profiles,list) else []) if p.get("is_banned"))
+    posts_count = len(posts) if isinstance(posts, list) else 0
+    top_errors = sorted(err_types.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    prompt = f"""Jestes asystentem analizujacym aplikacje szkolna TEB-App.
+Dane:
+- Uzytkownicy: {t} ({c} potwierdzonych, {t-c} niepotwierdzonych)
+- Zbanowani: {banned}
+- Posty: {posts_count}
+- Bledy: {err_count} (najczestsze: {top_errors})
+- SMTP: {health.get("checks",{}).get("smtp",{}).get("status","?")}
+- Supabase: {health.get("checks",{}).get("supabase",{}).get("status","?")}
+
+Daj 3-5 konkretnych, praktycznych rekomendacji co poprawic w aplikacji.
+Krotko, na temat, po polsku."""
+    
+    print(f"  {B('Analizowanie przez LLM...')}")
+    try:
+        r = subprocess.run(["hermes","chat","-q",prompt,"--provider","deepseek","--model","deepseek-v4-flash","-Q","-t","web"],
+                          capture_output=True, text=True, timeout=120)
+        response = r.stdout.strip()
+        # Strip hermes session output
+        if "Saving session..." in response:
+            response = response[:response.index("Saving session...")].strip()
+        print(f"  {B('=== ANALIZA ===')}")
+        print(response[-2000:] if len(response) > 2000 else response)
+    except Exception as e:
+        print(f"  {R('Blad LLM')}: {e}")
+        print(f"  Statystyki: {t} users, {c} confirmed, {err_count} errors")
+
+def cmd_rotate_backups(args):
+    """Usuwa stare backupy (>30 dni)."""
+    backup_dir = os.path.expanduser("~/Desktop/teb-app-backups")
+    if not os.path.exists(backup_dir): print("  Brak katalogu backupow."); return
+    
+    now = time.time()
+    max_age = int(args.password or "30") * 86400
+    deleted = 0; kept = 0
+    
+    for f in os.listdir(backup_dir):
+        path = os.path.join(backup_dir, f)
+        if os.path.isfile(path) and f.endswith((".json", ".html", ".csv")):
+            age = now - os.path.getmtime(path)
+            if age > max_age:
+                os.remove(path)
+                deleted += 1
+            else:
+                kept += 1
+    
+    days = int(args.password or "30")
+    print(f"  Usunieto: {deleted} ({'>'+str(days)} dni)")
+    print(f"  Zachowano: {kept}")
+
+# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────# ─── DISPATCHER ────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import argparse
@@ -1221,7 +1291,8 @@ if __name__ == "__main__":
         "raw":cmd_raw,
         "quick":cmd_quick,
         "self-test":cmd_self_test,"email-preview":cmd_email_preview,
-        "restore":cmd_restore,"report-daily":cmd_report_daily
+        "restore":cmd_restore,"report-daily":cmd_report_daily,
+        "analyze":cmd_analyze,"rotate-backups":cmd_rotate_backups
     }
     p = argparse.ArgumentParser(description="TEB-App Manager v5.0 (nieskonczonosc)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
