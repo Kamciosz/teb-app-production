@@ -107,7 +107,7 @@ function App() {
                     const signupResult = await signUpWithEmail(finalEmail, password, finalName)
                     clearTimeout(signupTimeout)
                     if (signupResult?.note) {
-                        setAuthMessage('ℹ️ Konto może już istnieć. Przejdź do logowania i użyj opcji "Wyślij ponownie e-mail potwierdzający".')
+                        setAuthMessage('ℹ️ Konto może już istnieć. Przejdź do logowania i użyj opcji "Wyślij ponownie e-mail potwierdzający". Sprawdź też folder SPAM.')
                         setIsRegister(false)
                         setEmail(finalEmail)
                         setPassword('')
@@ -116,7 +116,7 @@ function App() {
                         return
                     }
 
-                    setAuthMessage('✅ Konto zostało utworzone! Sprawdź e-mail aby potwierdzić rejestrację.')
+                    setAuthMessage('✅ Konto utworzone! Wysłaliśmy link potwierdzający na Twój e-mail.\n\n📧 Sprawdź skrzynkę odbiorczą, a jeśli nie widzisz wiadomości — sprawdź folder SPAM/Oferty.')
                     setIsRegister(false)
                     setEmail('')
                     setPassword('')
@@ -149,8 +149,11 @@ function App() {
             if (errorMsg.includes('confirmation email') || errorMsg.includes('mail')) {
                 setAuthError('📧 Problem z wysyłką e-maila potwierdzającego. Spróbuj za minutę.')
             } else if (errorMsg.includes('already registered') || errorMsg.includes('user already')) {
-                setAuthError('⚠️ Ten e-mail jest już zarejestrowany. Zaloguj się zamiast rejestrować.')
-            } else if (errorMsg.includes('Invalid login')) {
+                setAuthError('⚠️ Ten e-mail jest już zarejestrowany. Zaloguj się, a jeśli nie dostałeś e-maila potwierdzającego — sprawdź folder SPAM.')
+            } else if (errorMsg.includes('Email not confirmed') || errorMsg.includes('not confirmed')) {
+     setAuthError('⚠️ Twoje konto nie zostało jeszcze potwierdzone. Sprawdź skrzynkę e-mail (także folder SPAM) i kliknij link potwierdzający. Nie dostałeś e-maila?')
+     setEmail(finalEmail)
+ } else if (errorMsg.includes('Invalid login')) {
                 setAuthError('❌ Zły e-mail lub hasło.')
             } else if (errorMsg.includes('timeout') || errorMsg.includes('Abort')) {
                 setAuthError(`⏱️ Timeout (próba ${retryCount + 1}/3). Spróbuj ponownie.`)
@@ -175,7 +178,7 @@ function App() {
                 redirectTo: window.location.origin
             });
             if (error) throw error;
-            setAuthMessage('Wysłano link do resetu hasła na Twój szkolny e-mail.')
+            setAuthMessage('📧 Wysłano link do resetu hasła na Twój szkolny e-mail.\n\nSprawdź skrzynkę odbiorczą oraz folder SPAM/Oferty.')
             setAuthError('')
         } catch (error) {
             setAuthError(error.message)
@@ -196,7 +199,7 @@ function App() {
         try {
             setIsResendingConfirmation(true)
             await resendConfirmationEmail(finalEmail)
-            setAuthMessage('Jeśli konto istnieje, wysłaliśmy nowy link potwierdzający. Sprawdź także folder Spam/Oferty.')
+            setAuthMessage('📧 Jeśli konto istnieje, wysłaliśmy nowy link potwierdzający.\n\nSprawdź skrzynkę odbiorczą oraz folder SPAM/Oferty.')
             setAuthError('')
         } catch {
             setAuthError('Nie udało się ponownie wysłać linku. Spróbuj za chwilę.')
@@ -355,7 +358,7 @@ function App() {
                                     </div>
                                 )}
                                 {authMessage && (
-                                    <div className="text-green-400 text-xs text-center font-bold px-2 py-2 bg-green-950/30 rounded">
+                                    <div className="text-green-400 text-xs text-center font-bold px-2 py-2 bg-green-950/30 rounded whitespace-pre-line">
                                         {authMessage}
                                     </div>
                                 )}
@@ -388,7 +391,7 @@ function App() {
                                     </button>
                                 )}
 
-                                {!isRegister && authError && authError.includes('Potwierdź swoją rejestrację') && (
+                                {!isRegister && authError && (authError.includes('Potwierdź swoją rejestrację') || authError.includes('konto nie zostało jeszcze potwierdzone')) && (
                                     <button
                                         type="button"
                                         onClick={handleResendConfirmation}
